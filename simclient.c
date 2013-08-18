@@ -23,20 +23,6 @@ int main(int argc, char* argv[]) {
 
 	struct sockaddr_in remote_addr;
 
-	//memset((char*) &local_addr, 0, sizeof(local_addr));
-	//local_addr.sin_family = AF_INET;
-	//local_addr.sin_port = 0;
-	//local_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-	//if(bind(sock, (struct sockaddr*) &local_addr, sizeof(local_addr)) == -1)
-	//	DIE("binding sock");
-
-	//int slen = sizeof(local_addr);
-	//if(getsockname(sock, (struct sockaddr*) &local_addr, &slen) == -1)
-	//	DIE("getting socket info");
-
-	//printf("Socket bound to port %d\n", ntohs(local_addr.sin_port));
-
 	memset((char*) &remote_addr, 0, sizeof(remote_addr));
 	remote_addr.sin_family = AF_INET;
 	remote_addr.sin_port = htons(rport);
@@ -46,6 +32,8 @@ int main(int argc, char* argv[]) {
 	memset(buf, 0, sizeof(buf));
 	if(sendto(sock, buf, 0, sizeof(buf), (struct sockaddr*) &remote_addr, sizeof(remote_addr)) == -1)
 		DIE("sending packet");
+
+	//once we've done a sendto, we can recvfrom the same socket with no further work. don't even need to know the port
 
 	close(sock);
 	return 0;
