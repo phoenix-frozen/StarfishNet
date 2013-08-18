@@ -6,8 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
-#define DIE(x) { printf("Error %s.\n", x); exit(1); }
+#define DIE(x) { printf("Error %s (errno says %s).\n", x, strerror(errno)); exit(1); }
 
 int main(int argc, char* argv[]) {
 	int rport = 0;
@@ -30,7 +31,7 @@ int main(int argc, char* argv[]) {
 
 	char buf[256];
 	memset(buf, 0, sizeof(buf));
-	if(sendto(sock, buf, 0, sizeof(buf), (struct sockaddr*) &remote_addr, sizeof(remote_addr)) == -1)
+	if(sendto(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, sizeof(remote_addr)) == -1)
 		DIE("sending packet");
 
 	//once we've done a sendto, we can recvfrom the same socket with no further work. don't even need to know the port

@@ -6,8 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
-#define DIE(x) { printf("Error %s.\n", x); exit(1); }
+#define DIE(x) { printf("Error %s (errno says %s).\n", x, strerror(errno)); exit(1); }
 
 int main(void) {
 	int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
