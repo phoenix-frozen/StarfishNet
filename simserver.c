@@ -38,6 +38,8 @@ int main(void) {
 	if(recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, &slen) == -1)
 		DIE("listening for packet");
 
+	printf("Received packet from %s:%d\n", inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
+
 	close(sock);
 	return 0;
 }
