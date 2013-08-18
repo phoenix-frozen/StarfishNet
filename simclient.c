@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
 
 #define DIE(x) { printf("Error %s (errno says %s).\n", x, strerror(errno)); exit(1); }
 
@@ -29,16 +30,21 @@ int main(int argc, char* argv[]) {
 	remote_addr.sin_port = htons(rport);
 	remote_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-	char buf[256];
-	memset(buf, 0, sizeof(buf));
-	if(sendto(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, sizeof(remote_addr)) == -1)
-		DIE("sending packet");
+	while(1) {
+		char buf[256];
+		memset(buf, 0, sizeof(buf));
+		if(sendto(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, sizeof(remote_addr)) == -1)
+			DIE("sending packet");
+		printf("Sent packet to %s:%d\n", inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
 
-	int slen = sizeof(remote_addr);
-	if(recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, &slen) == -1)
-		DIE("listening for packet");
+		for(int i = 0; i < 5; i++) {
+			int slen = sizeof(remote_addr);
+			if(recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, &slen) == -1)
+				DIE("listening for packet");
 
-	printf("Received packet from %s:%d\n", inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
+			printf("Received packet from %s:%d\n", inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
+		}
+	}
 
 	close(sock);
 	return 0;
