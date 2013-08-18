@@ -34,7 +34,11 @@ int main(int argc, char* argv[]) {
 	if(sendto(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, sizeof(remote_addr)) == -1)
 		DIE("sending packet");
 
-	//once we've done a sendto, we can recvfrom the same socket with no further work. don't even need to know the port
+	int slen = sizeof(remote_addr);
+	if(recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr*) &remote_addr, &slen) == -1)
+		DIE("listening for packet");
+
+	printf("Received packet from %s:%d\n", inet_ntoa(remote_addr.sin_addr), ntohs(remote_addr.sin_port));
 
 	close(sock);
 	return 0;
