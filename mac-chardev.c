@@ -47,6 +47,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "mac.h"
 
@@ -212,7 +213,7 @@ uint8_t mac_pib_attribute_length (
  */
 static int extract_pan_descriptor (const uint8_t *data, mac_pan_descriptor_t *pan_descriptor)
 {
-	int i;
+	int i = 0;
 
 	assert (data != NULL);
 	assert (pan_descriptor != NULL);
@@ -1795,4 +1796,11 @@ void mac_sprintf (char *buffer, const char *format, ...)
 	*b = '\0';
 
 	va_end (ap);
+}
+
+mac_session_handle_t mac_init(char* params) {
+	mac_session_handle_t handle = {
+		.fd = open(params, O_RDWR)
+	};
+	return handle;
 }

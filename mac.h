@@ -485,6 +485,8 @@ int MLME_POLL_request (
 		_Bool SecurityEnable
 		);
 
+mac_session_handle_t mac_init(char* params);
+
 int mac_receive (mac_primitive_handler_t *handler, mac_session_handle_t session);
 int mac_receive_primitive (mac_session_handle_t session, const uint8_t *data, uint8_t length);
 
