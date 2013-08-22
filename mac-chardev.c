@@ -51,6 +51,9 @@
 
 #include "mac.h"
 
+#pragma GCC diagnostic ignored "-Wenum-compare"
+#pragma GCC diagnostic ignored "-Wformat-security"
+
 typedef struct mac_string_value_struct {
 	const char *string;
 	mac_pib_attribute_t value;
@@ -710,8 +713,13 @@ static int process_mcps_data_confirm (mac_primitive_handler_t *handler, mac_sess
 	assert (handler->MCPS_DATA_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 2) {
-		return handler->MCPS_DATA_confirm (session, data[0], data[1]);
+		return handler->MCPS_DATA_confirm (&callback_metadata, data[0], data[1]);
 	} else {
 		return 0;
 	}
@@ -735,6 +743,11 @@ static int process_mcps_data_indication (mac_primitive_handler_t *handler, mac_s
 	assert (handler != NULL);
 	assert (handler->MCPS_DATA_indication != NULL);
 	assert (data != NULL);
+
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
 
 	if (length >= 5) {
 		/* FIXME: Need to do more validation on length */
@@ -768,8 +781,9 @@ static int process_mcps_data_indication (mac_primitive_handler_t *handler, mac_s
 		mpduLinkQuality = data[0];
 		SecurityUse = data[1] & 1;
 		ACLEntry = (data[1] >> 1) & 0xf;
+
 		return handler->MCPS_DATA_indication (
-				session,
+				&callback_metadata,
 				SrcAddrMode,
 				SrcPANId,
 				&SrcAddr,
@@ -794,8 +808,13 @@ static int process_mcps_purge_confirm (mac_primitive_handler_t *handler, mac_ses
 	assert (handler->MCPS_PURGE_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 2) {
-		return handler->MCPS_PURGE_confirm (session, data[0], data[1]);
+		return handler->MCPS_PURGE_confirm (&callback_metadata, data[0], data[1]);
 	} else {
 		return 0;
 	}
@@ -808,8 +827,13 @@ static int process_mlme_associate_confirm (mac_primitive_handler_t *handler, mac
 	assert (handler->MLME_ASSOCIATE_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 3) {
-		return handler->MLME_ASSOCIATE_confirm (session, (data[1] << 8) | data[0], data[2]);
+		return handler->MLME_ASSOCIATE_confirm (&callback_metadata, (data[1] << 8) | data[0], data[2]);
 	} else {
 		return 0;
 	}
@@ -822,8 +846,13 @@ static int process_mlme_associate_indication (mac_primitive_handler_t *handler, 
 	assert (handler->MLME_ASSOCIATE_indication != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 10) {
-		return handler->MLME_ASSOCIATE_indication (session, &data[0], data[8], data[9] & 1, (data[9] >> 1) & 0xf);
+		return handler->MLME_ASSOCIATE_indication (&callback_metadata, &data[0], data[8], data[9] & 1, (data[9] >> 1) & 0xf);
 	} else {
 		return 0;
 	}
@@ -836,8 +865,13 @@ static int process_mlme_disassociate_confirm (mac_primitive_handler_t *handler, 
 	assert (handler->MLME_DISASSOCIATE_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 1) {
-		return handler->MLME_DISASSOCIATE_confirm (session, data[0]);
+		return handler->MLME_DISASSOCIATE_confirm (&callback_metadata, data[0]);
 	} else {
 		return 0;
 	}
@@ -850,8 +884,13 @@ static int process_mlme_disassociate_indication (mac_primitive_handler_t *handle
 	assert (handler->MLME_DISASSOCIATE_indication != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 10) {
-		return handler->MLME_DISASSOCIATE_indication (session, &data[0], data[8], data[9] & 1, (data[9] >> 1) & 0xf);
+		return handler->MLME_DISASSOCIATE_indication (&callback_metadata, &data[0], data[8], data[9] & 1, (data[9] >> 1) & 0xf);
 	} else {
 		return 0;
 	}
@@ -872,6 +911,11 @@ static int process_mlme_beacon_notify_indication (mac_primitive_handler_t *handl
 	assert (handler->MLME_BEACON_NOTIFY_indication != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length >= 17) {
 		i = 0;
 		BSN = data[i++];
@@ -889,7 +933,7 @@ static int process_mlme_beacon_notify_indication (mac_primitive_handler_t *handl
 		if (i > length) {
 			return 0;
 		}
-		return handler->MLME_BEACON_NOTIFY_indication (session, BSN, &PANDescriptor, PendAddrSpec, AddrList, sduLength, sdu);
+		return handler->MLME_BEACON_NOTIFY_indication (&callback_metadata, BSN, &PANDescriptor, PendAddrSpec, AddrList, sduLength, sdu);
 	} else {
 		return 0;
 	}
@@ -902,7 +946,12 @@ static int process_mlme_get_confirm (mac_primitive_handler_t *handler, mac_sessi
 	assert (handler->MLME_GET_confirm != NULL);
 	assert (data != NULL);
 
-	return handler->MLME_GET_confirm (session, data[0], data[1], &data[2]);
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
+	return handler->MLME_GET_confirm (&callback_metadata, data[0], data[1], &data[2]);
 }
 
 /* Extract MLME-GTS.confirm parameters and call callback */
@@ -912,8 +961,13 @@ static int process_mlme_gts_confirm (mac_primitive_handler_t *handler, mac_sessi
 	assert (handler->MLME_GTS_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 2) {
-		return handler->MLME_GTS_confirm (session, data[0], data[1]);
+		return handler->MLME_GTS_confirm (&callback_metadata, data[0], data[1]);
 	} else {
 		return 0;
 	}
@@ -926,8 +980,13 @@ static int process_mlme_gts_indication (mac_primitive_handler_t *handler, mac_se
 	assert (handler->MLME_GTS_indication != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 4) {
-		return handler->MLME_GTS_indication (session, (data[1] << 8) | data[0], data[2], data[3] & 1, (data[3] >> 1) & 0xf);
+		return handler->MLME_GTS_indication (&callback_metadata, (data[1] << 8) | data[0], data[2], data[3] & 1, (data[3] >> 1) & 0xf);
 	} else {
 		return 0;
 	}
@@ -940,8 +999,13 @@ static int process_mlme_orphan_indication (mac_primitive_handler_t *handler, mac
 	assert (handler->MLME_ORPHAN_indication != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 9) {
-		return handler->MLME_ORPHAN_indication (session, &data[0], data[8] & 1, (data[8] >> 1) & 0xf);
+		return handler->MLME_ORPHAN_indication (&callback_metadata, &data[0], data[8] & 1, (data[8] >> 1) & 0xf);
 	} else {
 		return 0;
 	}
@@ -954,8 +1018,13 @@ static int process_mlme_reset_confirm (mac_primitive_handler_t *handler, mac_ses
 	assert (handler->MLME_RESET_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 1) {
-		return handler->MLME_RESET_confirm (session, data[0]);
+		return handler->MLME_RESET_confirm (&callback_metadata, data[0]);
 	} else {
 		return 0;
 	}
@@ -968,8 +1037,13 @@ static int process_mlme_rx_enable_confirm (mac_primitive_handler_t *handler, mac
 	assert (handler->MLME_RX_ENABLE_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 1) {
-		return handler->MLME_RX_ENABLE_confirm (session, data[0]);
+		return handler->MLME_RX_ENABLE_confirm (&callback_metadata, data[0]);
 	} else {
 		return 0;
 	}
@@ -990,6 +1064,11 @@ static int process_mlme_scan_confirm (mac_primitive_handler_t *handler, mac_sess
 	assert (handler != NULL);
 	assert (handler->MLME_SCAN_confirm != NULL);
 	assert (data != NULL);
+
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
 
 	if (length >= 7) {
 		status = data[0];
@@ -1021,8 +1100,9 @@ static int process_mlme_scan_confirm (mac_primitive_handler_t *handler, mac_sess
 				return 0;
 			}
 		}
+
 		return handler->MLME_SCAN_confirm (
-				session,
+				&callback_metadata,
 				status,
 				ScanType,
 				UnscannedChannels,
@@ -1049,6 +1129,11 @@ static int process_mlme_comm_status_indication (mac_primitive_handler_t *handler
 	assert (handler != NULL);
 	assert (handler->MLME_COMM_STATUS_indication != NULL);
 	assert (data != NULL);
+
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
 
 	if (length >= 5) {
 		/* FIXME: Need to do more validation on length */
@@ -1078,8 +1163,9 @@ static int process_mlme_comm_status_indication (mac_primitive_handler_t *handler
 		if (i > length) {
 			return 0;
 		}
+
 		return handler->MLME_COMM_STATUS_indication (
-				session,
+				&callback_metadata,
 				PANId, SrcAddrMode,
 				&SrcAddr,
 				DstAddrMode,
@@ -1098,8 +1184,13 @@ static int process_mlme_set_confirm (mac_primitive_handler_t *handler, mac_sessi
 	assert (handler->MLME_SET_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 2) {
-		return handler->MLME_SET_confirm (session, data[0], data[1]);
+		return handler->MLME_SET_confirm (&callback_metadata, data[0], data[1]);
 	} else {
 		return 0;
 	}
@@ -1112,8 +1203,13 @@ static int process_mlme_start_confirm (mac_primitive_handler_t *handler, mac_ses
 	assert (handler->MLME_START_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 1) {
-		return handler->MLME_START_confirm (session, data[0]);
+		return handler->MLME_START_confirm (&callback_metadata, data[0]);
 	} else {
 		return 0;
 	}
@@ -1126,8 +1222,13 @@ static int process_mlme_sync_loss_indication (mac_primitive_handler_t *handler, 
 	assert (handler->MLME_SYNC_LOSS_indication != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 1) {
-		return handler->MLME_SYNC_LOSS_indication (session, data[0]);
+		return handler->MLME_SYNC_LOSS_indication (&callback_metadata, data[0]);
 	} else {
 		return 0;
 	}
@@ -1140,8 +1241,13 @@ static int process_mlme_poll_confirm (mac_primitive_handler_t *handler, mac_sess
 	assert (handler->MLME_POLL_confirm != NULL);
 	assert (data != NULL);
 
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
 	if (length == 1) {
-		return handler->MLME_POLL_confirm (session, data[0]);
+		return handler->MLME_POLL_confirm (&callback_metadata, data[0]);
 	} else {
 		return 0;
 	}
@@ -1356,7 +1462,12 @@ int mac_receive (mac_primitive_handler_t *handler, mac_session_handle_t session)
 					}
 				default:
 					if (handler->unknown_primitive != NULL) {
-						return handler->unknown_primitive (session, buffer[5], &buffer[6], length);
+						mac_callback_metadata_t callback_metadata = {
+							.session = session,
+							.extradata = handler->extradata,
+						};
+
+						return handler->unknown_primitive (&callback_metadata, buffer[5], &buffer[6], length);
 					} else {
 						return 1;
 					}

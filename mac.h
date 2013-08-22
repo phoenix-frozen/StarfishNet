@@ -78,6 +78,11 @@ typedef union {
 	void* meta;
 } mac_session_handle_t;
 
+typedef struct {
+	mac_session_handle_t session;
+	void* extradata;
+} mac_callback_metadata_t;
+
 /* Addressing modes */
 typedef enum {
 	mac_no_address = 0x0,
@@ -253,12 +258,12 @@ typedef enum {
 /* Primitive callback function pointers. */
 typedef struct {
 	int (*MCPS_DATA_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t msduHandle,
 			mac_status_t status
 			);
 	int (*MCPS_DATA_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_address_mode_t SrcAddrMode,
 			mac_pan_id_t SrcPANId,
 			mac_address_t *SrcAddr,
@@ -272,35 +277,35 @@ typedef struct {
 			mac_acl_entry_t ACLEntry
 			);
 	int (*MCPS_PURGE_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t msduHandle,
 			mac_status_t status
 			);
 	int (*MLME_ASSOCIATE_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t *DeviceAddress,
 			uint8_t CapabilityInformation,
 			_Bool SecurityUse,
 			mac_acl_entry_t ACLEntry
 			);
 	int (*MLME_ASSOCIATE_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint16_t AssocShortAddress,
 			mac_status_t status
 			);
 	int (*MLME_DISASSOCIATE_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t *DeviceAddress,
 			mac_disassociate_reason_t DisassociateReason,
 			_Bool SecurityUse,
 			mac_acl_entry_t ACLEntry
 			);
 	int (*MLME_DISASSOCIATE_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status
 			);
 	int (*MLME_BEACON_NOTIFY_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t BSN,
 			mac_pan_descriptor_t *PANDescriptor,
 			uint8_t PendAddrSpec,
@@ -309,39 +314,39 @@ typedef struct {
 			uint8_t *sdu
 			);
 	int (*MLME_GET_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status,
 			mac_pib_attribute_t PIBAttribute,
 			uint8_t *PIBAttributeValue
 			);
 	int (*MLME_GTS_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t GTSCharacteristics,
 			mac_status_t status
 			);
 	int (*MLME_GTS_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint16_t DevAddress,
 			uint8_t GTSCharacteristics,
 			_Bool SecurityUse,
 			mac_acl_entry_t ACLEntry
 			);
 	int (*MLME_ORPHAN_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t *OrphanAddress,
 			_Bool SecurityUse,
 			mac_acl_entry_t ACLEntry
 			);
 	int (*MLME_RESET_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status
 			);
 	int (*MLME_RX_ENABLE_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status
 			);
 	int (*MLME_SCAN_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status,
 			mac_scan_type_t ScanType,
 			uint32_t UnscannedChannels,
@@ -350,7 +355,7 @@ typedef struct {
 			mac_pan_descriptor_t *PANDescriptorList
 			);
 	int (*MLME_COMM_STATUS_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_pan_id_t PANId,
 			mac_address_mode_t SrcAddrMode,
 			mac_address_t *SrcAddr,
@@ -359,28 +364,29 @@ typedef struct {
 			mac_status_t status
 			);
 	int (*MLME_SET_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status,
 			mac_pib_attribute_t PIBAttribute
 			);
 	int (*MLME_START_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status
 			);
 	int (*MLME_SYNC_LOSS_indication) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t LossReason
 			);
 	int (*MLME_POLL_confirm) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status
 			);
 	int (*unknown_primitive) (
-			mac_session_handle_t session,
+			mac_callback_metadata_t* callback_metadata,
 			uint8_t primitive,
 			uint8_t *data,
 			uint8_t length
 			);
+	void* extradata;
 } mac_primitive_handler_t;
 
 /* Function prototypes */
