@@ -24,14 +24,14 @@
  * thereof, and that both notices appear in supporting documentation.
  *
  * 2. All copies of the software shall contain the following acknowledgement:
- * “Portions of this software are used under license from Integration Associates
- * Inc. and are copyrighted.”
+ * "Portions of this software are used under license from Integration Associates
+ * Inc. and are copyrighted."
  *
  * 3  Neither the name of Integration Associates Inc. nor any of its
  * subsidiaries may be used to endorse or promote products derived from this
  * software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY “AS IS” AND ALL WARRANTIES OF ANY KIND,
+ * THIS SOFTWARE IS PROVIDED BY "AS IS" AND ALL WARRANTIES OF ANY KIND,
  * INCLUDING THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR USE,
  * ARE EXPRESSLY DISCLAIMED.  THE DEVELOPER SHALL NOT BE LIABLE FOR ANY DAMAGES
  * WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.  THIS SOFTWARE MAY NOT
@@ -47,10 +47,24 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* MAC constants */
+/* MAC/PHY constants (using notation from the 802.15.4 spec) */
 #define aMaxPHYPacketSize                       127
-#define aMaxFrameOverhead                       25
-#define aMaxMACFrameSize                        (aMaxPHYPacketSize-aMaxFrameOverhead)
+#define aTurnaroundTime                         12
+#define aBaseSlotDuration                       60
+#define aNumSuperframeSlots                     16
+#define aBaseSuperframeDuration                 (aBaseSlotDuration * aNumSuperframeSlots)
+#define aGTSDescPersistenceTime                 4
+#define aMaxBeaconOverhead                      75
+#define aMaxBeaconPayloadLength                 (aMaxPHYPacketSize - aMaxBeaconOverhead)
+#define aMaxLostBeacons                         4
+#define aMaxMPDUUnsecuredOverhead               25
+#define aMinMPDUOverhead                        9
+#define aMaxMACSafePayloadSize                  (aMaxPHYPacketSize - aMaxMPDUUnsecuredOverhead)
+#define aMaxMACPayloadSize                      (aMaxPHYPacketSize - aMinMPDUOverhead)
+#define aMaxSIFSFrameSize                       18
+#define aMinCAPLength                           440
+#define aUnitBackoffPeriod                      20
+
 
 /* MCPS-DATA.request TxOptions flags */
 #define MAC_TX_OPTION_ACKNOWLEDGED              0x01
@@ -140,7 +154,9 @@ typedef enum {
 	mac_transaction_overflow = 0xf1,
 	mac_tx_active = 0xf2,
 	mac_unavailable_key = 0xf3,
-	mac_unsupported_attribute = 0xf4
+	mac_unsupported_attribute = 0xf4,
+	mac_out_of_spec = 0xf5,
+	mac_impossible_request = 0xf7,
 } mac_status_t;
 
 /* PHY PIB attributes */
@@ -253,6 +269,7 @@ typedef enum {
 	mac_mlme_sync_loss_indication = 0x60,
 	mac_mlme_poll_request = 0x61,
 	mac_mlme_poll_confirm = 0x62,
+	mac_mlme_protocol_error_indication = 0xff,
 } mac_primitive_t;
 
 /* Primitive callback function pointers. */
@@ -377,6 +394,10 @@ typedef struct {
 			mac_status_t LossReason
 			);
 	int (*MLME_POLL_confirm) (
+			mac_callback_metadata_t* callback_metadata,
+			mac_status_t status
+			);
+	int (*MLME_PROTOCOL_ERROR_indication) (
 			mac_callback_metadata_t* callback_metadata,
 			mac_status_t status
 			);

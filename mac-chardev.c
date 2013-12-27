@@ -271,7 +271,7 @@ int MCPS_DATA_request (
 	assert ((SrcAddrMode == mac_no_address) || (SrcAddr != NULL));
 	assert ((DstAddrMode == mac_no_address) || (DstAddrMode == mac_short_address) || (DstAddrMode == mac_extended_address));
 	assert ((DstAddrMode == mac_no_address) || (DstAddr != NULL));
-	assert (msduLength <= aMaxMACFrameSize);
+	assert (msduLength <= aMaxMACPayloadSize);
 	assert ((msduLength == 0) || (msdu != NULL));
 	assert ((TxOptions & 0xf0) == 0);
 
@@ -1253,6 +1253,25 @@ static int process_mlme_poll_confirm (mac_primitive_handler_t *handler, mac_sess
 	}
 }
 
+/* Extract MLME-PROTOCOL_ERROR.indication parameters and call callback */
+static int process_mlme_protocol_error_indication (mac_primitive_handler_t *handler, mac_session_handle_t session, uint8_t *data, uint8_t length)
+{
+	assert (handler != NULL);
+	assert (handler->MLME_PROTOCOL_ERROR_indication != NULL);
+	assert (data != NULL);
+
+	mac_callback_metadata_t callback_metadata = {
+		.session = session,
+		.extradata = handler->extradata,
+	};
+
+	if (length == 1) {
+		return handler->MLME_PROTOCOL_ERROR_indication (&callback_metadata, data[0]);
+	} else {
+		return 0;
+	}
+}
+
 #ifdef MAC_DEBUG
 /* Print a primitives name and data in hex. */
 static void mac_print_primitive (uint8_t *data, uint8_t length)
@@ -1457,6 +1476,12 @@ int mac_receive (mac_primitive_handler_t *handler, mac_session_handle_t session)
 				case mac_mlme_poll_confirm:
 					if (handler->MLME_POLL_confirm != NULL) {
 						return process_mlme_poll_confirm (handler, session, &buffer[6], length);
+					} else {
+						return 1;
+					}
+				case mac_mlme_protocol_error_indication:
+					if (handler->MLME_PROTOCOL_ERROR_indication != NULL) {
+						return process_mlme_protocol_error_indication (handler, session, &buffer[6], length);
 					} else {
 						return 1;
 					}
