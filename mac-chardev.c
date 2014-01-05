@@ -200,6 +200,8 @@ uint8_t mac_pib_attribute_length (
 		return security_lengths[PIBAttribute - macACLEntryDescriptorSet];
 	else if (PIBAttribute == macIEEEAddress)
 		return 8;
+	else if (PIBAttribute == macACLEntryDescriptorNumber)
+		return 1;
 
 	/* Shouldn't reach here */
 	assert (0);
@@ -559,7 +561,7 @@ int MLME_SCAN_request (
 int MLME_SET_request (
 		mac_session_handle_t session,
 		mac_pib_attribute_t PIBAttribute,
-		void *PIBAttributeValue
+		const void *PIBAttributeValue
 		)
 {
 	static uint8_t beaconPayloadLength = 0;
@@ -1317,6 +1319,9 @@ static void mac_print_primitive (uint8_t *data, uint8_t length)
 
 	if ((data[0] >= mac_mcps_data_request) && (data[0] <= mac_mlme_poll_confirm)) {
 		printf ("%s: ", mac_primitive_names[data[0] - mac_mcps_data_request]);
+		i = 1;
+	} else if (data[0] == mac_mlme_protocol_error_indication) {
+		printf ("%s: ", "MLME-PROTOCOL_ERROR.indication");
 		i = 1;
 	} else {
 		i = 0;

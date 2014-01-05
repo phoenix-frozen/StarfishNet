@@ -64,6 +64,8 @@
 #define aMaxSIFSFrameSize                       18
 #define aMinCAPLength                           440
 #define aUnitBackoffPeriod                      20
+#define aMaxACLEntries                          9
+#define aMaxSecurityMaterialLength              0x1a
 
 
 /* MCPS-DATA.request TxOptions flags */
@@ -87,44 +89,44 @@
 #define MAC_GTS_ALLOCATE                        0x20
 #define MAC_GTS_DEALLOCATE                      0x00
 
-typedef union {
+typedef union mac_session_handle {
 	int fd;
 	void* meta;
 } mac_session_handle_t;
 
-typedef struct {
+typedef struct mac_callback_metadata {
 	mac_session_handle_t session;
 	void* extradata;
 } mac_callback_metadata_t;
 
 /* Addressing modes */
-typedef enum {
+typedef enum mac_address_mode {
 	mac_no_address = 0x0,
 	mac_short_address = 0x2,
 	mac_extended_address = 0x3
 } mac_address_mode_t;
 
 /* Address */
-typedef union {
+typedef union mac_address {
 	uint16_t ShortAddress;
 	uint8_t ExtendedAddress[8];
 } mac_address_t;
 
 /* Associations status' */
-typedef enum {
+typedef enum mac_association_status {
 	mac_association_successful = 0x00,
 	mac_pan_at_capacity = 0x01,
 	mac_pan_access_denied = 0x02
 } mac_association_status_t;
 
 /* Disassociation reasons */
-typedef enum {
+typedef enum mac_disassociate_reason {
 	mac_coordinator_disassociate = 0x01,
 	mac_device_disassociate = 0x02
 } mac_disassociate_reason_t;
 
 /* Scan types */
-typedef enum {
+typedef enum mac_scan_type {
 	mac_energy_detect_scan,
 	mac_active_scan,
 	mac_passive_scan,
@@ -132,7 +134,7 @@ typedef enum {
 } mac_scan_type_t;
 
 /* MAC status */
-typedef enum {
+typedef enum mac_status {
 	mac_success = 0x00,
 	mac_beacon_lost = 0xe0,
 	mac_channel_access_failure = 0xe1,
@@ -160,7 +162,7 @@ typedef enum {
 } mac_status_t;
 
 /* PHY PIB attributes */
-typedef enum {
+typedef enum phy_pib_attribute {
 	phyCurrentChannel,
 	phyChannelsSupported,
 	phyTransmitPower,
@@ -168,7 +170,7 @@ typedef enum {
 } phy_pib_attribute_t;
 
 /* MAC PIB attributes */
-typedef enum {
+typedef enum mac_pib_attribute {
 	macAckWaitDuration = 0x40,
 	macAssociationPermit = 0x41,
 	macAutoRequest = 0x42,
@@ -198,11 +200,12 @@ typedef enum {
 	macDefaultSecurityMaterialLength = 0x73,
 	macDefaultSecurityMaterial = 0x74,
 	macDefaultSecuritySuite = 0x75,
-	macSecurityMode = 0x76
+	macSecurityMode = 0x76,
+	macACLEntryDescriptorNumber = 0x7f
 } mac_pib_attribute_t;
 
 /* ACL Entry */
-typedef enum {
+typedef enum mac_acl_entry {
 	mac_acl_none,
 	mac_acl_aes_ctr,
 	mac_acl_aes_ccm_128,
@@ -218,7 +221,7 @@ typedef enum {
 typedef uint16_t mac_pan_id_t;
 
 /* PAN descriptor */
-typedef struct {
+typedef struct mac_pan_descriptor {
 	mac_address_mode_t CoordAddrMode;
 	mac_pan_id_t CoordPANId;
 	mac_address_t CoordAddress;
@@ -232,8 +235,17 @@ typedef struct {
 	_Bool SecurityFailure;
 } mac_pan_descriptor_t;
 
+typedef struct mac_acl_entry_descriptor {
+	mac_address_t ACLExtendedAddress;
+	uint16_t ACLShortAddress
+	mac_pan_id_t ACLPANId;
+	uint8_t ACLSecurityMaterialLength;
+	uint8_t ACLSecurityMaterial[aMaxSecurityMaterialLength];
+	uint8_t ACLSecuritySuite;
+} mac_acl_entry_descriptor_t;
+
 /* MAC Primitive IDs */
-typedef enum {
+typedef enum mac_primitive {
 	mac_mcps_data_request = 0x40,
 	mac_mcps_data_confirm = 0x41,
 	mac_mcps_data_indication = 0x42,
@@ -272,8 +284,48 @@ typedef enum {
 	mac_mlme_protocol_error_indication = 0xff,
 } mac_primitive_t;
 
+typedef struct mac_mib {
+	uint8_t macAckWaitDuration;
+	uint8_t macAssociationPermit;
+	uint8_t macAutoRequest;
+	uint8_t macBattLifeExt;
+	uint8_t macBattLifeExtPeriods;
+	uint8_t macBeaconPayload[aMaxBeaconPayloadLength];
+	uint8_t macBeaconPayloadLength;
+	uint8_t macBeaconOrder;
+	uint32_t macBeaconTxTime;
+	uint8_t macBSN;
+	mac_address_t macCoordExtendedAddress;
+	uint16_t macCoordShortAddress;
+	uint8_t macDSN;
+	uint8_t macGTSPermit;
+	uint8_t macMaxCSMABackoffs;
+	uint8_t macMinBE;
+	mac_pan_id_t macPANId;
+	uint8_t macPromiscuousMode;
+	uint8_t macRxOnWhenIdle;
+	uint16_t macShortAddress;
+	uint8_t macSuperframeOrder;
+	uint16_t macTransactionPersistenceTime;
+	mac_address_t macIEEEAddress;
+	mac_acl_entry_descriptor_t macACLEntryDescriptorSet[aMaxACLEntries];
+	uint8_t macACLEntryDescriptorSetSize;
+	uint8_t macDefaultSecurity;
+	uint8_t macDefaultSecurityMaterialLength;
+	uint8_t macDefaultSecurityMaterial[aMaxSecurityMaterialLength];
+	uint8_t macDefaultSecuritySuite;
+	uint8_t macSecurityMode;
+} mac_mib_t;
+
+typedef struct mac_pib {
+	uint8_t phyCurrentChannel;
+	uint32_t phyChannelsSupported;
+	uint8_t phyTransmitPower;
+	uint8_t phyCCAMode;
+} mac_pib_t;
+
 /* Primitive callback function pointers. */
-typedef struct {
+typedef struct mac_primitive_handler_t {
 	int (*MCPS_DATA_confirm) (
 			mac_callback_metadata_t* callback_metadata,
 			uint8_t msduHandle,
@@ -486,7 +538,7 @@ int MLME_SCAN_request (
 int MLME_SET_request (
 		mac_session_handle_t session,
 		mac_pib_attribute_t PIBAttribute,
-		void *PIBAttributeValue
+		const void *PIBAttributeValue
 		);
 int MLME_START_request (
 		mac_session_handle_t session,
