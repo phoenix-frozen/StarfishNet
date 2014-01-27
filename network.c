@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <string.h>
-#include <stdio.h>
 
 #include "mac.h"
 #include "network.h"
@@ -11,6 +10,7 @@
 #define STARFISHNET_PROTOCOL_VERSION 0x0
 
 #ifndef NDEBUG
+#include <stdio.h>
 #define GUARANTEED_CALL(call, x...) { printf(#call"("#x")\n"); int ret = call(x); if(ret <= 0) { printf("\t%d (failure)\n", ret); return 0; } else { printf("\t%d (success)\n", ret); } }
 #else //NDEBUG
 #define GUARANTEED_CALL(call, x...) { if(call(x) <= 0) { return 0; } }
@@ -52,7 +52,7 @@ typedef struct beacon_payload {
 	uint8_t router_depth; //depth in the tree of this router
 	int8_t router_capacity; //remaining child slots. negative if children can only be leaves
 
-	//TODO: insert my public key here
+	//TODO: public key and digital signature?
 } beacon_payload_t;
 
 typedef struct starfishnet_msdu {

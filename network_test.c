@@ -58,17 +58,17 @@ int process_mcps_data_indication (
 
 
 int main(int argc, char* argv[]) {
-	const int channel = 0xb;
-	const mac_pan_id_t my_panid = 0xcafe;
-	const int rx_on_idle = 1;
-
-	starfishnet_session_t network_session;
-
 	assert(argc > 1);
 
+	starfishnet_session_t network_session;
 	GUARANTEED_CALL(starfishnet_init, &network_session, argv[1]);
 
-	GUARANTEED_CALL(NLME_FORMATION_request, &network_session, my_panid, channel);
+	starfishnet_network_descriptor_t network_descriptor = {
+		.pan_id = 0xcafe,
+		.radio_channel = 0xb,
+		.routing_tree_depth = 0,
+	};
+	GUARANTEED_CALL(NLME_FORMATION_request, &network_session, &network_descriptor);
 
 	mac_primitive_handler_t mac_handlers = {
 		.MCPS_DATA_indication = process_mcps_data_indication,

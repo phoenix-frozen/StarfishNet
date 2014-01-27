@@ -44,6 +44,7 @@
  */
 
 //TODO: introduce fields for session ID? higher-layer protocol ID? (a la IP)
+//TODO: how the fuck am I going to do ECC key/certificate management?
 
 
 //network-layer types
@@ -63,7 +64,7 @@ typedef struct starfishnet_nib {
 
 	starfishnet_address_t coordinator_address; //always in 64-bit mode
 
-	//TODO: keys
+	//TODO: keys?
 } starfishnet_nib_t;
 
 typedef struct starfishnet_session {
