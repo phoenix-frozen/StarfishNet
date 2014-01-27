@@ -6,6 +6,8 @@
 #define aMaxMACSecurityOverhead (5 /* AuxLen */ + 16 /* AuthLen for MIC-128 */)
 #define NETWORK_MAX_PAYLOAD_SIZE (aMinMPDUOverhead + aMaxMACSecurityOverhead)
 #define NETWORK_MAX_SAFE_PAYLOAD_SIZE (aMaxMPDUUnsecuredOverhead + aMaxMACSecurityOverhead)
+#define NETWORK_DEFAULT_TX_RETRY_LIMIT 3
+#define NETWORK_DEFAULT_TX_RETRY_TIMEOUT 2500
 
 /*
  * This is the Starfish protocol.  Named for the neurological independence of
@@ -45,7 +47,23 @@
 
 
 //network-layer types
+typedef struct starfishnet_address {
+	mac_address_t address;
+	mac_address_mode_t type;
+} starfishnet_address_t;
+
 typedef struct starfishnet_nib {
+	//routing tree config
+	uint8_t tree_depth; //maximum depth of the routing tree
+	//TODO: this needs expanding, because I need to know more to be able to route
+
+	//retransmission config
+	uint8_t tx_retry_limit; //number of retransmits before reporting failure
+	uint16_t tx_retry_timeout; //time to wait between retransmits
+
+	starfishnet_address_t coordinator_address; //always in 64-bit mode
+
+	//TODO: keys
 } starfishnet_nib_t;
 
 typedef struct starfishnet_session {
@@ -53,19 +71,18 @@ typedef struct starfishnet_session {
 	starfishnet_nib_t nib;
 	mac_mib_t mib; //not guaranteed to be valid
 	mac_pib_t pib; //not guaranteed to be valid
+	uint8_t ibs_are_valid;
 } starfishnet_session_t;
 
 typedef enum starfishnet_status {
 	starfishnet_success = 0,
 } starfishnet_status_t;
 
-typedef uint16_t starfishnet_address_t;
-
 typedef struct starfishnet_network_descriptor {
-	uint64_t extended_pan_id;
-	starfishnet_address_t coordinator_address;
+	starfishnet_address_t coordinator_address; //always in 64-bit mode
 	uint16_t pan_id;
 	uint8_t radio_channel;
+	uint8_t routing_tree_depth;
 } starfishnet_network_descriptor_t;
 
 typedef struct starfishnet_security_metadata {
@@ -193,15 +210,22 @@ int NLME_DISCOVERY_request ( //scan for 802.15.4 networks
 	uint8_t scan_duration
 );
 //if you want to do an ED scan, talk to the MAC layer
-int NLME_JOIN_request ( //tune the radio to a specific StarfishNet network; use before ASSOCIATE
-	starfishnet_session_t* session,
-	starfishnet_network_descriptor_t* network_descriptor
-);
 
 int NLME_FORMATION_request ( //start a new StarfishNet network as coordinator
 	starfishnet_session_t* session,
-	uint16_t PANId,
-	uint8_t LogicalChannel
+	starfishnet_network_descriptor_t* network
+);
+int NLME_JOIN_request ( //tune the radio to a StarfishNet network ind listen for packets with its PAN ID (note, this causes no packet exchange)
+	starfishnet_session_t* session,
+	starfishnet_network_descriptor_t* network
+);
+int NLME_ADDR_ACQUIRE_request ( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may stipulate a refresh period, which will be handled automatically by StarfishNet. the router may also refuse, if it cannot fulfil the request
+	starfishnet_session_t* session,
+	mac_address_t router,
+	uint8_t leaf
+);
+int NLME_ADDR_RELEASE_request ( //release our short address
+	starfishnet_session_t* session
 );
 
 int NLME_ASSOCIATE_request ( //associate with another StarfishNet node
@@ -214,7 +238,7 @@ int NLME_ASSOCIATE_response ( //answer an association request from another node
 	starfishnet_address_t* dst_addr,
 	starfishnet_security_metadata_t* security
 );
-int NLME_DISSOCIATE_request ( //dissociate from a node
+int NLME_DISSOCIATE_request ( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
 	starfishnet_session_t* session,
 	starfishnet_address_t* dst_addr
 );

@@ -237,7 +237,7 @@ typedef struct mac_pan_descriptor {
 
 typedef struct mac_acl_entry_descriptor {
 	mac_address_t ACLExtendedAddress;
-	uint16_t ACLShortAddress
+	uint16_t ACLShortAddress;
 	mac_pan_id_t ACLPANId;
 	uint8_t ACLSecurityMaterialLength;
 	uint8_t ACLSecurityMaterial[aMaxSecurityMaterialLength];
@@ -325,7 +325,7 @@ typedef struct mac_pib {
 } mac_pib_t;
 
 /* Primitive callback function pointers. */
-typedef struct mac_primitive_handler_t {
+typedef struct mac_primitive_handler {
 	int (*MCPS_DATA_confirm) (
 			mac_callback_metadata_t* callback_metadata,
 			uint8_t msduHandle,

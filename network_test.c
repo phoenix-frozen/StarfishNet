@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 #include "network.h"
 
@@ -8,6 +9,8 @@
 #else //NDEBUG
 #define GUARANTEED_CALL(call, x...) { if(call(x) <= 0) { return 1; } }
 #endif //NDEBUG
+
+static const uint8_t tx_confirm[] = {mac_mcps_data_confirm, 0, mac_success};
 
 int process_mcps_data_indication (
 	mac_callback_metadata_t* callback_metadata,
@@ -27,6 +30,29 @@ int process_mcps_data_indication (
 	for(int i = 0; i < msduLength; i++)
 		printf("%.02x", msdu[i]);
 	printf("\n");
+
+	static const uint32_t datatemplate = 0xdeadbeef;
+
+	mac_session_handle_t mac_session = callback_metadata->session;
+
+	if(!memcmp(msdu, &datatemplate, sizeof(uint32_t))) {
+		/* Call the MAC layer */
+		GUARANTEED_CALL(MCPS_DATA_request,
+			mac_session,
+			DstAddrMode,
+			DstPANId,
+			DstAddr,
+			SrcAddrMode,
+			SrcPANId,
+			SrcAddr,
+			msduLength,
+			msdu,
+			0,
+			0
+		);
+		GUARANTEED_CALL(mac_receive_primitive, mac_session, tx_confirm, sizeof (tx_confirm));
+	}
+
 	return 1;
 }
 
