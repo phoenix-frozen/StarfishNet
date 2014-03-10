@@ -41,6 +41,11 @@ MAC_SET_CONFIRM(macCoordShortAddress);
 	GUARANTEED_CALL(mac_receive, &handler, session); \
 }
 
+//just a basic linked list for the moment. do something smart later.
+struct starfishnet_sa_container {
+	starfishnet_sa_container_t* next;
+	starfishnet_sa_t entry;
+}
 
 typedef struct beacon_payload {
 	//protocol ID information
@@ -84,10 +89,11 @@ int starfishnet_init(starfishnet_session_t* session, char* params) {
 	GUARANTEED_CALL(MLME_RESET_request, protosession.mac_session, 1);
 	GUARANTEED_CALL(mac_receive_primitive, protosession.mac_session, reset_confirm, sizeof (reset_confirm));
 
+	//set up my basic linkedlist SA tracker
+	protosession.sas = NULL;
+
 	//return results
 	*session = protosession;
-
-	//TODO: setup data structures for SAs
 
 	return 1;
 }
@@ -167,6 +173,7 @@ int NLME_JOIN_request (starfishnet_session_t* session, starfishnet_network_descr
 
 	/* Fill NIB */
 	session->nib.tree_depth       = network->routing_tree_depth;
+	session->nib.tree_position    = 0;
 	session->nib.tx_retry_limit   = NETWORK_DEFAULT_TX_RETRY_LIMIT;
 	session->nib.tx_retry_timeout = NETWORK_DEFAULT_TX_RETRY_TIMEOUT;
 	memcpy(&session->nib.coordinator_address, &network->coordinator_address, sizeof(session->nib.coordinator_address));

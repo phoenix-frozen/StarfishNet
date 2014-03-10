@@ -55,8 +55,12 @@ typedef struct starfishnet_address {
 
 typedef struct starfishnet_nib {
 	//routing tree config
+	//globals
 	uint8_t tree_depth; //maximum depth of the routing tree
-	//TODO: this needs expanding, because I need to know more to be able to route
+	//node config
+	uint8_t tree_position; //where we are on the routing tree
+	uint8_t tree_leaf_count; //how much of our address range should be
+							 //used for leaf nodes (the rest is delegable blocks). power of two.
 
 	//retransmission config
 	uint8_t tx_retry_limit; //number of retransmits before reporting failure
@@ -67,12 +71,25 @@ typedef struct starfishnet_nib {
 	//TODO: keys?
 } starfishnet_nib_t;
 
+typedef struct starfishnet_sa {
+	starfishnet_address_t long_address; //mac address
+	starfishnet_address_t short_address; //network address, if available
+
+	//TODO: agreed symmetric key
+	//TODO: asymmetric key
+	//TODO: certificate(s) and certificate chain(s)
+} starfishnet_sa_t;
+
+typedef struct starfishnet_sa_container starfishnet_sa_container_t;
+
 typedef struct starfishnet_session {
 	mac_session_handle_t mac_session;
 	starfishnet_nib_t nib;
 	mac_mib_t mib; //not guaranteed to be valid
 	mac_pib_t pib; //not guaranteed to be valid
 	uint8_t ibs_are_valid;
+
+	starfishnet_sa_container_t* sas;
 } starfishnet_session_t;
 
 typedef enum starfishnet_status {
@@ -81,9 +98,11 @@ typedef enum starfishnet_status {
 
 typedef struct starfishnet_network_descriptor {
 	starfishnet_address_t coordinator_address; //always in 64-bit mode
+	starfishnet_address_t nearest_neighbor_address;
 	uint16_t pan_id;
 	uint8_t radio_channel;
 	uint8_t routing_tree_depth;
+	uint8_t routing_tree_position;
 } starfishnet_network_descriptor_t;
 
 typedef struct starfishnet_security_metadata {
