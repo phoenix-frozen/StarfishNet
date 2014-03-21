@@ -45,7 +45,7 @@ MAC_SET_CONFIRM(macCoordShortAddress);
 struct starfishnet_sa_container {
 	starfishnet_sa_container_t* next;
 	starfishnet_sa_t entry;
-}
+};
 
 typedef struct beacon_payload {
 	//protocol ID information
