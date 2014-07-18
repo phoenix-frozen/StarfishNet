@@ -2,11 +2,11 @@
 
 CFLAGS += "-std=gnu99" -DMAC_DEBUG
 
-all: testbin network_test
+all: parenttest childtest
 
 clean:
 	rm -f *.o
-	rm -f testbin network_test
+	rm -f parenttest childtest
 
-testbin: testbin.o mac-chardev.o
-network_test: network_test.o network.o mac-chardev.o
+parenttest: parenttest.o mac802154.o
+childtest: childtest.o sn_core.o mac802154.o
