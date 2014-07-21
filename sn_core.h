@@ -1,13 +1,7 @@
 #ifndef __NETWORK_H__
 #define __NETWORK_H__
 
-#include "mac.h"
-
-#define aMaxMACSecurityOverhead (5 /* AuxLen */ + 16 /* AuthLen for MIC-128 */)
-#define NETWORK_MAX_PAYLOAD_SIZE (aMinMPDUOverhead + aMaxMACSecurityOverhead)
-#define NETWORK_MAX_SAFE_PAYLOAD_SIZE (aMaxMPDUUnsecuredOverhead + aMaxMACSecurityOverhead)
-#define NETWORK_DEFAULT_TX_RETRY_LIMIT 3
-#define NETWORK_DEFAULT_TX_RETRY_TIMEOUT 2500
+#include "mac802154.h"
 
 /*
  * This is the Starfish protocol.  Named for the neurological independence of
@@ -48,12 +42,12 @@
 
 
 //network-layer types
-typedef struct starfishnet_address {
+typedef struct SN_Address {
 	mac_address_t address;
 	mac_address_mode_t type;
-} starfishnet_address_t;
+} SN_Address_t;
 
-typedef struct starfishnet_nib {
+typedef struct SN_Nib {
 	//routing tree config
 	//globals
 	uint8_t tree_depth; //maximum depth of the routing tree
@@ -66,234 +60,156 @@ typedef struct starfishnet_nib {
 	uint8_t tx_retry_limit; //number of retransmits before reporting failure
 	uint16_t tx_retry_timeout; //time to wait between retransmits
 
-	starfishnet_address_t coordinator_address; //always in 64-bit mode
+	mac_address_t coordinator_address; //always in 64-bit mode
 
 	//TODO: keys?
-} starfishnet_nib_t;
+} SN_Nib_t;
 
-typedef struct starfishnet_sa {
-	starfishnet_address_t long_address; //mac address
-	starfishnet_address_t short_address; //network address, if available
+typedef struct SN_Sa {
+	SN_Address_t long_address; //mac address
+	SN_Address_t short_address; //network address, if available
 
 	//TODO: agreed symmetric key
 	//TODO: asymmetric key
 	//TODO: certificate(s) and certificate chain(s)
-} starfishnet_sa_t;
+} SN_Sa_t;
 
-typedef struct starfishnet_sa_container starfishnet_sa_container_t;
+typedef struct SN_Sa_container SN_Sa_container_t;
 
-typedef struct starfishnet_session {
+typedef struct SN_Session {
 	mac_session_handle_t mac_session;
-	starfishnet_nib_t nib;
+	SN_Nib_t nib;
 	mac_mib_t mib; //not guaranteed to be valid
 	mac_pib_t pib; //not guaranteed to be valid
 	uint8_t ibs_are_valid;
 
-	starfishnet_sa_container_t* sas;
-} starfishnet_session_t;
+	SN_Sa_container_t* sas;
+} SN_Session_t;
 
-typedef enum starfishnet_status {
-	starfishnet_success = 0,
-} starfishnet_status_t;
+typedef enum SN_Status {
+	SN_Success = 0,
+} SN_Status_t;
 
-typedef struct starfishnet_network_descriptor {
-	starfishnet_address_t coordinator_address; //always in 64-bit mode
-	starfishnet_address_t nearest_neighbor_address;
+typedef struct SN_Network_descriptor {
+	mac_address_t coordinator_address; //always in 64-bit mode
+	mac_address_t nearest_neighbor_address; //always in 64-bit mode
+	uint16_t nearest_neighbor_short_address;
 	uint16_t pan_id;
 	uint8_t radio_channel;
 	uint8_t routing_tree_depth;
 	uint8_t routing_tree_position;
-} starfishnet_network_descriptor_t;
 
-typedef struct starfishnet_security_metadata {
-} starfishnet_security_metadata_t;
+	//TODO: key material?
+} SN_Network_descriptor_t;
+
+typedef struct SN_Security_metadata {
+} SN_Security_metadata_t;
 
 //function prototypes for event notifications
-typedef struct starfishnet_ops {
-	int (*NLDE_DATA_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		uint8_t packet_handle,
-		starfishnet_status_t status
-	);
-	int (*NLDE_DATA_indication) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_address_t* src_addr,
-		starfishnet_address_t* dst_addr,
+typedef struct SN_Ops {
+	int (*SN_Message) (
+		SN_Session_t* session,
+		SN_Address_t* src_addr,
+		SN_Address_t* dst_addr,
 		uint8_t payload_length,
 		uint8_t* payload,
-		uint8_t mac_link_quality,
-		starfishnet_security_metadata_t* security
+		SN_Security_metadata_t* security,
+		void* extradata
 	);
 
-	int (*NLME_DISCOVERY_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status,
-		uint8_t starfishnet_count,
-		starfishnet_network_descriptor_t* network_descriptors
+	int (*SN_Association) (
+		SN_Session_t* session,
+		SN_Address_t* src_addr,
+		SN_Security_metadata_t* security,
+		bool initiator, //1 if we're initiating, 0 if we're responding
+		void* extradata
 	);
-	int (*NLME_JOIN_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status,
-		starfishnet_network_descriptor_t* network_descriptor
-	);
-
-	int (*NLME_FORMATION_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status
-	);
-
-	int (*NLME_ASSOCIATE_indication) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_address_t* src_addr,
-		starfishnet_security_metadata_t* security
-	);
-	int (*NLME_ASSOCIATE_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status,
-		starfishnet_address_t* src_addr,
-		starfishnet_security_metadata_t* security
-	);
-	int (*NLME_DISASSOCIATE_indication) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_address_t* src_addr
-	);
-	int (*NLME_DISASSOCIATE_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status,
-		starfishnet_address_t* src_addr
-	);
-
-	int (*NLME_GET_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status,
-		mac_pib_attribute_t PIBAttribute
-	);
-	int (*NLME_SET_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status,
-		mac_pib_attribute_t PIBAttribute
-	);
-
-	int (*NLME_RESET_confirm) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status
-	);
-
-	int (*NLME_SYNC_confirm) ( //this subsumes SYNC-LOSS as well
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status
-	);
-
-	int (*NLME_COMM_STATUS_indication) (
-		starfishnet_session_t* session,
-		void* callback_data,
-		starfishnet_status_t status
+	int (*SN_Dissociation) (
+		SN_Session_t* session,
+		SN_Address_t* src_addr,
+		bool initiator, //1 if we're initiating, 0 if we're responding
+		void* extradata
 	);
 
 	int (*unknown_primitive) (
-		starfishnet_session_t* session,
-		void* callback_data,
+		SN_Session_t* session,
 		uint8_t primitive,
 		uint8_t *data,
-		uint8_t length
+		uint8_t length,
+		void* extradata
 	);
 
-	void* callback_data;
-} starfishnet_ops_t;
+	void* extradata;
+} SN_Ops_t;
 
-int NLDE_DATA_request ( //send a packet
-	starfishnet_session_t* session,
-	starfishnet_address_t* dst_addr,
+int SN_Send ( //send a packet
+	SN_Session_t* session,
+	SN_Address_t* dst_addr,
 	uint8_t payload_length,
 	uint8_t* payload,
 	uint8_t packet_handle,
 	uint8_t flags, //DO_MESH_ROUTE_DISCOVERY, ASSOCIATE_IF_NECESSARY, DATA_IS_INSECURE
-	starfishnet_security_metadata_t* security
+	SN_Security_metadata_t* security
 );
 
-int NLME_DISCOVERY_request ( //scan for 802.15.4 networks
-	starfishnet_session_t* session,
+int SN_Discover ( //scan for 802.15.4 networks
+	SN_Session_t* session,
 	uint32_t channel_mask,
-	uint8_t scan_duration
-);
-//if you want to do an ED scan, talk to the MAC layer
-
-int NLME_FORMATION_request ( //start a new StarfishNet network as coordinator
-	starfishnet_session_t* session,
-	starfishnet_network_descriptor_t* network
-);
-int NLME_JOIN_request ( //tune the radio to a StarfishNet network ind listen for packets with its PAN ID (note, this causes no packet exchange)
-	starfishnet_session_t* session,
-	starfishnet_network_descriptor_t* network
-);
-int NLME_ADDR_ACQUIRE_request ( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may stipulate a refresh period, which will be handled automatically by StarfishNet. the router may also refuse, if it cannot fulfil the request
-	starfishnet_session_t* session,
-	mac_address_t router,
-	uint8_t leaf
-);
-int NLME_ADDR_RELEASE_request ( //release our short address
-	starfishnet_session_t* session
+	uint32_t timeout,
+	void (*callback) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata), //you get one callback for each network found
+	void* extradata //will be passed to the callback
 );
 
-int NLME_ASSOCIATE_request ( //associate with another StarfishNet node
-	starfishnet_session_t* session,
-	starfishnet_address_t* dst_addr,
-	starfishnet_security_metadata_t* security
-);
-int NLME_ASSOCIATE_response ( //answer an association request from another node
-	starfishnet_session_t* session,
-	starfishnet_address_t* dst_addr,
-	starfishnet_security_metadata_t* security
-);
-int NLME_DISSOCIATE_request ( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
-	starfishnet_session_t* session,
-	starfishnet_address_t* dst_addr
+int SN_Start ( //start a new StarfishNet network as coordinator
+	SN_Session_t* session,
+	SN_Network_descriptor_t* network
 );
 
-int NLME_RESET_request (
-	starfishnet_session_t* session,
-	_Bool warm
+int SN_Join ( //tune the radio to a StarfishNet network and listen for packets with its PAN ID (note, this causes no packet exchange)
+	SN_Session_t* session,
+	SN_Network_descriptor_t* network,
+	bool disable_routing //1 to disable forwarding packets. also disallows us from having children.
 );
 
-int NLME_SYNC_request ( //does MLME-SYNC.request, and also MLME_POLL.request
-	starfishnet_session_t* session
+int SN_Request_address ( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may stipulate a refresh period, which will be handled automatically by StarfishNet. the router may also refuse, if it cannot fulfil the request
+	SN_Session_t* session,
+	mac_address_t router
+);
+int SN_Release_address (SN_Session_t* session); //release our short address
+
+int SN_Associate ( //associate with another StarfishNet node
+	SN_Session_t* session,
+	SN_Address_t* dst_addr,
+	SN_Security_metadata_t* security,
+	bool initiator //1 if we're initiating, 0 if we're responding
+);
+int SN_Dissociate ( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
+	SN_Session_t* session,
+	SN_Address_t* dst_addr,
+	bool initiator //1 if we're initiating, 0 if we're responding
 );
 
-int NLME_ROUTE_DISCOVERY_request(
-	starfishnet_session_t* session,
-	starfishnet_address_t* dst_addr,
-	starfishnet_security_metadata_t* security
-);
+//int SN_Poll_parent (SN_Session_t* session); //does MLME-SYNC.request, and also MLME_POLL.request
+//when implemented, uses MLME-SYNC/MLME-POLL to poll our parent for pending messages
 
-int NLME_GET_request( //copies the configuration out of session into the space provided. anything but session can be NULL
-	starfishnet_session_t* session,
-	starfishnet_nib_t* nib,
+int SN_Get_configuration ( //copies the configuration out of session into the space provided. anything but session can be NULL
+	SN_Session_t* session,
+	SN_Nib_t* nib,
 	mac_mib_t* mib,
 	mac_pib_t* pib
 );
-int NLME_SET_request( //copies the configuration provided into session, updating lower layers as necessary. anything but session can be NULL
-	starfishnet_session_t* session,
-	starfishnet_nib_t* nib,
+int SN_Set_configuration ( //copies the configuration provided into session, updating lower layers as necessary. anything but session can be NULL
+	SN_Session_t* session,
+	SN_Nib_t* nib,
 	mac_mib_t* mib,
 	mac_pib_t* pib
 );
 
 //other network-layer driver functions
-int starfishnet_init(starfishnet_session_t* session, char* params);
-int starfishnet_receive(starfishnet_session_t* session, starfishnet_ops_t* handlers);
+int SN_Init (SN_Session_t* session, char* params);
+int SN_Destroy (SN_Session_t* session); //bring down this session, resetting the radio in the process
+
+int SN_Receive (SN_Session_t* session, SN_Ops_t* handlers);
 
 #endif /* __NETWORK_H__ */
 

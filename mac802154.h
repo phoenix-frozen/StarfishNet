@@ -67,6 +67,7 @@
 #define aMaxACLEntries                          10
 #define aMaxSecurityMaterialLength              0x1a
 #define aSymbolsPerSecond_24                    62500
+#define aMaxMACSecurityOverhead                 (5 /* AuxLen */ + 16 /* AuthLen for MIC-128 */)
 
 
 /* MCPS-DATA.request TxOptions flags */

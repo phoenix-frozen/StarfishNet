@@ -18,20 +18,7 @@ static int process_mlme_get_confirm(
 	uint8_t *PIBAttributeValue
 ) {
 	if(status == mac_success && callback_metadata->extradata != NULL) {
-		int length = 0;
-
-		switch(PIBAttribute) {
-			case macCoordExtendedAddress:
-			case macIEEEAddress:
-				length = 64/8;
-				break;
-
-			case macCoordShortAddress:
-			case macPANId:
-			case macShortAddress:
-				length = 2;
-				break;
-		}
+		int length = mac_pib_attribute_length(PIBAttribute);
 
 		assert(length > 0);
 
@@ -97,6 +84,10 @@ int main(int argc, char* argv[]) {
 		.extradata = &(my_address.ExtendedAddress[0]),
 	};
 	GUARANTEED_CALL(mac_receive, &handler, mac_session);
+
+    char macaddress[64];
+    mac_sprintf(macaddress, "%e", my_address.ExtendedAddress);
+    printf("MAC address is: %s\n", macaddress);
 
 	mac_address_t broadcast_address = { .ShortAddress = 0xffff };
 
