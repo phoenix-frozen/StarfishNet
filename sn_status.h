@@ -27,7 +27,6 @@
  * Status codes
  */
 typedef enum {
-
     SN_OK               , /**< Success status */
     SN_ERR_NULL         , /**< Unexpected NULL pointer */
     SN_ERR_UNEXPECTED   , /**< An operation was unexpected at this time */
