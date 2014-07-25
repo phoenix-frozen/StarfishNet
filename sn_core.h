@@ -55,11 +55,13 @@ typedef struct SN_Nib {
     uint8_t tree_position; //where we are on the routing tree
     uint8_t tree_leaf_count; //how much of our address range should be
                              //used for leaf nodes (the rest is delegable blocks). power of two.
+    uint8_t enable_routing;  //used internally to determine whether routing is enabled
 
     //retransmission config
     uint8_t tx_retry_limit; //number of retransmits before reporting failure
     uint16_t tx_retry_timeout; //time to wait between retransmits
 
+    mac_address_t parent_address; //always in 64-bit mode
     mac_address_t coordinator_address; //always in 64-bit mode
 
     //TODO: keys?
