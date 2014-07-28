@@ -104,6 +104,10 @@ typedef struct SN_Network_descriptor {
     //TODO: key material?
 } SN_Network_descriptor_t;
 
+typedef struct SN_ECC_key {
+    uint8_t data[20];
+} SN_ECC_key_t;
+
 typedef struct SN_Security_metadata {
 } SN_Security_metadata_t;
 

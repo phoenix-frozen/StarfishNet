@@ -188,7 +188,7 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
     return SN_OK;
 }
 
-int do_network_start (SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
+int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
     assert(session != NULL);
     assert(packet != NULL);
 
@@ -236,7 +236,7 @@ int do_network_start (SN_Session_t* session, mac_primitive_t* packet, bool isCoo
 }
 
 //start a new StarfishNet network as coordinator
-int SN_Start (SN_Session_t* session, SN_Network_descriptor_t* network);
+int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network);
 
 /* Tune the radio to a StarfishNet network and listen for packets with its PAN ID.
  * Note, this call does not directly cause any packet exchange.
@@ -244,7 +244,7 @@ int SN_Start (SN_Session_t* session, SN_Network_descriptor_t* network);
  * routing is guaranteed to work.
  * Remember that naive broadcasts won't be receivable until we do a SA with a neighbor router.
  */
-int SN_Join (SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
+int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
     assert(session != NULL);
     assert(network != NULL);
 
@@ -343,12 +343,12 @@ int SN_Join (SN_Session_t* session, SN_Network_descriptor_t* network, bool disab
 }
 
 //transmit a packet
-int SN_Send (SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_length, uint8_t* payload, uint8_t packet_handle, uint8_t flags, SN_Security_metadata_t* security) {
+int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_length, uint8_t* payload, uint8_t packet_handle, uint8_t flags, SN_Security_metadata_t* security) {
     //TODO: flags
 
     uint8_t max_payload_size = aMaxMACSafePayloadSize;
 
-    if (payload_length > 0) {
+    if(payload_length > 0) {
         mac_primitive_t primitive = {
             .type = mac_mcps_data_request,
             .MCPS_DATA_request = {
@@ -411,7 +411,7 @@ int SN_Send (SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_leng
 
         //printf("ret = %d, payload_length = %ld\n", ret, payload_length);
         assert(ret == 11 + primitive.MCPS_DATA_request.msduLength + (primitive.MCPS_DATA_request.DstAddrMode == mac_extended_address ? 8 : 2) + (primitive.MCPS_DATA_request.SrcAddrMode == mac_extended_address ? 8 : 2)); //27 if both address formats are extended
-        if (ret <= 0) {
+        if(ret <= 0) {
             SN_ErrPrintf("%s(): MCPS_DATA_request() failed with %d. status=SN_ERR_RADIO\n", __FUNCTION__, ret);
             return -SN_ERR_RADIO;
         }
@@ -433,7 +433,7 @@ int SN_Send (SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_leng
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int SN_Discover (SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, void (*callback) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata), void* extradata) {
+int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, void (*callback) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata), void* extradata) {
     mac_primitive_t packet;
 
     channel_mask &= 0x07FFF800; //top 5 bits must be zero, bottom 11 bits aren't 2.4GHz
@@ -506,29 +506,29 @@ int SN_Discover (SN_Session_t* session, uint32_t channel_mask, uint32_t timeout,
     return SN_OK;
 }
 
-int SN_Request_address ( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may refuse, if it cannot fulfil the request
+int SN_Request_address( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may refuse, if it cannot fulfil the request
     SN_Session_t* session,
     mac_address_t router
 );
-int SN_Release_address (SN_Session_t* session); //release our short address
+int SN_Release_address(SN_Session_t* session); //release our short address
 
-int SN_Associate ( //associate with another StarfishNet node
+int SN_Associate( //associate with another StarfishNet node
     SN_Session_t* session,
     SN_Address_t* dst_addr,
     SN_Security_metadata_t* security,
     bool initiator //1 if we're initiating, 0 if we're responding
 );
-int SN_Dissociate ( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
+int SN_Dissociate( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
     SN_Session_t* session,
     SN_Address_t* dst_addr,
     bool initiator //1 if we're initiating, 0 if we're responding
 );
 
-//int SN_Poll_parent (SN_Session_t* session); //does MLME-SYNC.request, and also MLME_POLL.request
+//int SN_Poll_parent(SN_Session_t* session); //does MLME-SYNC.request, and also MLME_POLL.request
 //when implemented, uses MLME-SYNC/MLME-POLL to poll our parent for pending messages
 
 //copies the configuration out of session into the space provided. anything but session can be NULL
-int SN_Get_configuration (SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
+int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
     //Assumption: config is kept current!
 
     if(session == NULL)
@@ -548,7 +548,7 @@ int SN_Get_configuration (SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, 
     return SN_OK;
 }
 //copies the configuration provided into session, updating lower layers as necessary. anything but session can be NULL
-int SN_Set_configuration (SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
+int SN_Set_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
     //Assumption: config is kept current!
 
     if(session == NULL)
@@ -561,7 +561,7 @@ int SN_Set_configuration (SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, 
 }
 
 //other network-layer driver functions
-int SN_Init (SN_Session_t* session, char* params) {
+int SN_Init(SN_Session_t* session, char* params) {
     assert(session != NULL);
 
     //allocate some stack space
@@ -597,7 +597,7 @@ int SN_Init (SN_Session_t* session, char* params) {
 
     return SN_OK;
 }
-int SN_Destroy (SN_Session_t* session) { //bring down this session, resetting the radio in the process
+int SN_Destroy(SN_Session_t* session) { //bring down this session, resetting the radio in the process
     mac_primitive_t packet;
 
     /*TODO: disconnect
@@ -618,5 +618,5 @@ int SN_Destroy (SN_Session_t* session) { //bring down this session, resetting th
     return SN_OK;
 }
 
-int SN_Receive (SN_Session_t* session, SN_Ops_t* handlers);
+int SN_Receive(SN_Session_t* session, SN_Ops_t* handlers);
 
