@@ -1,5 +1,7 @@
 #include "sn_table.h"
 #include "sn_status.h"
+
+#define SN_DEBUG
 #include "sn_logging.h"
 
 #include <stdlib.h>

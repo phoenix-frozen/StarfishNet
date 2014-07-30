@@ -5,6 +5,7 @@
 #include "mac802154.h"
 #include "sn_core.h"
 #include "sn_status.h"
+#include "sn_table.h"
 
 #define SN_DEBUG
 #include "sn_logging.h"
@@ -597,14 +598,17 @@ int SN_Init(SN_Session_t* session, char* params) {
 
     return SN_OK;
 }
-int SN_Destroy(SN_Session_t* session) { //bring down this session, resetting the radio in the process
+void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting the radio in the process
     mac_primitive_t packet;
 
     /*TODO: disconnect
      * revoke all children's short-address allocations
      * release my short-address allocation(s)
-     * terminate all SAs (implicitly cleans out the node table)
+     * terminate all SAs
      */
+
+    //clean out the node table
+    SN_Table_clear();
 
     //reset the radio
     mac_reset_radio(session, &packet);
@@ -614,8 +618,6 @@ int SN_Destroy(SN_Session_t* session) { //bring down this session, resetting the
 
     //clean up I/O buffers
     STRUCTCLEAR(*session);
-
-    return SN_OK;
 }
 
 int SN_Receive(SN_Session_t* session, SN_Ops_t* handlers);

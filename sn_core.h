@@ -212,8 +212,8 @@ int SN_Set_configuration ( //copies the configuration provided into session, upd
 );
 
 //other network-layer driver functions
-int SN_Init (SN_Session_t* session, char* params);
-int SN_Destroy (SN_Session_t* session); //bring down this session, resetting the radio in the process
+int  SN_Init (SN_Session_t* session, char* params);
+void SN_Destroy (SN_Session_t* session); //bring down this session, resetting the radio in the process
 
 int SN_Receive (SN_Session_t* session, SN_Ops_t* handlers);
 
