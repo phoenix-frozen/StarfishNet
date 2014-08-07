@@ -15,17 +15,17 @@
 
 #if (SN_DEBUG_LEVEL > 0)
 #undef SN_ErrPrintf
-#define SN_ErrPrintf(x...) printf(x)
+#define SN_ErrPrintf(fmt, x...) printf("%s: ERR " fmt, __FUNCTION__, ##x)
 #endif //0
 
 #if (SN_DEBUG_LEVEL > 1)
 #undef SN_WarnPrintf
-#define SN_WarnPrintf(x...) printf(x)
+#define SN_WarnPrintf(fmt, x...) printf("%s: WARN " fmt, __FUNCTION__, ##x)
 #endif //1
 
 #if (SN_DEBUG_LEVEL > 2)
 #undef SN_InfoPrintf
-#define SN_InfoPrintf(x...) printf(x)
+#define SN_InfoPrintf(fmt, x...) printf("%s: INFO " fmt, __FUNCTION__, ##x)
 #endif //2
 
 #endif //SN_DEBUG

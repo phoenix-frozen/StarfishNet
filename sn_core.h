@@ -50,16 +50,16 @@ typedef struct SN_Address {
 typedef struct SN_Nib {
     //routing tree config
     //globals
-    uint8_t tree_depth; //maximum depth of the routing tree
+    uint8_t       tree_depth; //maximum depth of the routing tree
     //node config
-    uint8_t tree_position; //where we are on the routing tree
-    uint8_t tree_leaf_count; //how much of our address range should be
-                             //used for leaf nodes (the rest is delegable blocks). power of two.
-    uint8_t enable_routing;  //used internally to determine whether routing is enabled
+    uint8_t       tree_position; //where we are on the routing tree
+    uint8_t       tree_leaf_count; //how much of our address range should be
+                                   //used for leaf nodes (the rest is delegable blocks). power of two.
+    uint8_t       enable_routing;  //used internally to determine whether routing is enabled
 
     //retransmission config
-    uint8_t tx_retry_limit; //number of retransmits before reporting failure
-    uint16_t tx_retry_timeout; //time to wait between retransmits
+    uint8_t       tx_retry_limit; //number of retransmits before reporting failure
+    uint16_t      tx_retry_timeout; //time to wait between retransmits
 
     mac_address_t parent_address; //always in 64-bit mode
     mac_address_t coordinator_address; //always in 64-bit mode
@@ -80,12 +80,13 @@ typedef struct SN_Sa_container SN_Sa_container_t;
 
 typedef struct SN_Session {
     mac_session_handle_t mac_session;
-    SN_Nib_t nib;
-    mac_mib_t mib; //not guaranteed to be valid
-    mac_pib_t pib; //not guaranteed to be valid
-    uint8_t ibs_are_valid;
+    SN_Nib_t             nib;
+    mac_mib_t            mib;
+    mac_pib_t            pib;
 
-    SN_Sa_container_t* sas;
+    uint32_t             table_entries; //XXX: HACK! assumes table uses bitfields for allocation
+
+    SN_Sa_container_t*   sas;
 } SN_Session_t;
 
 typedef enum SN_Status {
@@ -95,11 +96,11 @@ typedef enum SN_Status {
 typedef struct SN_Network_descriptor {
     mac_address_t coordinator_address; //always in 64-bit mode
     mac_address_t nearest_neighbor_address; //always in 64-bit mode
-    uint16_t nearest_neighbor_short_address;
-    uint16_t pan_id;
-    uint8_t radio_channel;
-    uint8_t routing_tree_depth;
-    uint8_t routing_tree_position;
+    uint16_t      nearest_neighbor_short_address;
+    uint16_t      pan_id;
+    uint8_t       radio_channel;
+    uint8_t       routing_tree_depth;
+    uint8_t       routing_tree_position;
 
     //TODO: key material?
 } SN_Network_descriptor_t;

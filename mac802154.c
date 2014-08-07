@@ -49,8 +49,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-//#define MAC_DEBUG
-
 #include "mac802154.h"
 #include "sn_status.h"
 

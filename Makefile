@@ -2,10 +2,12 @@
 
 SOURCES = sn_core.c sn_table.c mac802154.c
 OBJECTS = $(SOURCES:.c=.o)
+CC = gcc
 
 #TODO: generate shared and static libraries
 
-CFLAGS += "-std=gnu99" -DMAC_DEBUG
+CFLAGS += -std=gnu99
+LDLIBS += -lz
 
 all: parenttest childtest
 
