@@ -21,7 +21,7 @@
 
 #ifndef NDEBUG
 #include <stdio.h>
-#define MAC_CALL(call, x...) { SN_InfoPrintf(#call"("#x")\n"); int ret = call(x); if(ret <= 0) { SN_InfoPrintf("\t%d (failure)\n", ret); return -SN_ERR_RADIO; } else { SN_InfoPrintf("\t%d (success)\n", ret); } }
+#define MAC_CALL(call, x...) { int ret = call(x); if(ret <= 0) { SN_ErrPrintf(#call"("#x") = %d (failure)\n", ret); return -SN_ERR_RADIO; } else { SN_DebugPrintf(#call"("#x") = %d (success)\n", ret); } }
 #else //NDEBUG
 #define MAC_CALL(call, x...) { if(call(x) <= 0) { return -SN_ERR_RADIO; } }
 #endif //NDEBUG
@@ -89,7 +89,14 @@ typedef struct SN_Packet {
 #define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
 
 static int mac_reset_radio(SN_Session_t* session, mac_primitive_t* packet) {
+    SN_InfoPrintf("enter\n");
+
     assert(MAC_IS_SESSION_VALID(session->mac_session));
+    assert(session != NULL);
+    assert(packet != NULL);
+
+    if(session == NULL || packet == NULL)
+        return -SN_ERR_NULL;
 
     //Reset the radio
     packet->type                               = mac_mlme_reset_request;
@@ -158,11 +165,15 @@ static int mac_reset_radio(SN_Session_t* session, mac_primitive_t* packet) {
     assert(packet->MLME_GET_confirm.PIBAttribute == phyCCAMode);
     memcpy(&session->pib.phyCCAMode, packet->MLME_GET_confirm.PIBAttributeValue, mac_pib_attribute_length(packet->MLME_GET_confirm.PIBAttribute));
 
+    SN_InfoPrintf("exit\n");
     return SN_OK;
 }
 
 
 static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer) {
+    assert(session != NULL);
+    assert(buffer != NULL);
+
     if(session == NULL || buffer == NULL)
         return -SN_ERR_NULL;
 
@@ -188,6 +199,7 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
 }
 
 static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
+    SN_InfoPrintf("enter\n");
     assert(session != NULL);
     assert(packet != NULL);
 
@@ -228,6 +240,7 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     MAC_CALL(mac_transmit, session->mac_session, packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)start_confirm);
 
+    SN_InfoPrintf("exit\n");
     return SN_OK;
 }
 
@@ -461,11 +474,25 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
 //transmit a packet
 int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_length, uint8_t* payload, uint8_t packet_handle, uint8_t flags, SN_Security_metadata_t* security) {
+    SN_InfoPrintf("enter\n");
     //TODO: flags
+    //TODO: transmission of security metadata
 
     uint8_t max_payload_size = aMaxMACSafePayloadSize;
 
+    if(session == NULL || dst_addr == NULL || (payload_length > 0 && payload == NULL)) {
+        SN_ErrPrintf("session, dst_addr, and payload must all be valid");
+        return -SN_ERR_NULL;
+    }
+
+    if(packet_handle == 0) {
+        SN_ErrPrintf("packet_handle must be non-zero\n");
+        return -SN_ERR_INVALID;
+    }
+
     if(payload_length > 0) {
+        //TODO: there'll be a weird special case here once we do security metadata
+        SN_InfoPrintf("attempting to transmit a %d-byte packet\n", payload_length);
         mac_primitive_t primitive = {
             .type = mac_mcps_data_request,
             .MCPS_DATA_request = {
@@ -484,21 +511,23 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
 
         //SrcAddr and SrcAddrMode
         if(session->mib.macShortAddress != NO_SHORT_ADDRESS) {;
-            //use it
+            SN_InfoPrintf("sending from our short address\n");
             primitive.MCPS_DATA_request.SrcAddrMode          = mac_short_address;
             primitive.MCPS_DATA_request.SrcAddr.ShortAddress = session->mib.macShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
-            //otherwise, use our MAC address
+            SN_InfoPrintf("sending from our long address\n");
             primitive.MCPS_DATA_request.SrcAddrMode = mac_extended_address;
             memcpy(primitive.MCPS_DATA_request.SrcAddr.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
         }
 
         //DstAddr
         if(primitive.MCPS_DATA_request.DstAddrMode == mac_short_address) {
+            SN_InfoPrintf("sending to short address\n");
             primitive.MCPS_DATA_request.DstAddr.ShortAddress = dst_addr->address.ShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
+            SN_InfoPrintf("sending to long address\n");
             assert(primitive.MCPS_DATA_request.DstAddrMode == mac_extended_address);
             memcpy(primitive.MCPS_DATA_request.DstAddr.ExtendedAddress, dst_addr->address.ExtendedAddress, 8);
         }
@@ -506,17 +535,17 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
         //msduLength and msdu
         if(payload_length > max_payload_size - 1) { //the first byte of the packet tells us whether we have plain or zlib-compressed data
             //if we have too much data, attempt to zlib-compress
-            SN_WarnPrintf("%s(): data size %u is larger than max_payload_size(=%d), compressing...\n", __FUNCTION__, (unsigned int)payload_length, max_payload_size - 1);
+            SN_WarnPrintf("%d-byte payload can't squeeze into %u-byte packet, compressing...\n", payload_length, max_payload_size - 1);
 
             unsigned long compressed_data_length = max_payload_size - 1;
             int zret = compress2(primitive.MCPS_DATA_request.msdu + 1, &compressed_data_length, payload, payload_length, Z_BEST_COMPRESSION);
 
             if(zret != Z_OK) {
-                SN_ErrPrintf("%s(): compression failed with %s. aborting send\n", __FUNCTION__, zError(zret));
-                return -SN_ERR_RESOURCES; //most likely reason is that there wasn't enough space in the target buffer
+                SN_ErrPrintf("compression failed with %s. aborting send\n", zError(zret));
+                return -SN_ERR_RESOURCES; //assume compression failed because there wasn't enough space in the target buffer
             }
 
-            primitive.MCPS_DATA_request.msduLength = (uint8_t)compressed_data_length + 1;
+            primitive.MCPS_DATA_request.msduLength = (uint8_t)compressed_data_length + 1; //always <127, so cast is guaranteed not to lose information
             primitive.MCPS_DATA_request.msdu[0] = 'Z'; //zlib-compressed data
         } else {
             primitive.MCPS_DATA_request.msduLength = payload_length + 1;
@@ -524,25 +553,31 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
             memcpy(primitive.MCPS_DATA_request.msdu + 1, payload, payload_length);
         }
 
+        SN_InfoPrintf("beginning packet transmission\n");
         int ret = mac_transmit(session->mac_session, &primitive);
+        SN_InfoPrintf("packet transmission returned %d\n", ret);
 
-        //printf("ret = %d, payload_length = %ld\n", ret, payload_length);
         assert(ret == 11 + primitive.MCPS_DATA_request.msduLength + (primitive.MCPS_DATA_request.DstAddrMode == mac_extended_address ? 8 : 2) + (primitive.MCPS_DATA_request.SrcAddrMode == mac_extended_address ? 8 : 2)); //27 if both address formats are extended
+        //TODO: something more intelligent than this assertion
         if(ret <= 0) {
-            SN_ErrPrintf("%s(): MCPS_DATA_request() failed with %d. status=SN_ERR_RADIO\n", __FUNCTION__, ret);
+            SN_ErrPrintf("packet transmission failed with %d\n", ret);
             return -SN_ERR_RADIO;
         }
+
         //TODO: queueing behaviour: queue MCPS_DATA.indication while waiting for MCPS_DATA.confirm or MLME_COMM_STATUS.indication
-        //TODO: make sure we're actually waiting for either MCPS_DATA.confirm or MLME_COMM_STATUS.indication
+
+        SN_InfoPrintf("waiting for transmission status report from radio...\n");
         const uint8_t tx_confirm[] = { mac_mcps_data_confirm, packet_handle, mac_success };
+        //TODO: make sure we're actually waiting for either MCPS_DATA.confirm or MLME_COMM_STATUS.indication
         ret = mac_receive_primitive_exactly(session->mac_session, (mac_primitive_t*)tx_confirm);
+        SN_InfoPrintf("received transmission status report\n");
         if(ret <= 0) {
-            SN_ErrPrintf("%s(): packet tx failed with %d. status=SN_ERR_RADIO\n", __FUNCTION__, ret);
+            SN_ErrPrintf("wait for transmission status report failed with %d\n", ret);
             return -SN_ERR_RADIO;
         }
     }
 
-    SN_InfoPrintf("%s(): status=SN_OK\n", __FUNCTION__);
+    SN_InfoPrintf("exit\n");
     return SN_OK;
 }
 
