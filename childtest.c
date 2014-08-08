@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "sn_core.h"
 #include "sn_status.h"
@@ -46,14 +47,33 @@ int main(int argc, char* argv[]) {
 
     printf("Network discovery complete. Joining network ID %x on channel %d.\n", network.pan_id, network.radio_channel);
 
-    ret = SN_Join(&network_session, &network, 0);
+    ret = SN_Join(&network_session, &network, 1);
 
     if(ret != SN_OK) {
         printf("Network join failed: %d\n", -ret);
         goto main_exit;
     }
 
-    printf("Network joining complete. Type \"die\" to end.\n");
+    printf("Network joining complete. Waiting before packet transmission.\n");
+
+    SN_Address_t dst_address = {
+        .address = {
+            .ShortAddress = network.nearest_neighbor_short_address,
+        },
+        .type = mac_short_address,
+    };
+
+    sleep(5);
+
+    printf("Attempting packet transmission.\n");
+
+    ret = SN_Send(&network_session, &dst_address, 5, (uint8_t*)"test", 1, 0, NULL);
+
+    if(ret != SN_OK) {
+        printf("Packet transmission failed: %d\n", -ret);
+    }
+
+    printf("Packet transmission complete. Type \"die\" to end.\n");
 
     char buf[BUFSIZ];
 
