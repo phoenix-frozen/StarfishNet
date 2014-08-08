@@ -432,7 +432,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         ret = SN_Table_insert(&parent_table_entry);
     }
 
-    if(memcmp(network->nearest_neighbor_address.ExtendedAddress, network->coordinator_address.ExtendedAddress, 8) == 0) {
+    if(memcmp(network->nearest_neighbor_address.ExtendedAddress, network->coordinator_address.ExtendedAddress, 8) != 0) {
         //add coordinator to node table
         SN_Table_entry_t coord_table_entry = {
             .session = session,

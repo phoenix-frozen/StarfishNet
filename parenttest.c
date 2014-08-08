@@ -5,12 +5,6 @@
 #include "sn_core.h"
 #include "sn_status.h"
 
-#ifndef NDEBUG
-#define GUARANTEED_CALL(call, x...) { printf(#call"("#x")\n"); int ret = call(x); if(ret <= 0) { printf("\t%d (failure)\n", ret); return 1; } else { printf("\t%d (success)\n", ret); } }
-#else //NDEBUG
-#define GUARANTEED_CALL(call, x...) { if(call(x) <= 0) { return 1; } }
-#endif //NDEBUG
-
 int main(int argc, char* argv[]) {
     const int          channel = 0xb;
     const mac_pan_id_t panid   = 0xcafe;
