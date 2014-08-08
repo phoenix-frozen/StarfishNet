@@ -511,7 +511,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
 
         //SrcAddr and SrcAddrMode
         if(session->mib.macShortAddress != NO_SHORT_ADDRESS) {;
-            SN_InfoPrintf("sending from our short address\n");
+            SN_InfoPrintf("sending from our short address, %x\n", session->mib.macShortAddress);
             primitive.MCPS_DATA_request.SrcAddrMode          = mac_short_address;
             primitive.MCPS_DATA_request.SrcAddr.ShortAddress = session->mib.macShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
@@ -523,7 +523,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
 
         //DstAddr
         if(primitive.MCPS_DATA_request.DstAddrMode == mac_short_address) {
-            SN_InfoPrintf("sending to short address\n");
+            SN_InfoPrintf("sending to short address %x\n", dst_addr->address.ShortAddress);
             primitive.MCPS_DATA_request.DstAddr.ShortAddress = dst_addr->address.ShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
@@ -599,17 +599,17 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
     //We're given ms, the radio wants an exponent for a calculation denominated in radio symbols.
     timeout /= __builtin_popcount(channel_mask); //divide the timeout equally between the channels to scan, which number 11 to 26
     if(timeout * aSymbolsPerSecond_24 / 1000 <= aBaseSuperframeDuration) {
-        SN_ErrPrintf("%s(): timeout value %u is too short\n", __FUNCTION__, timeout);
+        SN_ErrPrintf("timeout value %u is too short\n", timeout);
         return -SN_ERR_INVALID;
     }
     packet.MLME_SCAN_request.ScanDuration     = log2i((timeout * aSymbolsPerSecond_24 / 1000 - aBaseSuperframeDuration) / aBaseSuperframeDuration);
     if(packet.MLME_SCAN_request.ScanDuration > 14) {
-        SN_WarnPrintf("%s(): ScanDuration %u is too high, capping.\n", __FUNCTION__, packet.MLME_SCAN_request.ScanDuration);
+        SN_WarnPrintf("ScanDuration %u is too high, capping.\n", packet.MLME_SCAN_request.ScanDuration);
         packet.MLME_SCAN_request.ScanDuration = 14;
     }
 
     //initiate the scan
-    SN_InfoPrintf("%s(): initiating scan with ScanDuration=%u\n", __FUNCTION__, packet.MLME_SCAN_request.ScanDuration);
+    SN_InfoPrintf("initiating scan with ScanDuration=%u\n", packet.MLME_SCAN_request.ScanDuration);
     MAC_CALL(mac_transmit, session->mac_session, &packet);
 
     SN_Network_descriptor_t ndesc;
@@ -629,12 +629,12 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         if(packet.type != mac_mlme_beacon_notify_indication)
             continue; //still we should handle that error gracefully
 
-        SN_InfoPrintf("%s(): found network. channel=0x%x, PANId=0x%x\n", __FUNCTION__, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
+        SN_InfoPrintf("found network. channel=0x%x, PANId=0x%x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
 
         //if we get to here, we're looking at an MLME-BEACON-NOTIFY.indication
         beacon_payload_t* beacon_payload = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
 
-        SN_InfoPrintf("%s():     PID=%#02x, PVER=%#02x\n", __FUNCTION__, beacon_payload->protocol_id, beacon_payload->protocol_ver);
+        SN_InfoPrintf("    PID=%#02x, PVER=%#02x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
 
         //check that this is a network of the kind we care about
         if(beacon_payload->protocol_id  != STARFISHNET_PROTOCOL_ID)
