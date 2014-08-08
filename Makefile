@@ -7,6 +7,9 @@ CC = gcc
 #TODO: generate shared and static libraries
 
 CFLAGS += -std=gnu99
+CFLAGS += -DSN_DEBUG
+#CFLAGS += -DMAC_DEBUG
+#CFLAGS += -DNDEBUG
 LDLIBS += -lz
 
 all: parenttest childtest

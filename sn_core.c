@@ -6,8 +6,6 @@
 #include "sn_core.h"
 #include "sn_status.h"
 #include "sn_table.h"
-
-#define SN_DEBUG
 #include "sn_logging.h"
 
 //network starts here
