@@ -45,7 +45,15 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    printf("Network start complete. Type \"die\" to end.\n");
+    printf("Network start complete. Attempting to receive packet.\n");
+
+    ret = SN_Receive(&network_session, NULL);
+
+    if(ret != SN_OK) {
+        printf("Packet receive failed: %d\n", -ret);
+    }
+
+    printf("Packet receive complete. Type \"die\" to end.\n");
 
     char buf[BUFSIZ];
 

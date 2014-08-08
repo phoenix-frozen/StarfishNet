@@ -650,6 +650,17 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
 
 /*
  * DESCRIPTION
+ *  Receive a primitive of one of the given types, dropping any others received in between.
+ *
+ * RETURNS
+ *  n - Size of received primitive.
+ *  0 - If an error occurs while trying to read the primitive.
+ *  -1 - If an error occurs while trying to read the primitive.
+ */
+int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, size_t primitive_type_count);
+
+/*
+ * DESCRIPTION
  *  Receive a primitive, and compare with the one given.
  *
  * RETURNS

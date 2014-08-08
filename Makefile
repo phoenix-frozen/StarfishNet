@@ -11,7 +11,6 @@ CFLAGS += -DSN_DEBUG
 #CFLAGS += -DSN_DEBUG_LEVEL=4
 #CFLAGS += -DMAC_DEBUG
 #CFLAGS += -DNDEBUG
-LDLIBS += -lz
 
 all: parenttest childtest
 

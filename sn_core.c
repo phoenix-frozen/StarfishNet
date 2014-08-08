@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <string.h>
-#include <zlib.h>
 
 #include "mac802154.h"
 #include "sn_core.h"
@@ -427,6 +426,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         SN_InfoPrintf("setting up beacon transmission...\n");
         ret = do_network_start(session, &packet, 0);
     }
+    //TODO: we're going to have to set up promiscuous mode here, as well
 
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
@@ -533,25 +533,12 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
         }
 
         //msduLength and msdu
-        if(payload_length > max_payload_size - 1) { //the first byte of the packet tells us whether we have plain or zlib-compressed data
-            //if we have too much data, attempt to zlib-compress
-            SN_WarnPrintf("%d-byte payload can't squeeze into %u-byte packet, compressing...\n", payload_length, max_payload_size - 1);
-
-            unsigned long compressed_data_length = max_payload_size - 1;
-            int zret = compress2(primitive.MCPS_DATA_request.msdu + 1, &compressed_data_length, payload, payload_length, Z_BEST_COMPRESSION);
-
-            if(zret != Z_OK) {
-                SN_ErrPrintf("compression failed with %s. aborting send\n", zError(zret));
-                return -SN_ERR_RESOURCES; //assume compression failed because there wasn't enough space in the target buffer
-            }
-
-            primitive.MCPS_DATA_request.msduLength = (uint8_t)compressed_data_length + 1; //always <127, so cast is guaranteed not to lose information
-            primitive.MCPS_DATA_request.msdu[0] = 'Z'; //zlib-compressed data
-        } else {
-            primitive.MCPS_DATA_request.msduLength = payload_length + 1;
-            primitive.MCPS_DATA_request.msdu[0] = 'P'; //plain data
-            memcpy(primitive.MCPS_DATA_request.msdu + 1, payload, payload_length);
+        if(payload_length > max_payload_size) {
+            SN_ErrPrintf("%d-byte payload too big for %u-byte packet\n", payload_length, max_payload_size);
+            return -SN_ERR_RESOURCES;
         }
+        primitive.MCPS_DATA_request.msduLength = payload_length;
+        memcpy(primitive.MCPS_DATA_request.msdu, payload, payload_length);
 
         SN_InfoPrintf("beginning packet transmission\n");
         int ret = mac_transmit(session->mac_session, &primitive);
@@ -564,11 +551,11 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
             return -SN_ERR_RADIO;
         }
 
-        //TODO: queueing behaviour: queue MCPS_DATA.indication while waiting for MCPS_DATA.confirm or MLME_COMM_STATUS.indication
+        //TODO: queueing behaviour: queue MCPS_DATA.indication while waiting for MCPS_DATA.confirm
 
         SN_InfoPrintf("waiting for transmission status report from radio...\n");
         const uint8_t tx_confirm[] = { mac_mcps_data_confirm, packet_handle, mac_success };
-        //TODO: make sure we're actually waiting for either MCPS_DATA.confirm or MLME_COMM_STATUS.indication
+        //TODO: make sure we actually interpret MCPS_DATA.confirm
         ret = mac_receive_primitive_exactly(session->mac_session, (mac_primitive_t*)tx_confirm);
         SN_InfoPrintf("received transmission status report\n");
         if(ret <= 0) {
@@ -785,6 +772,37 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     SN_InfoPrintf("exit\n");
 }
 
-//TODO: SN_Receive
-int SN_Receive(SN_Session_t* session, SN_Ops_t* handlers);
+int SN_Receive(SN_Session_t* session, SN_Ops_t* handlers) {
+    SN_InfoPrintf("enter\n");
+
+    assert(session != NULL);
+    //assert(handlers != NULL);
+
+    //if(session == NULL || handlers == NULL) {
+    if(session == NULL ) {
+        SN_ErrPrintf("session and handlers must both be non-NULL!\n");
+        return -SN_ERR_NULL;
+    }
+
+    //TODO: presumably there's some kind of queue-check here
+    //TODO: mac_mlme_poll_request/confirm
+
+    mac_primitive_t packet;
+    SN_InfoPrintf("beginning packet reception\n");
+    //the following line implicitly drops any packets that fail security checks or fail to decrypt
+    int ret = mac_receive_primitive_type(session->mac_session, &packet, mac_mcps_data_indication);
+    SN_InfoPrintf("packet reception returned %d\n", ret);
+
+    if (!(ret > 0)) {
+        SN_ErrPrintf("packet received failed with %d\n", ret);
+        return -SN_ERR_RADIO;
+    }
+
+    SN_InfoPrintf("received packet containing %d-byte payload\n", packet.MCPS_DATA_indication.msduLength);
+
+    //TODO: actually do something with the data
+
+    SN_InfoPrintf("exit\n");
+    return SN_OK;
+}
 

@@ -1169,10 +1169,34 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
     if(rev == 0) //on error die
         return -1;
 
-    if(primitive->type != type) //if it doesn't match, try again
+    if(primitive->type != type) { //if it doesn't match, try again
+#ifdef MAC_DEBUG
+        printf("%s: dropping non-matching primitive of type %d\n", __FUNCTION__, primitive->type);
+#endif //MAC_DEBUG
         return mac_receive_primitive_type(session, primitive, type);
-    else
+    } else
         return rev;
+}
+
+int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, size_t primitive_type_count) {
+    assert(primitive != NULL);
+
+    int rev = mac_receive(session, primitive);
+
+    if(rev == 0) //on error die
+        return -1;
+
+    //if it matches any of the requested types, return
+    for(int i = 0; i < primitive_type_count; i++)
+        if(primitive->type == primitive_types[i])
+            return rev;
+
+#ifdef MAC_DEBUG
+    printf("%s: dropping non-matching primitive of type %d\n", __FUNCTION__, primitive->type);
+#endif //MAC_DEBUG
+
+    //if it doesn't match, try again
+    return mac_receive_primitive_types(session, primitive, primitive_types, primitive_type_count);
 }
 
 int mac_receive_primitive_exactly(mac_session_handle_t session, const mac_primitive_t* primitive) {
