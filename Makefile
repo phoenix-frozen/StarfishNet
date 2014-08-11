@@ -15,8 +15,12 @@ CFLAGS += -DSN_DEBUG
 all: parenttest childtest
 
 clean:
-	rm -f *.o
-	rm -f parenttest childtest
+	rm -f $(OBJECTS) Makefile.deps parenttest childtest
+
+Makefile.deps: $(SOURCES)
+	gcc -MM $(SOURCES) >$@
 
 parenttest: parenttest.o $(OBJECTS)
 childtest: childtest.o $(OBJECTS)
+
+-include Makefile.deps

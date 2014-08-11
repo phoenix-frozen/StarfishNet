@@ -4,3 +4,4 @@
 parenttest
 childtest
 cscope.*
+Makefile.deps
