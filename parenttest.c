@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "sn_core.h"
 #include "sn_status.h"
@@ -47,13 +48,19 @@ int main(int argc, char* argv[]) {
 
     printf("Network start complete. Attempting to receive packet.\n");
 
-    ret = SN_Receive(&network_session, NULL);
+    uint8_t recvbuf_size = sizeof(struct SN_Data_message) + 5;
+    SN_Message_t* recvbuf = malloc(recvbuf_size);
+    SN_Address_t srcaddr;
+
+    ret = SN_Receive(&network_session, &srcaddr, &recvbuf_size, recvbuf);
 
     if(ret != SN_OK) {
         printf("Packet receive failed: %d\n", -ret);
+    } else {
+        printf("Packet received: \"%s\"\n", recvbuf->data.payload);
     }
 
-    printf("Packet receive complete. Type \"die\" to end.\n");
+    printf("Test complete. Type \"die\" to clean up and exit.\n");
 
     char buf[BUFSIZ];
 

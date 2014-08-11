@@ -10,8 +10,8 @@
 #define TABLE_SIZE 32
 
 typedef struct internal_table_entry {
-    SN_Table_entry_t        data;
-    SN_Security_metadata_t* security;
+    SN_Table_entry_t          data;
+    SN_Certificate_storage_t* evidence;
 } internal_table_entry_t;
 
 #define BIT(x) (1UL << (x))
@@ -106,7 +106,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
 
     //fill new entry with data
     memcpy(&table[ret].data, entry, sizeof(table[ret].data));
-    table[ret].security = NULL;
+    table[ret].evidence = NULL;
     entry->session->table_entries |= BIT(ret);
 
     return SN_OK;
@@ -149,13 +149,25 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-// add security metadata TODO
-// TODO: who owns the memory?
-int SN_Table_add_metadata(SN_Table_entry_t* entry, SN_Security_metadata_t* security);
+// associate security metadata. also used to clear
+int SN_Table_associate_metadata(SN_Table_entry_t* entry, SN_Certificate_storage_t* storage) {
+    if(entry == NULL || entry->session == NULL)
+        return -SN_ERR_NULL;
+
+    //see if entry already exists
+    int ret = find_entry(entry);
+    if(ret < 0)
+        //it doesn't. return an error
+        return -SN_ERR_UNEXPECTED;
+
+    //fill entry with data
+    table[ret].evidence = storage;
+
+    return SN_OK;
+}
 
 // lookups can be by address or by public key. first parameter is input, second and third are output
-// TODO: memory ownership issues...
-int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, SN_Security_metadata_t** security) {
+int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
     if(address == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
@@ -174,14 +186,12 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
 
     *entry = table[ret].data;
 
-    if(security != NULL)
-        *security = table[ret].security;
-
-    //TODO: security / memory ownership issues
+    if(evidence != NULL)
+        *evidence = table[ret].evidence;
 
     return SN_OK;
 }
-int SN_Table_lookup_by_key(SN_ECC_key_t* key, SN_Table_entry_t* entry, SN_Security_metadata_t** security) {
+int SN_Table_lookup_by_key(SN_ECC_key_t* key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
     if(key == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
@@ -191,10 +201,8 @@ int SN_Table_lookup_by_key(SN_ECC_key_t* key, SN_Table_entry_t* entry, SN_Securi
 
     *entry = table[ret].data;
 
-    if(security != NULL)
-        *security = table[ret].security;
-
-    //TODO: security / memory ownership issues
+    if(evidence != NULL)
+        *evidence = table[ret].evidence;
 
     return SN_OK;
 }
@@ -206,6 +214,6 @@ void SN_Table_clear(SN_Session_t* session) {
     entry_bitmap &= ~session->table_entries;
     session->table_entries = 0;
 
-    //TODO: security / memory ownership issues
+    //TODO: evidence / memory ownership issues
 }
 

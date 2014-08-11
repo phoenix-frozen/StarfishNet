@@ -41,8 +41,8 @@
  *
  */
 
-#ifndef MAC_H
-#define MAC_H
+#ifndef __MAC802154_H__
+#define __MAC802154_H__
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -340,6 +340,8 @@ typedef struct mac_pib {
 } mac_pib_t;
 
 #define MAC_PRIMITIVE_SIZE (aMaxPHYPacketSize + 5 * sizeof(mac_address_t)) //there are primitives that can contain up to 5 variable-width address fields
+//TODO: what's the biggest size this can actually be?
+//TODO: some kind of poll()-based isAPacketWaiting() call
 typedef union mac_primitive {
     struct __attribute__((packed)) {
         mac_primitive_type_t type;
@@ -657,7 +659,7 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
  *  0 - If an error occurs while trying to read the primitive.
  *  -1 - If an error occurs while trying to read the primitive.
  */
-int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, size_t primitive_type_count);
+int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, unsigned int primitive_type_count);
 
 /*
  * DESCRIPTION
@@ -703,4 +705,4 @@ mac_pib_attribute_t mac_string_to_value     (const char*         string);
 const char*         mac_value_to_string     (mac_pib_attribute_t value);
 uint8_t             mac_pib_attribute_length(mac_pib_attribute_t PIBAttribute);
 
-#endif /* MAC_H */
+#endif /* __MAC802154_H__ */

@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 #include "sn_core.h"
 #include "sn_status.h"
@@ -56,6 +57,10 @@ int main(int argc, char* argv[]) {
 
     printf("Network joining complete. Waiting before packet transmission.\n");
 
+    sleep(2);
+
+    printf("Attempting packet transmission.\n");
+
     SN_Address_t dst_address = {
         .address = {
             .ShortAddress = network.nearest_neighbor_short_address,
@@ -63,17 +68,21 @@ int main(int argc, char* argv[]) {
         .type = mac_short_address,
     };
 
-    sleep(5);
+    uint8_t message_count = 1;
+    SN_Message_t* test_message = malloc(sizeof(struct SN_Data_message) + 5);
+    test_message->type = SN_Data_message;
+    test_message->data.payload_length = 5;
+    memcpy(test_message->data.payload, "test", 5);
 
-    printf("Attempting packet transmission.\n");
-
-    ret = SN_Send(&network_session, &dst_address, 5, (uint8_t*)"test", 1, 0, NULL);
+    ret = SN_Transmit(&network_session, &dst_address, &message_count, test_message, 1, 0);
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);
     }
 
-    printf("Packet transmission complete. Type \"die\" to end.\n");
+    printf("Packet transmission succeeded.\n");
+
+    printf("Test complete. Type \"die\" to clean up and exit.\n");
 
     char buf[BUFSIZ];
 

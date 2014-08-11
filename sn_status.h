@@ -1,5 +1,5 @@
-#ifndef _SN_STATUS_H
-#define _SN_STATUS_H
+#ifndef __SN_STATUS_H__
+#define __SN_STATUS_H__
 /**
  * @file sn_status.h
  * @defgroup sn_status StarfishNet Status (Return) Codes
@@ -51,4 +51,4 @@ typedef enum {
 /**
  * @}
  */
-#endif
+#endif /* __SN_STATUS_H__ */

@@ -87,6 +87,31 @@ typedef struct SN_Packet {
 
 #define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
 
+int SN_Message_memory_size(SN_Message_t* message) {
+    assert(message != NULL);
+
+    if(message == NULL)
+        return -SN_ERR_NULL;
+
+    switch(message->type) {
+        case SN_Data_message:
+            return sizeof(message->data)            + message->data.payload_length;
+
+        case SN_Evidence_message:
+            return sizeof(message->evidence)        + message->evidence.storage.size * sizeof(SN_Certificate_t);
+
+        case SN_Address_request:
+            return sizeof(message->address_request);
+
+        default:
+            return 1;
+    }
+}
+int SN_Message_network_size(SN_Message_t* message) {
+    //TODO: writeme
+    return SN_Message_memory_size(message);
+}
+
 static int mac_reset_radio(SN_Session_t* session, mac_primitive_t* packet) {
     SN_InfoPrintf("enter\n");
 
@@ -472,16 +497,43 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     return ret;
 }
 
-//transmit a packet
-int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_length, uint8_t* payload, uint8_t packet_handle, uint8_t flags, SN_Security_metadata_t* security) {
+//TODO: these are placeholders until I write the real code
+typedef SN_Message_t SN_Message_internal_t;
+static int SN_Message_internal_size(SN_Message_internal_t* message) {
+    return SN_Message_network_size(message);
+}
+static int SN_Message_encode(SN_Message_internal_t* hwmessage, SN_Message_t* swmessage) {
+    if(swmessage == NULL || hwmessage == NULL)
+        return -SN_ERR_NULL;
+
+    int ret = SN_Message_memory_size(swmessage);
+    if(ret < 0)
+        return ret;
+
+    memcpy(hwmessage, swmessage, ret);
+    return SN_OK;
+}
+static int SN_Message_decode(SN_Message_t* swmessage, SN_Message_internal_t* hwmessage) {
+    if(swmessage == NULL || hwmessage == NULL)
+        return -SN_ERR_NULL;
+
+    int ret = SN_Message_internal_size(hwmessage);
+    if(ret < 0)
+        return ret;
+
+    memcpy(swmessage, hwmessage, ret);
+    return SN_OK;
+}
+
+//transmit packet, containing one or more messages
+int SN_Transmit( SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, /* IN: length of buffer in MESSAGES; OUT: size of transmission in BYTES */ SN_Message_t* buffer, uint8_t packet_handle, uint8_t flags) {
     SN_InfoPrintf("enter\n");
     //TODO: flags
-    //TODO: transmission of security metadata
 
     uint8_t max_payload_size = aMaxMACSafePayloadSize;
 
-    if(session == NULL || dst_addr == NULL || (payload_length > 0 && payload == NULL)) {
-        SN_ErrPrintf("session, dst_addr, and payload must all be valid");
+    if(session == NULL || dst_addr == NULL || buffer == NULL || buffer_size == NULL) {
+        SN_ErrPrintf("session, dst_addr, buffer, and buffer_size must all be valid");
         return -SN_ERR_NULL;
     }
 
@@ -490,8 +542,26 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
         return -SN_ERR_INVALID;
     }
 
+    SN_InfoPrintf("we have %d messages to send\n", *buffer_size);
+    SN_InfoPrintf("calculating size of packet to transmit...\n");
+    int payload_length = 0;
+    int buffer_position = 0;
+    for(int i = 0; i < *buffer_size; i++) {
+        SN_Message_t* message = (SN_Message_t*)(((char*)buffer) + buffer_position);
+        int message_memory_size = SN_Message_memory_size(message);
+        int message_network_size = SN_Message_network_size(message);
+        if(message_memory_size >= 0) {
+            assert(message_network_size >= 0);
+            SN_InfoPrintf("message %d (of type %d) is of size %d\n", i, message->type, message_memory_size);
+            payload_length += message_network_size;
+            buffer_position += message_memory_size;
+        } else {
+            SN_ErrPrintf("packet size calculation failed on message %d, with error %d\n", i, -message_memory_size);
+            return message_memory_size;
+        }
+    }
+
     if(payload_length > 0) {
-        //TODO: there'll be a weird special case here once we do security metadata
         SN_InfoPrintf("attempting to transmit a %d-byte packet\n", payload_length);
         mac_primitive_t primitive = {
             .type = mac_mcps_data_request,
@@ -533,14 +603,40 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
         }
 
         //msduLength and msdu
+        SN_InfoPrintf("generating packet payload...\n");
         if(payload_length > max_payload_size) {
             SN_ErrPrintf("%d-byte payload too big for %u-byte packet\n", payload_length, max_payload_size);
             return -SN_ERR_RESOURCES;
         }
         primitive.MCPS_DATA_request.msduLength = payload_length;
-        memcpy(primitive.MCPS_DATA_request.msdu, payload, payload_length);
+        payload_length = 0;
+        buffer_position = 0;
+        for(int i = 0; i < *buffer_size; i++) {
+            SN_Message_t* message = (SN_Message_t*)(((char*)buffer) + buffer_position);
+            int message_memory_size = SN_Message_memory_size(message);
+            int message_network_size = SN_Message_network_size(message);
+            assert(message_memory_size >= 0);
+            assert(message_network_size >= 0);
+            //XXX: no error-checking here, because we did this before, so it's guaranteed to succeed
+            SN_InfoPrintf("generating message %d (whose type is %d, and size is %d)\n", i, message->type, message_memory_size);
 
-        SN_InfoPrintf("beginning packet transmission\n");
+            int ret = SN_Message_encode((SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_length), message);
+            if(ret != SN_OK) {
+                SN_ErrPrintf("generating message %d failed with %d\n", i, -ret);
+                return ret;
+            }
+
+            payload_length += message_network_size;
+            buffer_position += message_memory_size;
+        }
+
+        SN_DebugPrintf("packet data:\n");
+        for(int i = 0; i < primitive.MCPS_DATA_request.msduLength; i += 4) {
+            SN_DebugPrintf("%2x %2x %2x %2x\n", primitive.MCPS_DATA_request.msdu[i], primitive.MCPS_DATA_request.msdu[i + 1], primitive.MCPS_DATA_request.msdu[i + 2], primitive.MCPS_DATA_request.msdu[i + 3]);
+        }
+        SN_DebugPrintf("end packet data\n");
+
+        SN_InfoPrintf("beginning packet transmission...\n");
         int ret = mac_transmit(session->mac_session, &primitive);
         SN_InfoPrintf("packet transmission returned %d\n", ret);
 
@@ -563,6 +659,89 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t payload_lengt
             return -SN_ERR_RADIO;
         }
     }
+
+    *buffer_size = (uint8_t)payload_length;
+
+    SN_InfoPrintf("exit\n");
+    return SN_OK;
+}
+//receive packet, decoding into one or more messages
+int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_size, SN_Message_t* buffer) {
+    SN_InfoPrintf("enter\n");
+
+    if(session == NULL || src_addr == NULL || buffer == NULL || buffer_size == NULL) {
+        SN_ErrPrintf("session, src_addr, buffer, and buffer_size must all be valid");
+        return -SN_ERR_NULL;
+    }
+
+    SN_InfoPrintf("output buffer size is %d\n", *buffer_size);
+
+    //TODO: presumably there's some kind of queue-check here
+    //TODO: mac_mlme_poll_request/confirm
+    //TODO: switch to a raw mac_receive() and do network-layer housekeeping
+
+    mac_primitive_t packet;
+    SN_InfoPrintf("beginning packet reception\n");
+    //the following line implicitly drops any packets that fail security checks
+    int ret = mac_receive_primitive_type(session->mac_session, &packet, mac_mcps_data_indication);
+    SN_InfoPrintf("packet reception returned %d\n", ret);
+
+    if (!(ret > 0)) {
+        SN_ErrPrintf("packet received failed with %d\n", ret);
+        return -SN_ERR_RADIO;
+    }
+
+    SN_InfoPrintf("received packet containing %d-byte payload\n", packet.MCPS_DATA_indication.msduLength);
+
+    SN_DebugPrintf("packet data:\n");
+    for(int i = 0; i < packet.MCPS_DATA_indication.msduLength; i += 4) {
+        SN_DebugPrintf("%2x %2x %2x %2x\n", packet.MCPS_DATA_indication.msdu[i], packet.MCPS_DATA_indication.msdu[i + 1], packet.MCPS_DATA_indication.msdu[i + 2], packet.MCPS_DATA_indication.msdu[i + 3]);
+    }
+    SN_DebugPrintf("end packet data\n");
+
+    //extract data
+    SN_InfoPrintf("decoding packet payload...\n");
+    if(packet.MCPS_DATA_indication.msduLength > *buffer_size) {
+        SN_ErrPrintf("buffer size %d is too small for a %d-byte packet\n", *buffer_size, packet.MCPS_DATA_indication.msduLength);
+        return -SN_ERR_RESOURCES;
+    }
+    int payload_length = 0;
+    int buffer_position = 0;
+    for(int i = 0; payload_length < packet.MCPS_DATA_indication.msduLength; i++) {
+        SN_Message_internal_t* message = (SN_Message_t*)(packet.MCPS_DATA_indication.msdu + payload_length);
+
+        int message_network_size = SN_Message_internal_size(message);
+        if(message_network_size < 0) {
+            SN_ErrPrintf("size calculation of message %d failed with %d\n", i, -message_network_size);
+            return message_network_size;
+        }
+
+        SN_InfoPrintf("decoding message %d (whose type is %d, and size is %d)\n", i, message->type, message_network_size);
+        if(payload_length + message_network_size > packet.MCPS_DATA_indication.msduLength) {
+            SN_ErrPrintf("message %d size %d would overflow the %d-length packet\n", i, message_network_size, packet.MCPS_DATA_indication.msduLength);
+            return -SN_ERR_INVALID;
+        }
+        if(buffer_position + message_network_size > *buffer_size) {
+            SN_ErrPrintf("message %d size %d would overflow the %d-length buffer\n", i, message_network_size, *buffer_size);
+            return -SN_ERR_RESOURCES;
+        }
+
+
+        SN_Message_t* decoded_message = (SN_Message_t*)(((char*)buffer) + buffer_position);
+        int ret = SN_Message_decode(decoded_message, message);
+        if(ret != SN_OK) {
+            SN_ErrPrintf("decoding message %d failed with %d\n", i, -ret);
+            return ret;
+        }
+
+        int message_memory_size = SN_Message_memory_size(decoded_message);
+        assert(message_memory_size >= 0);
+
+        payload_length += message_network_size;
+        buffer_position += message_memory_size;
+    }
+
+    assert(payload_length == packet.MCPS_DATA_indication.msduLength);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
@@ -644,31 +823,6 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
     return SN_OK;
 }
-
-//TODO: SN_Request_address
-int SN_Request_address( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may refuse, if it cannot fulfil the request
-    SN_Session_t* session,
-    mac_address_t router
-);
-//TODO: SN_Release_address
-int SN_Release_address(SN_Session_t* session); //release our short address
-
-//TODO: SN_Associate
-int SN_Associate( //associate with another StarfishNet node
-    SN_Session_t* session,
-    SN_Address_t* dst_addr,
-    SN_Security_metadata_t* security,
-    bool initiator //1 if we're initiating, 0 if we're responding
-);
-//TODO: SN_Dissociate
-int SN_Dissociate( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
-    SN_Session_t* session,
-    SN_Address_t* dst_addr,
-    bool initiator //1 if we're initiating, 0 if we're responding
-);
-
-//int SN_Poll_parent(SN_Session_t* session); //does MLME-SYNC.request, and also MLME_POLL.request
-//when implemented, uses MLME-SYNC/MLME-POLL to poll our parent for pending messages
 
 //copies the configuration out of session into the space provided. anything but session can be NULL
 int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
@@ -770,39 +924,5 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     //clean up I/O buffers
     STRUCTCLEAR(*session);
     SN_InfoPrintf("exit\n");
-}
-
-int SN_Receive(SN_Session_t* session, SN_Ops_t* handlers) {
-    SN_InfoPrintf("enter\n");
-
-    assert(session != NULL);
-    //assert(handlers != NULL);
-
-    //if(session == NULL || handlers == NULL) {
-    if(session == NULL ) {
-        SN_ErrPrintf("session and handlers must both be non-NULL!\n");
-        return -SN_ERR_NULL;
-    }
-
-    //TODO: presumably there's some kind of queue-check here
-    //TODO: mac_mlme_poll_request/confirm
-
-    mac_primitive_t packet;
-    SN_InfoPrintf("beginning packet reception\n");
-    //the following line implicitly drops any packets that fail security checks or fail to decrypt
-    int ret = mac_receive_primitive_type(session->mac_session, &packet, mac_mcps_data_indication);
-    SN_InfoPrintf("packet reception returned %d\n", ret);
-
-    if (!(ret > 0)) {
-        SN_ErrPrintf("packet received failed with %d\n", ret);
-        return -SN_ERR_RADIO;
-    }
-
-    SN_InfoPrintf("received packet containing %d-byte payload\n", packet.MCPS_DATA_indication.msduLength);
-
-    //TODO: actually do something with the data
-
-    SN_InfoPrintf("exit\n");
-    return SN_OK;
 }
 

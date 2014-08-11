@@ -1178,7 +1178,7 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
         return rev;
 }
 
-int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, size_t primitive_type_count) {
+int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, unsigned int primitive_type_count) {
     assert(primitive != NULL);
 
     int rev = mac_receive(session, primitive);

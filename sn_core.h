@@ -1,5 +1,5 @@
-#ifndef __NETWORK_H__
-#define __NETWORK_H__
+#ifndef __SN_CORE_H__
+#define __SN_CORE_H__
 
 #include "mac802154.h"
 
@@ -39,6 +39,7 @@
 
 //TODO: introduce fields for session ID? higher-layer protocol ID? (a la IP)
 //TODO: how the fuck am I going to do ECC key/certificate management?
+//TODO: totally ignoring broadcasts for the moment
 
 
 //network-layer types
@@ -109,57 +110,71 @@ typedef struct SN_ECC_key {
     uint8_t data[20];
 } SN_ECC_key_t;
 
-typedef struct SN_Security_metadata {
-} SN_Security_metadata_t;
+typedef struct SN_Certificate {
+} SN_Certificate_t;
+
+typedef struct SN_Certificate_storage {
+    //all sizes are in certificates, not in bytes
+    uint32_t         size;     //total size of data structure
+    uint32_t         capacity; //remaining storage capacity
+    SN_Certificate_t contents[];
+} SN_Certificate_storage_t;
+
+//comments indicate what happens when we try to send one of these
+//the same thing in mirror if we receive one
+typedef enum {
+    SN_Data_message, //standard data packet
+    SN_Evidence_message, //send one or more certificates to a StarfishNet node, usually as evidence of an attribute
+    SN_Associate_request, //associate with another StarfishNet node
+    SN_Associate_reply, //respond to a StarfishNet node's association request
+    SN_Dissociate_request, //dissociate from a node. implicitly invalidates any short address(es) we've taken from it, and revokes those of our children if needed
+    SN_Address_request, //request a short address from a neighboring router. Must be bundled with an ASSOCIATE request if an association doesn't already exist (and, in this event, is sent in plaintext)
+    SN_Address_release, //release our short address. if received, handled entirely by StarfishNet, never sent to a higher layer
+
+    SN_End_of_message_types
+} SN_Message_type_t;
 
 //function prototypes for event notifications
-typedef struct SN_Ops {
-    int (*SN_Message) (
-        SN_Session_t* session,
-        SN_Address_t* src_addr,
-        SN_Address_t* dst_addr,
-        uint8_t payload_length,
-        uint8_t* payload,
-        SN_Security_metadata_t* security,
-        void* extradata
-    );
+typedef union SN_Message {
+    uint8_t type;  //SN_Message_type_t
 
-    int (*SN_Association) (
-        SN_Session_t* session,
-        SN_Address_t* src_addr,
-        SN_Security_metadata_t* security,
-        bool initiator, //1 if we're initiating, 0 if we're responding
-        void* extradata
-    );
-    int (*SN_Dissociation) (
-        SN_Session_t* session,
-        SN_Address_t* src_addr,
-        bool initiator, //1 if we're initiating, 0 if we're responding
-        void* extradata
-    );
+    struct SN_Data_message {
+        uint8_t type;  //SN_Message_type_t
+        uint8_t payload_length;
+        uint8_t payload[];
+    } data;
 
-    int (*unknown_primitive) (
-        SN_Session_t* session,
-        uint8_t primitive,
-        uint8_t *data,
-        uint8_t length,
-        void* extradata
-    );
+    struct SN_Evidence_message {
+        uint8_t                  type;  //SN_Message_type_t
+        SN_Certificate_storage_t storage;
+    } evidence;
 
-    void* extradata;
-} SN_Ops_t;
+    struct SN_Address_request {
+        uint8_t type;  //SN_Message_type_t
+        uint8_t is_block_request; //1 if it's a request for an address block, 0 if it's for a single address
+    } address_request;
+} SN_Message_t;
 
-int SN_Send ( //send a packet
+int SN_Message_memory_size(SN_Message_t* message);
+int SN_Message_network_size(SN_Message_t* message);
+
+int SN_Transmit ( //transmit packet, containing one or more messages
     SN_Session_t* session,
     SN_Address_t* dst_addr,
-    uint8_t payload_length,
-    uint8_t* payload,
+    uint8_t*      buffer_size, //IN: length of buffer in MESSAGES; OUT: size of transmission in BYTES
+    SN_Message_t* buffer,
     uint8_t packet_handle,
-    uint8_t flags, //DO_MESH_ROUTE_DISCOVERY, ASSOCIATE_IF_NECESSARY, DATA_IS_INSECURE
-    SN_Security_metadata_t* security
+    uint8_t flags //ASSOCIATE_IF_NECESSARY, DATA_IS_INSECURE
+);
+int SN_Receive ( //receive a packet, containing one or more messages. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
+    SN_Session_t* session,
+    SN_Address_t* src_addr,
+    uint8_t*      buffer_size, //IN: size of buffer in BYTES; OUT: length of buffer in MESSAGES
+    SN_Message_t* buffer
 );
 
-int SN_Discover ( //scan for 802.15.4 networks
+//TODO: interface for nearest-neighbor scan
+int SN_Discover ( //scan for StarfishNet networks. also serves as a nearest-neighbor scan
     SN_Session_t* session,
     uint32_t channel_mask,
     uint32_t timeout,
@@ -178,27 +193,6 @@ int SN_Join ( //tune the radio to a StarfishNet network and listen for packets w
     bool disable_routing //1 to disable forwarding packets. also disallows us from having children.
 );
 
-int SN_Request_address ( //request a short address from a neighboring router. implicitly ASSOCIATES and requests in plaintext. must have already JOINed. the router may stipulate a refresh period, which will be handled automatically by StarfishNet. the router may also refuse, if it cannot fulfil the request
-    SN_Session_t* session,
-    mac_address_t router
-);
-int SN_Release_address (SN_Session_t* session); //release our short address
-
-int SN_Associate ( //associate with another StarfishNet node
-    SN_Session_t* session,
-    SN_Address_t* dst_addr,
-    SN_Security_metadata_t* security,
-    bool initiator //1 if we're initiating, 0 if we're responding
-);
-int SN_Dissociate ( //dissociate from a node. if we have one of its short addresses, it is implicitly invalidated (and thus we stop using it); this may lead to follow-on address revocations down the tree
-    SN_Session_t* session,
-    SN_Address_t* dst_addr,
-    bool initiator //1 if we're initiating, 0 if we're responding
-);
-
-//int SN_Poll_parent (SN_Session_t* session); //does MLME-SYNC.request, and also MLME_POLL.request
-//when implemented, uses MLME-SYNC/MLME-POLL to poll our parent for pending messages
-
 int SN_Get_configuration ( //copies the configuration out of session into the space provided. anything but session can be NULL
     SN_Session_t* session,
     SN_Nib_t* nib,
@@ -216,7 +210,5 @@ int SN_Set_configuration ( //copies the configuration provided into session, upd
 int  SN_Init (SN_Session_t* session, char* params);
 void SN_Destroy (SN_Session_t* session); //bring down this session, resetting the radio in the process
 
-int SN_Receive (SN_Session_t* session, SN_Ops_t* handlers);
-
-#endif /* __NETWORK_H__ */
+#endif /* __SN_CORE_H__ */
 
