@@ -20,7 +20,7 @@ clean:
 Makefile.deps: $(SOURCES)
 	gcc -MM $(SOURCES) >$@
 
-parenttest: parenttest.o $(OBJECTS)
-childtest: childtest.o $(OBJECTS)
+parenttest: parenttest.c $(OBJECTS)
+childtest: childtest.c $(OBJECTS)
 
 -include Makefile.deps
