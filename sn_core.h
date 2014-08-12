@@ -41,12 +41,15 @@
 //TODO: how the fuck am I going to do ECC key/certificate management?
 //TODO: totally ignoring broadcasts for the moment
 
-
 //network-layer types
 typedef struct SN_Address {
     mac_address_t address;
     mac_address_mode_t type;
 } SN_Address_t;
+
+typedef struct SN_ECC_key {
+    uint8_t data[20];
+} SN_ECC_key_t;
 
 typedef struct SN_Nib {
     //routing tree config
@@ -62,22 +65,9 @@ typedef struct SN_Nib {
     uint8_t       tx_retry_limit; //number of retransmits before reporting failure
     uint16_t      tx_retry_timeout; //time to wait between retransmits
 
-    mac_address_t parent_address; //always in 64-bit mode
-    mac_address_t coordinator_address; //always in 64-bit mode
-
-    //TODO: keys?
+    SN_Address_t  parent_address;
+    SN_ECC_key_t  parent_public_key;
 } SN_Nib_t;
-
-typedef struct SN_Sa {
-    SN_Address_t long_address; //mac address
-    SN_Address_t short_address; //network address, if available
-
-    //TODO: agreed symmetric key
-    //TODO: asymmetric key
-    //TODO: certificate(s) and certificate chain(s)
-} SN_Sa_t;
-
-typedef struct SN_Sa_container SN_Sa_container_t;
 
 typedef struct SN_Session {
     mac_session_handle_t mac_session;
@@ -86,31 +76,24 @@ typedef struct SN_Session {
     mac_pib_t            pib;
 
     uint32_t             table_entries; //XXX: HACK! assumes table uses bitfields for allocation
-
-    SN_Sa_container_t*   sas;
 } SN_Session_t;
 
-typedef enum SN_Status {
-    SN_Success = 0,
-} SN_Status_t;
-
 typedef struct SN_Network_descriptor {
-    mac_address_t coordinator_address; //always in 64-bit mode
-    mac_address_t nearest_neighbor_address; //always in 64-bit mode
-    uint16_t      nearest_neighbor_short_address;
     uint16_t      pan_id;
     uint8_t       radio_channel;
     uint8_t       routing_tree_depth;
     uint8_t       routing_tree_position;
 
-    //TODO: key material?
+    SN_Address_t  nearest_neighbor_address;
+    SN_ECC_key_t  nearest_neighbor_public_key;
 } SN_Network_descriptor_t;
 
-typedef struct SN_ECC_key {
-    uint8_t data[20];
-} SN_ECC_key_t;
-
 typedef struct SN_Certificate {
+    SN_ECC_key_t subject;
+    SN_ECC_key_t endorser;
+
+    //TODO: property being endorsed
+    //TODO: signature
 } SN_Certificate_t;
 
 typedef struct SN_Certificate_storage {

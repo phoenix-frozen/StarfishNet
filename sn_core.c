@@ -46,12 +46,6 @@ static inline uint8_t log2i(uint32_t n) {
     return 31 - (uint8_t)__builtin_clz(n);
 }
 
-//just a basic linked list for the moment. do something smart later.
-struct SN_Sa_container {
-    SN_Sa_container_t* next;
-    SN_Sa_t entry;
-};
-
 typedef struct beacon_payload {
     //protocol ID information
     uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
@@ -62,28 +56,13 @@ typedef struct beacon_payload {
     uint8_t tree_position; //depth in the tree of this router
     int8_t router_capacity; //remaining child slots. negative if children can only be leaves
 
-    //addressing metadata
-    uint16_t short_address;
-    mac_address_t long_address;
-
-    mac_address_t coordinator_address;
+    //security metadata
+    SN_ECC_key_t public_key;
 
     /*TODO:
-     * this device's public key
-     * network root's public key
-     * beacon signature?
+     * beacon signature
      */
 } beacon_payload_t;
-
-typedef struct SN_Packet {
-    //protocol ID information
-    uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
-    uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
-
-    uint8_t packet_type;
-
-    uint8_t data[]; //data length is implied from the length of the MSDU
-} SN_Packet_t;
 
 #define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
 
@@ -208,14 +187,9 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
     buffer->tree_depth      = session->nib.tree_depth;
     buffer->tree_position   = session->nib.tree_position;
     buffer->router_capacity = 0;
-    //addressing metadata
-    buffer->short_address = session->mib.macShortAddress;
-    memcpy(buffer->long_address.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
-    memcpy(buffer->coordinator_address.ExtendedAddress, session->nib.coordinator_address.ExtendedAddress, 8);
 
     /*TODO:
-     * this device's public key
-     * network root's public key
+     * public key
      * beacon signature?
      */
 
@@ -295,8 +269,8 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     session->nib.tree_position    = 0;
     session->nib.tx_retry_limit   = DEFAULT_TX_RETRY_LIMIT;
     session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
-    memcpy(session->nib.coordinator_address.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, sizeof(mac_address_t));
-    memcpy(session->nib.parent_address.ExtendedAddress,      session->mib.macIEEEAddress.ExtendedAddress, sizeof(mac_address_t));
+    session->nib.parent_address.type = mac_short_address;
+    session->nib.parent_address.address.ShortAddress = FIXED_COORDINATOR_ADDRESS;
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
@@ -371,19 +345,19 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
     session->nib.tree_depth       = network->routing_tree_depth;
-    session->nib.tree_position    = network->routing_tree_position + 1;
+    session->nib.tree_position    = network->routing_tree_position;
+    //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
     session->nib.tx_retry_limit   = DEFAULT_TX_RETRY_LIMIT;
     session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
-    memcpy(session->nib.coordinator_address.ExtendedAddress, network->coordinator_address.ExtendedAddress, sizeof(mac_address_t));
-    memcpy(session->nib.parent_address.ExtendedAddress, network->nearest_neighbor_address.ExtendedAddress, sizeof(mac_address_t));
+    session->nib.enable_routing   = !disable_routing;
+    memcpy(&session->nib.parent_address, &network->nearest_neighbor_address, sizeof(session->nib.parent_address));
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
     session->pib.phyCurrentChannel        = network->radio_channel;
     session->mib.macPANId                 = network->pan_id;
-    session->mib.macCoordAddrMode         = mac_extended_address;
+    session->mib.macCoordAddrMode         = mac_short_address;
     session->mib.macCoordShortAddress     = FIXED_COORDINATOR_ADDRESS;
-    memcpy(session->mib.macCoordExtendedAddress.ExtendedAddress, network->coordinator_address.ExtendedAddress, 8);
     //... (including setting our short address to the "we don't have a short address" flag value)
     session->mib.macShortAddress          = NO_SHORT_ADDRESS;
 
@@ -416,15 +390,6 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macCoordShortAddress_set_confirm);
 
-    //Set our coord address
-    SN_InfoPrintf("setting coord long address...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macCoordExtendedAddress;
-    packet.MLME_SET_request.PIBAttributeSize     = 8;
-    memcpy(packet.MLME_SET_request.PIBAttributeValue, session->mib.macCoordExtendedAddress.ExtendedAddress, 8);
-    MAC_CALL(mac_transmit, session->mac_session, &packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macCoordExtendedAddress_set_confirm);
-
     //Then, do some final configuration.
 
     //Set our short address
@@ -447,44 +412,25 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     session->mib.macRxOnWhenIdle                 = 1;
 
     int ret = SN_OK;
-    if(!disable_routing) {
+    if(session->nib.enable_routing) {
         SN_InfoPrintf("setting up beacon transmission...\n");
         ret = do_network_start(session, &packet, 0);
     }
     //TODO: we're going to have to set up promiscuous mode here, as well
+    //TODO: also, another discovery step to fill in the node table?
 
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
         .session = session,
-        //long_address filled below
-        .short_address = network->nearest_neighbor_short_address,
-        .distance = 0,
-        //key filled below
+        //.address filled below
+        .is_neighbor = 1,
+        //.key filled below
     };
-    memcpy(parent_table_entry.long_address.ExtendedAddress, network->nearest_neighbor_address.ExtendedAddress, 8);
-    //TODO: key
+    memcpy(&parent_table_entry.address1, &network->nearest_neighbor_address, sizeof(parent_table_entry.address1));
+    memcpy(&parent_table_entry.key, &network->nearest_neighbor_public_key, sizeof(parent_table_entry.key));
     if(ret == SN_OK) {
         SN_InfoPrintf("adding parent to node table...\n");
         ret = SN_Table_insert(&parent_table_entry);
-    }
-
-    if(memcmp(network->nearest_neighbor_address.ExtendedAddress, network->coordinator_address.ExtendedAddress, 8) != 0) {
-        //add coordinator to node table
-        SN_Table_entry_t coord_table_entry = {
-            .session = session,
-            //long_address filled below
-            .short_address = FIXED_COORDINATOR_ADDRESS,
-            .distance = network->routing_tree_position,
-            //key filled below
-        };
-        memcpy(coord_table_entry.long_address.ExtendedAddress, network->coordinator_address.ExtendedAddress, 8);
-        //TODO: key
-        if(ret == SN_OK) {
-            SN_InfoPrintf("adding coordinator to node table...\n");
-            ret = SN_Table_insert(&coord_table_entry);
-        }
-    } else {
-        SN_InfoPrintf("not adding coordinator to node table.\n");
     }
 
     //And we're done. Setting up a security association with our new parent is deferred until the first packet exchange.
@@ -499,6 +445,10 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
 //TODO: these are placeholders until I write the real code
 typedef SN_Message_t SN_Message_internal_t;
+/*TODO: (list of internal message types)
+ * address exchange
+ * address change
+ */
 static int SN_Message_internal_size(SN_Message_internal_t* message) {
     return SN_Message_network_size(message);
 }
@@ -526,7 +476,7 @@ static int SN_Message_decode(SN_Message_t* swmessage, SN_Message_internal_t* hwm
 }
 
 //transmit packet, containing one or more messages
-int SN_Transmit( SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, /* IN: length of buffer in MESSAGES; OUT: size of transmission in BYTES */ SN_Message_t* buffer, uint8_t packet_handle, uint8_t flags) {
+int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, SN_Message_t* buffer, uint8_t packet_handle, uint8_t flags) {
     SN_InfoPrintf("enter\n");
     //TODO: flags
 
@@ -562,6 +512,8 @@ int SN_Transmit( SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_
     }
 
     if(payload_length > 0) {
+        payload_length += 2; //actual MSDU will have two metadata bytes at the start
+
         SN_InfoPrintf("attempting to transmit a %d-byte packet\n", payload_length);
         mac_primitive_t primitive = {
             .type = mac_mcps_data_request,
@@ -572,7 +524,7 @@ int SN_Transmit( SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_
                 .DstPANId    = session->mib.macPANId,
                 //.DstAddr is filled below
                 .DstAddrMode = dst_addr->type,
-                //.msduLength is filled below
+                .msduLength  = payload_length,
                 .msduHandle  = packet_handle,
                 .TxOptions   = 0,
                 //.msdu is filled below
@@ -602,14 +554,15 @@ int SN_Transmit( SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_
             memcpy(primitive.MCPS_DATA_request.DstAddr.ExtendedAddress, dst_addr->address.ExtendedAddress, 8);
         }
 
-        //msduLength and msdu
+        //msdu
         SN_InfoPrintf("generating packet payload...\n");
         if(payload_length > max_payload_size) {
             SN_ErrPrintf("%d-byte payload too big for %u-byte packet\n", payload_length, max_payload_size);
             return -SN_ERR_RESOURCES;
         }
-        primitive.MCPS_DATA_request.msduLength = payload_length;
-        payload_length = 0;
+        primitive.MCPS_DATA_request.msdu[0] = STARFISHNET_PROTOCOL_ID;
+        primitive.MCPS_DATA_request.msdu[1] = STARFISHNET_PROTOCOL_VERSION;
+        payload_length = 2;
         buffer_position = 0;
         for(int i = 0; i < *buffer_size; i++) {
             SN_Message_t* message = (SN_Message_t*)(((char*)buffer) + buffer_position);
@@ -701,11 +654,15 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
     //extract data
     SN_InfoPrintf("decoding packet payload...\n");
-    if(packet.MCPS_DATA_indication.msduLength > *buffer_size) {
+    if(packet.MCPS_DATA_indication.msduLength > *buffer_size + 2) {
         SN_ErrPrintf("buffer size %d is too small for a %d-byte packet\n", *buffer_size, packet.MCPS_DATA_indication.msduLength);
         return -SN_ERR_RESOURCES;
     }
-    int payload_length = 0;
+    if(!(packet.MCPS_DATA_indication.msdu[0] == STARFISHNET_PROTOCOL_ID && packet.MCPS_DATA_indication.msdu[1] == STARFISHNET_PROTOCOL_VERSION)) {
+        SN_ErrPrintf("packet has invalid header bytes. protocol is %x (should be %x), version is %x (should be %x)\n", packet.MCPS_DATA_indication.msdu[0], STARFISHNET_PROTOCOL_ID, packet.MCPS_DATA_indication.msdu[1], STARFISHNET_PROTOCOL_VERSION);
+        return -SN_ERR_OLD_VERSION;
+    }
+    int payload_length = 2;
     int buffer_position = 0;
     for(int i = 0; payload_length < packet.MCPS_DATA_indication.msduLength; i++) {
         SN_Message_internal_t* message = (SN_Message_t*)(packet.MCPS_DATA_indication.msdu + payload_length);
@@ -719,7 +676,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         SN_InfoPrintf("decoding message %d (whose type is %d, and size is %d)\n", i, message->type, message_network_size);
         if(payload_length + message_network_size > packet.MCPS_DATA_indication.msduLength) {
             SN_ErrPrintf("message %d size %d would overflow the %d-length packet\n", i, message_network_size, packet.MCPS_DATA_indication.msduLength);
-            return -SN_ERR_INVALID;
+            return -SN_ERR_END_OF_DATA;
         }
         if(buffer_position + message_network_size > *buffer_size) {
             SN_ErrPrintf("message %d size %d would overflow the %d-length buffer\n", i, message_network_size, *buffer_size);
@@ -782,9 +739,11 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
     //During a scan, we get a MLME-BEACON.indication for each received beacon.
     //MLME-SCAN.confirm is received when a scan finishes.
+    static const mac_primitive_type_t scan_primitive_types[] = {mac_mlme_beacon_notify_indication, mac_mlme_scan_confirm};
     while(1) {
         //receive a primitive
-        MAC_CALL(mac_receive, session->mac_session, &packet);
+        MAC_CALL(mac_receive_primitive_types, session->mac_session, &packet, scan_primitive_types, sizeof(scan_primitive_types)/sizeof(mac_primitive_type_t));
+        //implicitly drops anything that isn't of that type
 
         //if it's an MLME-SCAN.confirm, we're done -- quit out
         if(packet.type == mac_mlme_scan_confirm)
@@ -792,8 +751,6 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
         //during a scan, the radio's only supposed to generate MLME-BEACON-NOTIFY.indication or MLME-SCAN.confirm
         assert(packet.type == mac_mlme_beacon_notify_indication);
-        if(packet.type != mac_mlme_beacon_notify_indication)
-            continue; //still we should handle that error gracefully
 
         SN_InfoPrintf("found network. channel=0x%x, PANId=0x%x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
 
@@ -810,13 +767,13 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
         //TODO: check signature
 
-        memcpy(ndesc.coordinator_address.ExtendedAddress,      beacon_payload->coordinator_address.ExtendedAddress, sizeof(mac_address_t));
-        memcpy(ndesc.nearest_neighbor_address.ExtendedAddress, beacon_payload->long_address.ExtendedAddress,        sizeof(mac_address_t));
-        ndesc.nearest_neighbor_short_address = beacon_payload->short_address;
-        ndesc.pan_id                = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
-        ndesc.radio_channel         = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
-        ndesc.routing_tree_depth    = beacon_payload->tree_depth;
-        ndesc.routing_tree_position = beacon_payload->tree_depth;
+        memcpy(&ndesc.nearest_neighbor_address.address,        &packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress,        sizeof(ndesc.nearest_neighbor_address.address));
+                ndesc.nearest_neighbor_address.type           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode;
+        memcpy(&ndesc.nearest_neighbor_public_key,             &beacon_payload->public_key,                          sizeof(ndesc.nearest_neighbor_public_key));
+                ndesc.pan_id                                  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
+                ndesc.radio_channel                           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
+                ndesc.routing_tree_depth                      = beacon_payload->tree_depth;
+                ndesc.routing_tree_position                   = beacon_payload->tree_position + 1;
 
         callback(session, &ndesc, extradata);
     }
@@ -827,6 +784,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 //copies the configuration out of session into the space provided. anything but session can be NULL
 int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
     //Assumption: config is kept current!
+    mac_primitive_t packet;
 
     if(session == NULL)
         return -SN_ERR_NULL;
@@ -835,7 +793,15 @@ int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
         memcpy(nib, &session->nib, sizeof(*nib));
 
     if(mib != NULL) {
-        //TODO: load macDSN
+        //load macDSN
+        packet.type = mac_mlme_get_request;
+        packet.MLME_SET_request.PIBAttribute = macDSN;
+        MAC_CALL(mac_transmit, session->mac_session, &packet);
+        MAC_CALL(mac_receive_primitive_type, session->mac_session, &packet, mac_mlme_get_confirm);
+        assert(packet.type == mac_mlme_get_confirm);
+        assert(packet.MLME_GET_confirm.PIBAttribute == macDSN);
+        memcpy(&session->mib.macDSN, packet.MLME_GET_confirm.PIBAttributeValue, mac_pib_attribute_length(packet.MLME_GET_confirm.PIBAttribute));
+
         memcpy(mib, &session->mib, sizeof(*mib));
     }
 
@@ -889,9 +855,6 @@ int SN_Init(SN_Session_t* session, char* params) {
         SN_ErrPrintf("radio reset failed: %d\n", -ret);
         return ret;
     }
-
-    //set up my basic linkedlist SA tracker
-    protosession.sas = NULL;
 
     //return results
     *session = protosession;

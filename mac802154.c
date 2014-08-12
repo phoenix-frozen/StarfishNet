@@ -269,51 +269,6 @@ static int extract_pan_descriptor (const uint8_t *data, mac_pan_descriptor_t *pa
     return i;
 }
 
-#if 0
-/* Extract MLME-BEACON-NOTIFY.indication parameters and call callback */
-static int process_mlme_beacon_notify_indication (mac_primitive_handler_t *handler, mac_session_handle_t session, uint8_t *data, uint8_t length)
-{
-    uint8_t BSN;
-    mac_pan_descriptor_t PANDescriptor;
-    uint8_t PendAddrSpec;
-    uint8_t *AddrList;
-    uint8_t sduLength;
-    uint8_t *sdu;
-    int i;
-
-    assert (handler != NULL);
-    assert (handler->MLME_BEACON_NOTIFY_indication != NULL);
-    assert (data != NULL);
-
-    mac_callback_metadata_t callback_metadata = {
-        .session = session,
-        .extradata = handler->extradata,
-    };
-
-    if (length >= 17) {
-        i = 0;
-        BSN = data[i++];
-        i += extract_pan_descriptor (&data[i], &PANDescriptor);
-        if (i == 1) {
-            /* PAN descriptor was invalid */
-            return 0;
-        }
-        PendAddrSpec = data[i++];
-        AddrList = &data[i];            /* FIXME: Should we convert short addresses to host endianness? */
-        i += (PendAddrSpec & 0x3) * 2 + ((PendAddrSpec & 0x30) >> 4) * 8;
-        sduLength = data[i++];
-        sdu = &data[i];
-        i += sduLength;
-        if (i > length) {
-            return 0;
-        }
-        return handler->MLME_BEACON_NOTIFY_indication (&callback_metadata, BSN, &PANDescriptor, PendAddrSpec, AddrList, sduLength, sdu);
-    } else {
-        return 0;
-    }
-}
-#endif
-
 #ifdef MAC_DEBUG
 /* Print a primitives name and data in hex. */
 static void mac_print_primitive (uint8_t *data, uint8_t length)
@@ -1178,7 +1133,7 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
         return rev;
 }
 
-int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, unsigned int primitive_type_count) {
+int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, const mac_primitive_type_t* primitive_types, unsigned int primitive_type_count) {
     assert(primitive != NULL);
 
     int rev = mac_receive(session, primitive);

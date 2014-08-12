@@ -12,10 +12,11 @@
 
 typedef struct SN_Table_entry {
     SN_Session_t* session;
-    mac_address_t long_address;
-    mac_address_t short_address;
-    uint32_t      distance;
+    SN_Address_t  address1;
+    SN_Address_t  address2;
     SN_ECC_key_t  key;
+
+    uint8_t       is_neighbor;
 } SN_Table_entry_t;
 
 // insert an entry into the table. entire data structure must be valid

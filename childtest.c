@@ -61,20 +61,13 @@ int main(int argc, char* argv[]) {
 
     printf("Attempting packet transmission.\n");
 
-    SN_Address_t dst_address = {
-        .address = {
-            .ShortAddress = network.nearest_neighbor_short_address,
-        },
-        .type = mac_short_address,
-    };
-
     uint8_t message_count = 1;
     SN_Message_t* test_message = malloc(sizeof(struct SN_Data_message) + 5);
     test_message->type = SN_Data_message;
     test_message->data.payload_length = 5;
     memcpy(test_message->data.payload, "test", 5);
 
-    ret = SN_Transmit(&network_session, &dst_address, &message_count, test_message, 1, 0);
+    ret = SN_Transmit(&network_session, &network.nearest_neighbor_address, &message_count, test_message, 1, 0);
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);

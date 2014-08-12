@@ -575,8 +575,8 @@ typedef union mac_primitive {
                     uint8_t            raw;
                 }                    PendAddrSpec;
                 struct {
-                    uint16_t           Short   [8]; //because their length fields are 3 bits in size
-                    mac_address_t      Extended[8];
+                    uint16_t           Short   [7]; //because their length fields are 3 bits in size
+                    mac_address_t      Extended[7];
                 }                    AddrList;
                 uint8_t              sduLength;
                 uint8_t              sdu[aMaxBeaconPayloadSize];
@@ -659,7 +659,7 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
  *  0 - If an error occurs while trying to read the primitive.
  *  -1 - If an error occurs while trying to read the primitive.
  */
-int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t* primitive_types, unsigned int primitive_type_count);
+int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, const mac_primitive_type_t* primitive_types, unsigned int primitive_type_count);
 
 /*
  * DESCRIPTION
