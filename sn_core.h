@@ -37,8 +37,6 @@
  * the network layer.
  */
 
-//TODO: introduce fields for session ID? higher-layer protocol ID? (a la IP)
-//TODO: how the fuck am I going to do ECC key/certificate management?
 //TODO: totally ignoring broadcasts for the moment
 
 //network-layer types
@@ -90,16 +88,15 @@ typedef struct SN_Network_descriptor {
 
 typedef struct SN_Certificate {
     SN_ECC_key_t subject;
-    SN_ECC_key_t endorser;
+    //TODO: assertion
+    //TODO: signature. covers subject and assertion, not endorser
 
-    //TODO: property being endorsed
-    //TODO: signature
+    SN_ECC_key_t endorser;
 } SN_Certificate_t;
 
-typedef struct SN_Certificate_storage {
-    //all sizes are in certificates, not in bytes
-    uint32_t         size;     //total size of data structure
-    uint32_t         capacity; //remaining storage capacity
+typedef struct __attribute__((packed)) SN_Certificate_storage {
+    uint16_t         capacity; //number of certificates that can be stored in this structure, in total
+    uint16_t         size;     //number of certificates that are currently stored in this structure
     SN_Certificate_t contents[];
 } SN_Certificate_storage_t;
 

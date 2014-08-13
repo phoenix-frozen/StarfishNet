@@ -20,8 +20,6 @@ typedef uint32_t table_bitmap_t;
 static internal_table_entry_t table[TABLE_SIZE];
 static table_bitmap_t entry_bitmap = 0;
 
-//TODO: consistency checks in update regarding addresses and keys
-
 static int lookup_by_address(table_bitmap_t limit, SN_Address_t* address) {
     if(address == NULL)
         return -1;
@@ -105,7 +103,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
         return -SN_ERR_RESOURCES;
 
     //fill new entry with data
-    memcpy(&table[ret].data, entry, sizeof(table[ret].data));
+    table[ret].data = *entry;
     table[ret].evidence = NULL;
     entry->session->table_entries |= BIT(ret);
 
@@ -124,12 +122,13 @@ int SN_Table_update(SN_Table_entry_t* entry) {
         return -SN_ERR_UNEXPECTED;
 
     //fill entry with data
-    memcpy(&table[ret].data, entry, sizeof(table[ret].data));
+    //TODO: consistency checks in update regarding addresses and keys
+    table[ret].data = *entry;
 
     return SN_OK;
 }
 
-// delete an entry. any one of: long address, short address, key, must be valid.
+// delete an entry. any one of: long address, short address, key, must be valid. note: you're responsible for any certificate storage you've assigned to this entry
 int SN_Table_delete(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
@@ -143,8 +142,6 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     //mark entry as free, effectively deleting it
     entry_bitmap &= ~BIT(ret);
     entry->session->table_entries &= ~BIT(ret);
-
-    //TODO: delete metadata
 
     return SN_OK;
 }
@@ -160,7 +157,7 @@ int SN_Table_associate_metadata(SN_Table_entry_t* entry, SN_Certificate_storage_
         //it doesn't. return an error
         return -SN_ERR_UNEXPECTED;
 
-    //fill entry with data
+    //associate certificate storage with entry
     table[ret].evidence = storage;
 
     return SN_OK;
@@ -204,7 +201,5 @@ void SN_Table_clear(SN_Session_t* session) {
 
     entry_bitmap &= ~session->table_entries;
     session->table_entries = 0;
-
-    //TODO: evidence / memory ownership issues
 }
 

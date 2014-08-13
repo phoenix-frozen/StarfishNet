@@ -39,6 +39,7 @@ static MAC_SET_CONFIRM(macShortAddress);
 static MAC_SET_CONFIRM(phyCurrentChannel);
 static MAC_SET_CONFIRM(macCoordShortAddress);
 static MAC_SET_CONFIRM(macCoordExtendedAddress);
+static MAC_SET_CONFIRM(macPromiscuousMode);
 
 static inline uint8_t log2i(uint32_t n) {
     if(n == 0)
@@ -46,7 +47,7 @@ static inline uint8_t log2i(uint32_t n) {
     return 31 - (uint8_t)__builtin_clz(n);
 }
 
-typedef struct beacon_payload {
+typedef struct __attribute__((packed)) beacon_payload {
     //protocol ID information
     uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
     uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
@@ -56,12 +57,9 @@ typedef struct beacon_payload {
     uint8_t tree_position; //depth in the tree of this router
     int8_t router_capacity; //remaining child slots. negative if children can only be leaves
 
-    //security metadata
-    SN_ECC_key_t public_key;
+    //TODO: beacon signature
 
-    /*TODO:
-     * beacon signature
-     */
+    SN_ECC_key_t public_key;
 } beacon_payload_t;
 
 #define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
@@ -188,9 +186,9 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
     buffer->tree_position   = session->nib.tree_position;
     buffer->router_capacity = 0;
 
-    /*TODO:
+    /*TODO: (finish beacon payload)
+     * beacon signature
      * public key
-     * beacon signature?
      */
 
     return SN_OK;
@@ -245,6 +243,7 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
 //start a new StarfishNet network as coordinator
 int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     SN_InfoPrintf("enter\n");
+
     assert(session != NULL);
     assert(network != NULL);
 
@@ -255,13 +254,9 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
 
     mac_primitive_t packet;
 
-    //TODO: reinit SA table
-
     //reinit node table
     SN_InfoPrintf("clearing node table\n");
     SN_Table_clear(session);
-
-    //TODO: anything else we need to reinit?
 
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
@@ -334,13 +329,9 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
     mac_primitive_t packet;
 
-    //TODO: reinit SA table
-
     //reinit node table
     SN_InfoPrintf("clearing node table\n");
     SN_Table_clear(session);
-
-    //TODO: anything else we need to reinit?
 
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
@@ -413,16 +404,29 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
     int ret = SN_OK;
     if(session->nib.enable_routing) {
+#if 0
+        //TODO: uncomment this once routing is enabled
+        SN_InfoPrintf("enabling promiscuous mode...\n");
+        packet.type = mac_mlme_set_request;
+        packet.MLME_SET_request.PIBAttribute         = macPromiscuousMode;
+        packet.MLME_SET_request.PIBAttributeSize     = 1;
+        packet.MLME_SET_request.PIBAttributeValue[0] = 1;
+        MAC_CALL(mac_transmit, session->mac_session, &packet);
+        MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macPromiscuousMode_set_confirm);
+        session->mib.macPromiscuousMode              = 1;
+#endif
+
         SN_InfoPrintf("setting up beacon transmission...\n");
         ret = do_network_start(session, &packet, 0);
     }
-    //TODO: we're going to have to set up promiscuous mode here, as well
-    //TODO: also, another discovery step to fill in the node table?
+
+    //TODO: another discovery step to fill in the node table?
 
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
         .session = session,
-        //.address filled below
+        //.address1 filled below
+        //.address2 remains empty
         .is_neighbor = 1,
         //.key filled below
     };
@@ -630,12 +634,10 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     SN_InfoPrintf("output buffer size is %d\n", *buffer_size);
 
     //TODO: presumably there's some kind of queue-check here
-    //TODO: mac_mlme_poll_request/confirm
-    //TODO: switch to a raw mac_receive() and do network-layer housekeeping
 
     mac_primitive_t packet;
     SN_InfoPrintf("beginning packet reception\n");
-    //the following line implicitly drops any packets that fail security checks
+    //TODO: switch to a raw mac_receive() and do network-layer housekeeping
     int ret = mac_receive_primitive_type(session->mac_session, &packet, mac_mcps_data_indication);
     SN_InfoPrintf("packet reception returned %d\n", ret);
 
@@ -651,6 +653,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         SN_DebugPrintf("%2x %2x %2x %2x\n", packet.MCPS_DATA_indication.msdu[i], packet.MCPS_DATA_indication.msdu[i + 1], packet.MCPS_DATA_indication.msdu[i + 2], packet.MCPS_DATA_indication.msdu[i + 3]);
     }
     SN_DebugPrintf("end packet data\n");
+
+    //TODO: if in promiscuous mode, retransmit on receive packet for neighbor
 
     //extract data
     SN_InfoPrintf("decoding packet payload...\n");
@@ -866,7 +870,7 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     mac_primitive_t packet;
     SN_InfoPrintf("enter\n");
 
-    /*TODO: disconnect
+    /*TODO: (operations on disconnect)
      * revoke all children's short-address allocations
      * release my short-address allocation(s)
      * terminate all SAs

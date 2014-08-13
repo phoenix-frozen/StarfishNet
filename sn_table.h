@@ -23,7 +23,7 @@ typedef struct SN_Table_entry {
 int SN_Table_insert (SN_Table_entry_t* entry);
 // update an existing entry. entire data structure must be valid
 int SN_Table_update (SN_Table_entry_t* entry);
-// delete an entry. any one of: long address, short address, key, must be valid.
+// delete an entry. any one of: long address, short address, key, must be valid. note: you're responsible for any certificate storage you've assigned to this entry
 int SN_Table_delete (SN_Table_entry_t* entry);
 // delete all entries related to a session
 void SN_Table_clear (SN_Session_t* session);
