@@ -1,7 +1,7 @@
 *.swp
 *.o
 *.gch
-parenttest
-childtest
 cscope.*
 *.d
+*.a
+test/*test

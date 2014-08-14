@@ -49,7 +49,7 @@ $(TEST_BIN): LDLIBS = $(TARGET).a $(LIBS)
 lib/lib%.a: CFLAGS = 
 lib/lib%.a: lib/%
 	$(MAKE) -C $<
-	cd lib && ln -sf `find . -name \`basename $@\`` `basename $@`
+	cd lib && ln -sf `find \`basename $<\` -name \`basename $@\`` `basename $@`
 
 .SECONDEXPANSION:
 
