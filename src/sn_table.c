@@ -36,7 +36,7 @@ static int lookup_by_address(table_bitmap_t limit, SN_Address_t* address) {
     return -1;
 }
 
-static int lookup_by_key(table_bitmap_t limit, SN_ECC_key_t* key) {
+static int lookup_by_key(table_bitmap_t limit, SN_ECC_public_key_t* key) {
     if(key == NULL)
         return -1;
 
@@ -85,7 +85,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
 
     //TODO: uncomment this once crypto is switched on
     /*
-    SN_ECC_key_t null_key = {};
+    SN_ECC_public_key_t null_key = {};
     if(!memcmp(&null_key, &entry->key, sizeof(null_key)))
         return -SN_ERR_INVALID;
     */
@@ -179,7 +179,7 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
 
     return SN_OK;
 }
-int SN_Table_lookup_by_key(SN_ECC_key_t* key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
+int SN_Table_lookup_by_key(SN_ECC_public_key_t* key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
     if(key == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 

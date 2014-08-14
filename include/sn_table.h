@@ -11,10 +11,10 @@
  */
 
 typedef struct SN_Table_entry {
-    SN_Session_t* session;
-    SN_Address_t  address1;
-    SN_Address_t  address2;
-    SN_ECC_key_t  key;
+    SN_Session_t*        session;
+    SN_Address_t         address1;
+    SN_Address_t         address2;
+    SN_ECC_public_key_t  key;
 
     uint8_t       is_neighbor;
 } SN_Table_entry_t;
@@ -32,8 +32,8 @@ int SN_Table_associate_metadata (SN_Table_entry_t* entry, SN_Certificate_storage
 
 // lookups can be by address or by public key. first parameter is input, second and third are output
 // entry->session must be valid
-int SN_Table_lookup_by_address (SN_Address_t* address, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
-int SN_Table_lookup_by_key     (SN_ECC_key_t* key,     SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
+int SN_Table_lookup_by_address (SN_Address_t* address,    SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
+int SN_Table_lookup_by_key     (SN_ECC_public_key_t* key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
 
 #endif /* __SN_TABLE_H__ */
 

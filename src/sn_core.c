@@ -48,18 +48,20 @@ static inline uint8_t log2i(uint32_t n) {
 }
 
 typedef struct __attribute__((packed)) beacon_payload {
-    //protocol ID information
-    uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
-    uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
+    struct __attribute__((packed)) {
+        //protocol ID information
+        uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
+        uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
 
-    //device tree metadata
-    uint8_t tree_depth; //maximum tree depth
-    uint8_t tree_position; //depth in the tree of this router
-    int8_t router_capacity; //remaining child slots. negative if children can only be leaves
+        //device tree metadata
+        uint8_t tree_depth; //maximum tree depth
+        uint8_t tree_position; //depth in the tree of this router
+        int8_t router_capacity; //remaining child slots. negative if children can only be leaves
+    } signed_data;
 
-    //TODO: beacon signature
+    SN_ECDSA_signature_t signature;
 
-    SN_ECC_key_t public_key;
+    SN_ECC_public_key_t public_key;
 } beacon_payload_t;
 
 #define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
@@ -75,7 +77,7 @@ int SN_Message_memory_size(SN_Message_t* message) {
             return sizeof(message->data)            + message->data.payload_length;
 
         case SN_Evidence_message:
-            return sizeof(message->evidence)        + message->evidence.storage.size * sizeof(SN_Certificate_t);
+            return sizeof(message->evidence);
 
         case SN_Address_request:
             return sizeof(message->address_request);
@@ -179,12 +181,12 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
         return -SN_ERR_NULL;
 
     //protocol ID information
-    buffer->protocol_id  = STARFISHNET_PROTOCOL_ID;
-    buffer->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
-    //device tree metadata
-    buffer->tree_depth      = session->nib.tree_depth;
-    buffer->tree_position   = session->nib.tree_position;
-    buffer->router_capacity = 0;
+    buffer->signed_data.protocol_id  = STARFISHNET_PROTOCOL_ID;
+    buffer->signed_data.protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    //routing tree metadata
+    buffer->signed_data.tree_depth      = session->nib.tree_depth;
+    buffer->signed_data.tree_position   = session->nib.tree_position;
+    buffer->signed_data.router_capacity = 0;
 
     /*TODO: (finish beacon payload)
      * beacon signature
@@ -761,23 +763,23 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         //if we get to here, we're looking at an MLME-BEACON-NOTIFY.indication
         beacon_payload_t* beacon_payload = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
 
-        SN_InfoPrintf("    PID=%#02x, PVER=%#02x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
+        SN_InfoPrintf("    PID=%#02x, PVER=%#02x\n", beacon_payload->signed_data.protocol_id, beacon_payload->signed_data.protocol_ver);
 
         //check that this is a network of the kind we care about
-        if(beacon_payload->protocol_id  != STARFISHNET_PROTOCOL_ID)
+        if(beacon_payload->signed_data.protocol_id  != STARFISHNET_PROTOCOL_ID)
             continue;
-        if(beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION)
+        if(beacon_payload->signed_data.protocol_ver != STARFISHNET_PROTOCOL_VERSION)
             continue;
 
         //TODO: check signature
 
-        memcpy(&ndesc.nearest_neighbor_address.address,        &packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress,        sizeof(ndesc.nearest_neighbor_address.address));
+        memcpy(&ndesc.nearest_neighbor_address.address,        &packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress,   sizeof(ndesc.nearest_neighbor_address.address));
                 ndesc.nearest_neighbor_address.type           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode;
-        memcpy(&ndesc.nearest_neighbor_public_key,             &beacon_payload->public_key,                          sizeof(ndesc.nearest_neighbor_public_key));
+        memcpy(&ndesc.nearest_neighbor_public_key,             &beacon_payload->public_key,                                        sizeof(ndesc.nearest_neighbor_public_key));
                 ndesc.pan_id                                  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
                 ndesc.radio_channel                           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
-                ndesc.routing_tree_depth                      = beacon_payload->tree_depth;
-                ndesc.routing_tree_position                   = beacon_payload->tree_position + 1;
+                ndesc.routing_tree_depth                      = beacon_payload->signed_data.tree_depth;
+                ndesc.routing_tree_position                   = beacon_payload->signed_data.tree_position + 1;
 
         callback(session, &ndesc, extradata);
     }
