@@ -27,10 +27,11 @@ all: $(TARGET).a $(LIBS) $(TEST_BIN)
 deps: $(DEPS)
 
 clean:
-	$(RM) $(OBJS) $(DEPS) $(TEST_BIN) $(TARGET).a $(LIBS)
+	$(RM) $(TARGET).a $(LIBS) $(TEST_BIN) $(OBJS) $(DEPS)
 
 %.d: %.c
-	gcc -MM -I./include $< -o $@
+	gcc $(CFLAGS) -MM -o $@ $<
+	sed -i -e "s=^`basename $< .c`.o:=$(patsubst %.d,%.o,$@) $@:=" $@
 
 include $(DEPS)
 
@@ -54,7 +55,7 @@ lib/lib%.a: lib/%
 #generate cscope database
 cscope: cscope.out cscope.in.out cscope.po.out
 cscope.out cscope.in.out cscope.po.out: $(SRCS)
-	cscope -b -q -R
+	cscope -b -q -k -R
 
 .SECONDEXPANSION:
 
