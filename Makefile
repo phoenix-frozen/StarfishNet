@@ -10,7 +10,7 @@ LIBS = $(LIB_DIRS:lib/%=lib/lib%.a)
 TEST_SRC = $(wildcard test/*.c)
 TEST_BIN = $(TEST_SRC:.c=)
 
-.PHONY: all clean deps
+.PHONY: all clean deps cscope
 
 CC = gcc
 CFLAGS += -I./include
@@ -41,8 +41,8 @@ $(TARGET).a: $(OBJS)
 
 #TODO: generate shared library
 
-#make sure test binaries link against libstarfishnet and dependent libraries
-$(TEST_BIN): LDLIBS = $(TARGET).a $(LIBS)
+#make sure test binaries link against and depend on libstarfishnet and dependent libraries
+$(TEST_BIN): $(TARGET).a $(LIBS)
 
 #build dependency libraries by recursive make invocation, and link the generated library (wherever it is) into lib/libname.a
 # (also make sure they don't inherit our CFLAGS)
@@ -51,8 +51,13 @@ lib/lib%.a: lib/%
 	$(MAKE) -C $<
 	cd lib && ln -sf `find \`basename $<\` -name \`basename $@\`` `basename $@`
 
+#generate cscope database
+cscope: cscope.out cscope.in.out cscope.po.out
+cscope.out cscope.in.out cscope.po.out: $(SRCS)
+	cscope -b -q -R
+
 .SECONDEXPANSION:
 
-#build test binaries (uses second-expansion to get implicit rule working for test binaries)
+#build test binaries (uses second-expansion to fire Make's implicit rule for building C programs)
 $(TEST_BIN): $$@.c
 
