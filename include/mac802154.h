@@ -370,6 +370,7 @@ typedef union mac_primitive {
                 uint8_t       msduLength;
                 uint8_t       msduHandle;
                 uint8_t       TxOptions;
+                uint8_t       padding;
                 uint8_t       msdu[aMaxMACPayloadSize];
             } MCPS_DATA_request;
 
