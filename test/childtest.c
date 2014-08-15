@@ -20,11 +20,12 @@ int main(int argc, char* argv[]) {
 
     int rv = 0;
 
-    SN_Session_t network_session;
+    SN_ECC_keypair_t master_keypair;
 
     printf("Initialising StarfishNet...\n");
 
-    int ret = SN_Init(&network_session, argv[1]);
+    SN_Session_t network_session;
+    int ret = SN_Init(&network_session, &master_keypair, argv[1]);
 
     if(ret != SN_OK) {
         printf("StarfishNet initialisation failed: %d\n", -ret);

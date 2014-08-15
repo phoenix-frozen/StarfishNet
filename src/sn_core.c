@@ -432,7 +432,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     } else {
         parent_table_entry.short_address = network->nearest_neighbor_address.address.ShortAddress;
     }
-    memcpy(&parent_table_entry.key, &network->nearest_neighbor_public_key, sizeof(parent_table_entry.key));
+    memcpy(&parent_table_entry.public_key, &network->nearest_neighbor_public_key, sizeof(parent_table_entry.public_key));
     if(ret == SN_OK) {
         SN_InfoPrintf("adding parent to node table...\n");
         ret = SN_Table_insert(&parent_table_entry);
@@ -873,7 +873,7 @@ int SN_Set_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
 }
 
 //other network-layer driver functions
-int SN_Init(SN_Session_t* session, char* params) {
+int SN_Init(SN_Session_t* session, SN_ECC_keypair_t* master_keypair, char* params) {
     SN_InfoPrintf("enter\n");
 
     assert(session != NULL);
@@ -904,6 +904,9 @@ int SN_Init(SN_Session_t* session, char* params) {
         SN_ErrPrintf("radio reset failed: %d\n", -ret);
         return ret;
     }
+
+    //fill in the master keypair
+    protosession.device_root_key = *master_keypair;
 
     //return results
     *session = protosession;

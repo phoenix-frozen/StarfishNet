@@ -179,6 +179,7 @@ int SN_Set_configuration ( //copies the configuration provided into session, upd
 //other network-layer driver functions
 int SN_Init (     //initialise a new StarfishNet session, passing params onto the MAC layer
     SN_Session_t* session,
+    SN_ECC_keypair_t* master_keypair,
     char* params
 );
 void SN_Destroy ( //bring down this session, resetting the radio in the process

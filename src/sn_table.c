@@ -47,19 +47,16 @@ static int lookup_by_short_address(table_bitmap_t limit, uint16_t address) {
     return -1;
 }
 
-static int lookup_by_key(table_bitmap_t limit, SN_ECC_public_key_t* key) {
-    if(key == NULL)
+static int lookup_by_public_key(table_bitmap_t limit, SN_ECC_public_key_t* public_key) {
+    if(public_key == NULL)
         return -1;
 
-    //TODO: uncomment this once crypto is switched on
-    /*
     SN_ECC_public_key_t null_key = {};
-    if(!memcmp(&null_key, &entry->key, sizeof(null_key)))
-        return -SN_ERR_INVALID;
-    */
+    if(!memcmp(&null_key, public_key, sizeof(null_key)))
+        return -1;
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
-        if((entry_bitmap & limit & BIT(i)) && !memcmp(key->data, table[i].data.key.data, sizeof(key->data)))
+        if((entry_bitmap & limit & BIT(i)) && !memcmp(public_key->data, table[i].data.public_key.data, sizeof(public_key->data)))
             return i;
     }
 
@@ -77,11 +74,11 @@ static int find_entry(SN_Table_entry_t* entry) {
     if(ret >= 0)
         return ret;
 
-    ret = lookup_by_short_address(limit, entry->short_address);
+    ret = lookup_by_public_key(limit, &entry->public_key);
     if(ret >= 0)
         return ret;
 
-    ret = lookup_by_key(limit, &entry->key);
+    ret = lookup_by_short_address(limit, entry->short_address);
     if(ret >= 0)
         return ret;
 
@@ -106,7 +103,7 @@ static int alloc_entry() {
     return -1;
 }
 
-// insert an entry into the table. entire data structure must be valid
+//insert an entry into the table. entire data structure must be valid
 int SN_Table_insert(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
@@ -119,20 +116,28 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
         //it does. return an error
         return -SN_ERR_UNEXPECTED;
 
+    //consistency checks to make sure we don't pollute the table with BS entries
+    mac_address_t       null_address = {};
+    SN_ECC_public_key_t null_key     = {};
+    if((!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
+     &&(entry->short_address == SN_NO_SHORT_ADDRESS)
+     &&(!memcmp(&entry->public_key, &null_key, sizeof(null_key))))
+        return -SN_ERR_INVALID;
+
     //entry doesn't exist. allocate a new one
     ret = alloc_entry();
     if(ret < 0)
         //no free entries. error
         return -SN_ERR_RESOURCES;
 
-    //fill new entry with data
+    //fill new entry with data, and mark in this sessions 'in-use' word
     table[ret].data = *entry;
     entry->session->table_entries |= BIT(ret);
 
     return SN_OK;
 }
 
-// update an existing entry. entire data structure must be valid
+//update an existing entry. entire data structure must be valid
 int SN_Table_update(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
@@ -145,23 +150,18 @@ int SN_Table_update(SN_Table_entry_t* entry) {
         //it doesn't. return an error
         return -SN_ERR_UNEXPECTED;
 
-    //consistency checks to make sure we don't lose information
-    mac_address_t       null_address = {};
-    SN_ECC_public_key_t null_key     = {};
-    if(!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
-        entry->long_address = table[ret].data.long_address;
-    if(entry->short_address == SN_NO_SHORT_ADDRESS)
-        entry->short_address = table[ret].data.short_address;
-    if(!memcmp(&entry->key, &null_key, sizeof(null_key)))
-        entry->key = table[ret].data.key;
-
     //fill entry with data
+    /*XXX: (consistency checks)
+     * There are no consistency checks here because the
+     * expected usage pattern is insert(); lookup(); update();
+     */
     table[ret].data = *entry;
 
     return SN_OK;
 }
 
-// delete an entry. any one of: long address, short address, key, must be valid. note: you're responsible for any certificate storage you've assigned to this entry
+//delete an entry. at least one of: long address, short address, public_key, must be valid.
+// note: you're responsible for any certificate storage you've assigned to this entry. look it up and delete it.
 int SN_Table_delete(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
@@ -179,7 +179,7 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-// (de)associate security metadata. also used to clear
+//(de)associate security metadata. also used to clear
 int SN_Table_associate_metadata(SN_Table_entry_t* entry, SN_Certificate_storage_t* storage) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
@@ -196,7 +196,7 @@ int SN_Table_associate_metadata(SN_Table_entry_t* entry, SN_Certificate_storage_
     return SN_OK;
 }
 
-// lookups can be by address or by public key. first parameter is input, second and third are output
+//lookups can be by address or by public public_key. first parameter is input, second and third are output
 int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
     if(address == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
@@ -218,11 +218,11 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
 
     return SN_OK;
 }
-int SN_Table_lookup_by_key(SN_ECC_public_key_t* key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
-    if(key == NULL || entry == NULL || entry->session == NULL)
+int SN_Table_lookup_by_public_key(SN_ECC_public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
+    if(public_key == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
-    int ret = lookup_by_key(entry->session->table_entries, key);
+    int ret = lookup_by_public_key(entry->session->table_entries, public_key);
     if(ret < 0)
         return -SN_ERR_UNKNOWN;
 
@@ -234,6 +234,7 @@ int SN_Table_lookup_by_key(SN_ECC_public_key_t* key, SN_Table_entry_t* entry, SN
     return SN_OK;
 }
 
+//delete all entries related to a session
 void SN_Table_clear(SN_Session_t* session) {
     if(session == NULL)
         return;
