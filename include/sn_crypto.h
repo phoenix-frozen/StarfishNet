@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #define SN_ECC_key_size 160
+#define SN_AES_key_size 128
 
 //cryptographic types
 typedef struct __attribute__((packed)) SN_ECC_public_key {
@@ -33,6 +34,10 @@ typedef struct __attribute__((packed)) SN_ECDSA_signature {
     uint8_t data[2*SN_ECC_key_size/8];
 } SN_ECDSA_signature_t;
 
+typedef struct SN_AES_key {
+    uint8_t data[SN_AES_key_size/8];
+} SN_AES_key_t;
+
 //certificate-related types
 typedef struct __attribute__((packed)) SN_Certificate {
     struct __attribute__((packed)) {
@@ -50,6 +55,7 @@ typedef struct SN_Certificate_storage {
     SN_Certificate_t contents[];
 } SN_Certificate_storage_t;
 
+//API functions
 int SN_Crypto_generate_keypair ( //generate a new ECC keypair, storing it in the buffer provided
     SN_ECC_keypair_t* keypair
 );
@@ -62,26 +68,21 @@ int SN_Crypto_sign ( //generate an ECDSA signature of data into sigbuf
 );
 
 int SN_Crypto_verify ( //verify an ECDSA signature of data in sigbuf
-    SN_ECC_public_key_t*  key,
+    SN_ECC_public_key_t*  public_key,
     uint8_t*              data,
     int                   data_len,
     SN_ECDSA_signature_t* signature
 );
 
-//TODO: need to know a) what kind of keys we're deriving (AES128, right?), and b) what SHA1 library we're using
-/*
 int SN_Crypto_keyexchange ( //perform an ECDH key agreement
     SN_ECC_public_key_t*  public_key,
     SN_ECC_private_key_t* private_key,
-    SN_ECDH_key_t*        shared_secret
+    SN_AES_key_t*         shared_secret
 );
-*/
 
 //TODO: certificate add/remove
 //TODO: certificate chain validation
 //TODO: report generation
-//TODO: SHA1
-//TODO: AES
 
 #endif /* __SN_CRYPTO_H__ */
 

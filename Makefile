@@ -33,7 +33,7 @@ clean:
 $(OBJS): Makefile
 
 %.d: %.c
-	gcc $(CFLAGS) -MM -o $@ $<
+	$(CC) $(CFLAGS) -MM -o $@ $<
 	sed -i -e "s=^`basename $< .c`.o:=$(patsubst %.d,%.o,$@) $@:=" $@
 
 include $(DEPS)
