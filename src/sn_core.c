@@ -15,8 +15,11 @@
 #define DEFAULT_TX_RETRY_LIMIT 3
 #define DEFAULT_TX_RETRY_TIMEOUT 2500
 
+#ifdef  USE_SHORT_ADDRESSES
 #define FIXED_COORDINATOR_ADDRESS 0x0000
-#define NO_SHORT_ADDRESS          0xFFFE
+#else   //USE_SHORT_ADDRESSES
+#define FIXED_COORDINATOR_ADDRESS 0xFFFE
+#endif  //USE_SHORT_ADDRESSES
 
 #ifndef NDEBUG
 #include <stdio.h>
@@ -48,18 +51,14 @@ static inline uint8_t log2i(uint32_t n) {
 }
 
 typedef struct __attribute__((packed)) beacon_payload {
-    struct __attribute__((packed)) {
-        //protocol ID information
-        uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
-        uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
+    //protocol ID information
+    uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
+    uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
 
-        //device tree metadata
-        uint8_t tree_depth; //maximum tree depth
-        uint8_t tree_position; //depth in the tree of this router
-        int8_t router_capacity; //remaining child slots. negative if children can only be leaves
-    } signed_data;
-
-    SN_ECDSA_signature_t signature;
+    //device tree metadata
+    uint8_t tree_depth; //maximum tree depth
+    uint8_t tree_position; //depth in the tree of this router
+    int8_t  router_capacity; //remaining child slots. negative if children can only be leaves
 
     SN_ECC_public_key_t public_key;
 } beacon_payload_t;
@@ -181,15 +180,14 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
         return -SN_ERR_NULL;
 
     //protocol ID information
-    buffer->signed_data.protocol_id  = STARFISHNET_PROTOCOL_ID;
-    buffer->signed_data.protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    buffer->protocol_id  = STARFISHNET_PROTOCOL_ID;
+    buffer->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
     //routing tree metadata
-    buffer->signed_data.tree_depth      = session->nib.tree_depth;
-    buffer->signed_data.tree_position   = session->nib.tree_position;
-    buffer->signed_data.router_capacity = 0;
+    buffer->tree_depth      = session->nib.tree_depth;
+    buffer->tree_position   = session->nib.tree_position;
+    buffer->router_capacity = 0;
 
     /*TODO: (finish beacon payload)
-     * beacon signature
      * public key
      */
 
@@ -266,8 +264,7 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     session->nib.tree_position    = 0;
     session->nib.tx_retry_limit   = DEFAULT_TX_RETRY_LIMIT;
     session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
-    session->nib.parent_address.type = mac_short_address;
-    session->nib.parent_address.address.ShortAddress = FIXED_COORDINATOR_ADDRESS;
+    session->nib.parent_address.type = mac_no_address;
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
@@ -352,7 +349,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     session->mib.macCoordAddrMode         = mac_short_address;
     session->mib.macCoordShortAddress     = FIXED_COORDINATOR_ADDRESS;
     //... (including setting our short address to the "we don't have a short address" flag value)
-    session->mib.macShortAddress          = NO_SHORT_ADDRESS;
+    session->mib.macShortAddress          = SN_NO_SHORT_ADDRESS;
 
     //configure the radio
 
@@ -482,9 +479,14 @@ static int SN_Message_decode(SN_Message_t* swmessage, SN_Message_internal_t* hwm
 }
 
 //transmit packet, containing one or more messages
-int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, SN_Message_t* buffer, uint8_t packet_handle, uint8_t flags) {
+int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, SN_Message_t* buffer, uint8_t flags) {
     SN_InfoPrintf("enter\n");
     //TODO: flags
+
+    static uint8_t packet_handle = 1;
+
+    if(packet_handle == 0)
+        packet_handle++;
 
     uint8_t max_payload_size = aMaxMACSafePayloadSize;
 
@@ -538,24 +540,26 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         };
 
         //SrcAddr and SrcAddrMode
-        if(session->mib.macShortAddress != NO_SHORT_ADDRESS) {;
-            SN_InfoPrintf("sending from our short address, %x\n", session->mib.macShortAddress);
+        if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
+            SN_DebugPrintf("sending from our short address, %#06x\n", session->mib.macShortAddress);
             primitive.MCPS_DATA_request.SrcAddrMode          = mac_short_address;
             primitive.MCPS_DATA_request.SrcAddr.ShortAddress = session->mib.macShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
-            SN_InfoPrintf("sending from our long address\n");
+            //TODO: this is the most disgusting way to print a MAC address ever invented by man
+            SN_DebugPrintf("sending from our long address, %#10lx\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
             primitive.MCPS_DATA_request.SrcAddrMode = mac_extended_address;
             memcpy(primitive.MCPS_DATA_request.SrcAddr.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
         }
 
         //DstAddr
         if(primitive.MCPS_DATA_request.DstAddrMode == mac_short_address) {
-            SN_InfoPrintf("sending to short address %x\n", dst_addr->address.ShortAddress);
+            SN_DebugPrintf("sending to short address %#06x\n", dst_addr->address.ShortAddress);
             primitive.MCPS_DATA_request.DstAddr.ShortAddress = dst_addr->address.ShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
-            SN_InfoPrintf("sending to long address\n");
+            //TODO: this is the most disgusting way to print a MAC address ever invented by man
+            SN_DebugPrintf("sending to long address %#10lx\n", *(uint64_t*)dst_addr->address.ExtendedAddress);
             assert(primitive.MCPS_DATA_request.DstAddrMode == mac_extended_address);
             memcpy(primitive.MCPS_DATA_request.DstAddr.ExtendedAddress, dst_addr->address.ExtendedAddress, 8);
         }
@@ -610,6 +614,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
         SN_InfoPrintf("waiting for transmission status report from radio...\n");
         const uint8_t tx_confirm[] = { mac_mcps_data_confirm, packet_handle, mac_success };
+        packet_handle++;
         //TODO: make sure we actually interpret MCPS_DATA.confirm
         ret = mac_receive_primitive_exactly(session->mac_session, (mac_primitive_t*)tx_confirm);
         SN_InfoPrintf("received transmission status report\n");
@@ -648,6 +653,19 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         return -SN_ERR_RADIO;
     }
 
+    //print some debugging information
+    if(packet.MCPS_DATA_indication.DstAddrMode == mac_extended_address) {
+        //TODO: this is the most disgusting way to print a MAC address ever invented by man
+        SN_DebugPrintf("received packet to %#10lx\n", *(uint64_t*)packet.MCPS_DATA_indication.DstAddr.ExtendedAddress);
+    } else {
+        SN_DebugPrintf("received packet to %#06x\n", packet.MCPS_DATA_indication.DstAddr.ShortAddress);
+    }
+    if(packet.MCPS_DATA_indication.SrcAddrMode == mac_extended_address) {
+        //TODO: this is the most disgusting way to print a MAC address ever invented by man
+        SN_DebugPrintf("received packet from %#10lx\n", *(uint64_t*)packet.MCPS_DATA_indication.SrcAddr.ExtendedAddress);
+    } else {
+        SN_DebugPrintf("received packet from %#06x\n", packet.MCPS_DATA_indication.SrcAddr.ShortAddress);
+    }
     SN_InfoPrintf("received packet containing %d-byte payload\n", packet.MCPS_DATA_indication.msduLength);
 
     SN_DebugPrintf("packet data:\n");
@@ -656,7 +674,10 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     }
     SN_DebugPrintf("end packet data\n");
 
-    //TODO: if in promiscuous mode, retransmit on receive packet for neighbor
+    //TODO: if in promiscuous mode, retransmit on receive packet for neighbor and recurse
+
+    src_addr->type    = packet.MCPS_DATA_indication.SrcAddrMode;
+    src_addr->address = packet.MCPS_DATA_indication.SrcAddr;
 
     //extract data
     SN_InfoPrintf("decoding packet payload...\n");
@@ -714,19 +735,32 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, void (*callback) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata), void* extradata) {
-    mac_primitive_t packet;
+int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, SN_Discovery_callback_t* callback, void* extradata) {
+    SN_InfoPrintf("enter\n");
+    SN_InfoPrintf("performing discovery over %x, in %d ms\n", channel_mask, timeout);
 
-    channel_mask &= 0x07FFF800; //top 5 bits must be zero, bottom 11 bits aren't 2.4GHz
+    if(session == NULL || callback == NULL) {
+        SN_ErrPrintf("session and callback must both be valid\n");
+        return -SN_ERR_NULL;
+    }
+
+    channel_mask &= 0x07FFF800; //top 5 bits don't exist, bottom 11 bits aren't 2.4GHz
+
+    SN_InfoPrintf("adjusted channel mask is %x\n", channel_mask);
+    if(channel_mask == 0) {
+        SN_WarnPrintf("no channels to scan, aborting...\n");
+        return SN_OK;
+    }
 
     //Setup a network scan
+    mac_primitive_t packet;
     packet.type                               = mac_mlme_scan_request;
     packet.MLME_SCAN_request.ScanType         = mac_active_scan;
     packet.MLME_SCAN_request.ScanChannels     = channel_mask;
 
-    //Timeout is in seconds. We need to convert it into a form the radio will understand.
+    //Timeout is in ms. We need to convert it into a form the radio will understand.
     //We're given ms, the radio wants an exponent for a calculation denominated in radio symbols.
-    timeout /= __builtin_popcount(channel_mask); //divide the timeout equally between the channels to scan, which number 11 to 26
+    timeout /= __builtin_popcount(packet.MLME_SCAN_request.ScanChannels); //divide the timeout equally between the channels to scan, which number 11 to 26
     if(timeout * aSymbolsPerSecond_24 / 1000 <= aBaseSuperframeDuration) {
         SN_ErrPrintf("timeout value %u is too short\n", timeout);
         return -SN_ERR_INVALID;
@@ -763,23 +797,27 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         //if we get to here, we're looking at an MLME-BEACON-NOTIFY.indication
         beacon_payload_t* beacon_payload = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
 
-        SN_InfoPrintf("    PID=%#02x, PVER=%#02x\n", beacon_payload->signed_data.protocol_id, beacon_payload->signed_data.protocol_ver);
+        SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
+        if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
+            //TODO: this is the most disgusting way to print a MAC address ever invented by man
+            SN_InfoPrintf("    CoordAddress=%#10lx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
+        } else {
+            SN_InfoPrintf("    CoordAddress=%#06x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress);
+        }
 
         //check that this is a network of the kind we care about
-        if(beacon_payload->signed_data.protocol_id  != STARFISHNET_PROTOCOL_ID)
+        if(beacon_payload->protocol_id  != STARFISHNET_PROTOCOL_ID)
             continue;
-        if(beacon_payload->signed_data.protocol_ver != STARFISHNET_PROTOCOL_VERSION)
+        if(beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION)
             continue;
-
-        //TODO: check signature
 
         memcpy(&ndesc.nearest_neighbor_address.address,        &packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress,   sizeof(ndesc.nearest_neighbor_address.address));
                 ndesc.nearest_neighbor_address.type           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode;
         memcpy(&ndesc.nearest_neighbor_public_key,             &beacon_payload->public_key,                                        sizeof(ndesc.nearest_neighbor_public_key));
                 ndesc.pan_id                                  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
                 ndesc.radio_channel                           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
-                ndesc.routing_tree_depth                      = beacon_payload->signed_data.tree_depth;
-                ndesc.routing_tree_position                   = beacon_payload->signed_data.tree_position + 1;
+                ndesc.routing_tree_depth                      = beacon_payload->tree_depth;
+                ndesc.routing_tree_position                   = beacon_payload->tree_position + 1;
 
         callback(session, &ndesc, extradata);
     }

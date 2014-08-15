@@ -29,7 +29,6 @@ int main(int argc, char* argv[]) {
     printf("Init complete. Starting network on channel %d with ID %x...\n", channel, panid);
 
     SN_Network_descriptor_t network = {
-        //coordinator_address            is ignored
         //nearest_neighbor_address       is ignored
         //nearest_neighbor_short_address is ignored
         .pan_id                         = panid,

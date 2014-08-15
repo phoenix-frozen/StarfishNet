@@ -45,6 +45,7 @@ typedef struct SN_Address {
     mac_address_t address;
     mac_address_mode_t type;
 } SN_Address_t;
+#define SN_NO_SHORT_ADDRESS 0xFFFE
 
 typedef struct SN_Nib {
     //routing tree config
@@ -131,7 +132,6 @@ int SN_Transmit ( //transmit packet, containing one or more messages
     SN_Address_t* dst_addr,
     uint8_t*      buffer_size, //IN: length of buffer in MESSAGES; OUT: size of transmission in BYTES
     SN_Message_t* buffer,
-    uint8_t       packet_handle, //TODO: should I just generate this internally?
     uint8_t       flags //ASSOCIATE_IF_NECESSARY, DATA_IS_INSECURE
 );
 int SN_Receive ( //receive a packet, containing one or more messages. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
@@ -141,13 +141,13 @@ int SN_Receive ( //receive a packet, containing one or more messages. Note, Star
     SN_Message_t* buffer
 );
 
-//TODO: interface for nearest-neighbor scan?
+typedef void (SN_Discovery_callback_t) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata);
 int SN_Discover ( //scan for StarfishNet networks. also serves as a nearest-neighbor scan
-    SN_Session_t* session,
-    uint32_t      channel_mask,
-    uint32_t      timeout,
-    void        (*callback) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata), //you get one callback for each network found
-    void*         extradata //will be passed to the callback
+    SN_Session_t*            session,
+    uint32_t                 channel_mask,
+    uint32_t                 timeout,  //in ms
+    SN_Discovery_callback_t* callback, //you get one callback for each network found
+    void*                    extradata //will be passed to the callback
 );
 
 int SN_Start ( //start a new StarfishNet network as coordinator

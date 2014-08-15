@@ -40,6 +40,13 @@ static int lookup_by_key(table_bitmap_t limit, SN_ECC_public_key_t* key) {
     if(key == NULL)
         return -1;
 
+    //TODO: uncomment this once crypto is switched on
+    /*
+    SN_ECC_public_key_t null_key = {};
+    if(!memcmp(&null_key, &entry->key, sizeof(null_key)))
+        return -SN_ERR_INVALID;
+    */
+
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
         if((entry_bitmap & limit & BIT(i)) && !memcmp(key->data, table[i].data.key.data, sizeof(key->data)))
             return i;
@@ -83,15 +90,10 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
-    //TODO: uncomment this once crypto is switched on
-    /*
-    SN_ECC_public_key_t null_key = {};
-    if(!memcmp(&null_key, &entry->key, sizeof(null_key)))
-        return -SN_ERR_INVALID;
-    */
+    int ret = -1;
 
     //see if entry already exists
-    int ret = find_entry(entry);
+    ret = find_entry(entry);
     if(ret >= 0)
         //it does. return an error
         return -SN_ERR_UNEXPECTED;
@@ -146,7 +148,7 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-// associate security metadata. also used to clear
+// (de)associate security metadata. also used to clear
 int SN_Table_associate_metadata(SN_Table_entry_t* entry, SN_Certificate_storage_t* storage) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;

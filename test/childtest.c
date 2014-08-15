@@ -67,13 +67,13 @@ int main(int argc, char* argv[]) {
     test_message->data.payload_length = 5;
     memcpy(test_message->data.payload, "test", 5);
 
-    ret = SN_Transmit(&network_session, &network.nearest_neighbor_address, &message_count, test_message, 1, 0);
+    ret = SN_Transmit(&network_session, &network.nearest_neighbor_address, &message_count, test_message, 0);
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);
+    } else {
+        printf("Packet transmission succeeded.\n");
     }
-
-    printf("Packet transmission succeeded.\n");
 
     printf("Test complete. Type \"die\" to clean up and exit.\n");
 
