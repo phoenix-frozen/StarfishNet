@@ -29,6 +29,9 @@ deps: $(DEPS)
 clean:
 	$(RM) $(TARGET).a $(LIBS) $(TEST_BIN) $(OBJS) $(DEPS)
 
+#so that when I change CFLAGS, everything gets rebuilt
+$(OBJS): Makefile
+
 %.d: %.c
 	gcc $(CFLAGS) -MM -o $@ $<
 	sed -i -e "s=^`basename $< .c`.o:=$(patsubst %.d,%.o,$@) $@:=" $@
