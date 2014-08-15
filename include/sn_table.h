@@ -12,8 +12,8 @@
 
 typedef struct SN_Table_entry {
     SN_Session_t*        session;
-    SN_Address_t         address1;
-    SN_Address_t         address2;
+    mac_address_t        long_address; //always in 64-bit mode
+    uint16_t             short_address;
     SN_ECC_public_key_t  key;
 
     uint8_t       is_neighbor;

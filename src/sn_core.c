@@ -419,22 +419,27 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         ret = do_network_start(session, &packet, 0);
     }
 
-    //TODO: another discovery step to fill in the node table?
-
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
         .session = session,
-        //.address1 filled below
-        //.address2 remains empty
+        //.long_address filled below
+        //.short_address filled below
         .is_neighbor = 1,
         //.key filled below
     };
-    memcpy(&parent_table_entry.address1, &network->nearest_neighbor_address, sizeof(parent_table_entry.address1));
+    if(network->nearest_neighbor_address.type == mac_extended_address) {
+        parent_table_entry.long_address  = network->nearest_neighbor_address.address;
+        parent_table_entry.short_address = SN_NO_SHORT_ADDRESS;
+    } else {
+        parent_table_entry.short_address = network->nearest_neighbor_address.address.ShortAddress;
+    }
     memcpy(&parent_table_entry.key, &network->nearest_neighbor_public_key, sizeof(parent_table_entry.key));
     if(ret == SN_OK) {
         SN_InfoPrintf("adding parent to node table...\n");
         ret = SN_Table_insert(&parent_table_entry);
     }
+
+    //TODO: another discovery step to fill in the node table?
 
     //And we're done. Setting up a security association with our new parent is deferred until the first packet exchange.
     if(ret != SN_OK) {

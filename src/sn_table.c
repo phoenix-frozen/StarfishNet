@@ -20,17 +20,28 @@ typedef uint32_t table_bitmap_t;
 static internal_table_entry_t table[TABLE_SIZE];
 static table_bitmap_t entry_bitmap = 0;
 
-static int lookup_by_address(table_bitmap_t limit, SN_Address_t* address) {
+static int lookup_by_long_address(table_bitmap_t limit, mac_address_t* address) {
     if(address == NULL)
         return -1;
 
+    mac_address_t null_address = {};
+    if(!memcmp(address, &null_address, sizeof(null_address)))
+        return -1;
+
+    for(table_bitmap_t i = 0; i < TABLE_SIZE; i++)
+        if((entry_bitmap & limit & BIT(i)) && !memcmp(address, &table[i].data.long_address, sizeof(table[i].data.long_address)))
+            return i;
+
+    return -1;
+}
+
+static int lookup_by_short_address(table_bitmap_t limit, uint16_t address) {
+    if(address == SN_NO_SHORT_ADDRESS)
+        return -1;
+
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
-        if((entry_bitmap & limit & BIT(i))) {
-            if((table[i].data.address1.type == mac_short_address || table[i].data.address1.type == mac_extended_address) && address->type == table[i].data.address1.type && !memcmp(address->address.ExtendedAddress, table[i].data.address1.address.ExtendedAddress, address->type == mac_short_address ? 2 : 8))
-                return i;
-            if((table[i].data.address2.type == mac_short_address || table[i].data.address2.type == mac_extended_address) && address->type == table[i].data.address2.type && !memcmp(address->address.ExtendedAddress, table[i].data.address2.address.ExtendedAddress, address->type == mac_short_address ? 2 : 8))
-                return i;
-        }
+        if((entry_bitmap & limit & BIT(i)) && address == table[i].data.short_address)
+            return i;
     }
 
     return -1;
@@ -56,14 +67,17 @@ static int lookup_by_key(table_bitmap_t limit, SN_ECC_public_key_t* key) {
 }
 
 static int find_entry(SN_Table_entry_t* entry) {
+    if(entry == NULL)
+        return -1;
+
     table_bitmap_t limit = entry->session->table_entries;
     int ret = -1;
 
-    ret = lookup_by_address(limit, &entry->address1);
+    ret = lookup_by_long_address(limit, &entry->long_address);
     if(ret >= 0)
         return ret;
 
-    ret = lookup_by_address(limit, &entry->address2);
+    ret = lookup_by_short_address(limit, entry->short_address);
     if(ret >= 0)
         return ret;
 
@@ -77,7 +91,14 @@ static int find_entry(SN_Table_entry_t* entry) {
 static int alloc_entry() {
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
         if(!(entry_bitmap & BIT(i))) {
+            //found an entry, mark it in use
             entry_bitmap |= BIT(i);
+
+            //clear its data
+            memset(&table[i], 0, sizeof(table[i]));
+            table[i].data.short_address = SN_NO_SHORT_ADDRESS;
+
+            //we're done
             return i;
         }
     }
@@ -106,7 +127,6 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
 
     //fill new entry with data
     table[ret].data = *entry;
-    table[ret].evidence = NULL;
     entry->session->table_entries |= BIT(ret);
 
     return SN_OK;
@@ -117,14 +137,25 @@ int SN_Table_update(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
+    int ret = -1;
+
     //see if entry already exists
-    int ret = find_entry(entry);
+    ret = find_entry(entry);
     if(ret < 0)
         //it doesn't. return an error
         return -SN_ERR_UNEXPECTED;
 
+    //consistency checks to make sure we don't lose information
+    mac_address_t       null_address = {};
+    SN_ECC_public_key_t null_key     = {};
+    if(!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
+        entry->long_address = table[ret].data.long_address;
+    if(entry->short_address == SN_NO_SHORT_ADDRESS)
+        entry->short_address = table[ret].data.short_address;
+    if(!memcmp(&entry->key, &null_key, sizeof(null_key)))
+        entry->key = table[ret].data.key;
+
     //fill entry with data
-    //TODO: consistency checks in update regarding addresses and keys
     table[ret].data = *entry;
 
     return SN_OK;
@@ -170,7 +201,13 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
     if(address == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
-    int ret = lookup_by_address(entry->session->table_entries, address);
+    int ret = -1;
+
+    if(address->type == mac_extended_address) {
+        ret = lookup_by_long_address(entry->session->table_entries, &address->address);
+    } else {
+        ret = lookup_by_short_address(entry->session->table_entries, address->address.ShortAddress);
+    }
     if(ret < 0)
         return -SN_ERR_UNKNOWN;
 
