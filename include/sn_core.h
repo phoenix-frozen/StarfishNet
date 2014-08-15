@@ -73,6 +73,8 @@ typedef struct SN_Session {
     mac_pib_t            pib;
 
     uint32_t             table_entries; //XXX: HACK! assumes table uses bitfields for allocation
+
+    SN_ECC_keypair_t     device_root_key;
 } SN_Session_t;
 
 typedef struct SN_Network_descriptor {

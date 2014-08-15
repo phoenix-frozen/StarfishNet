@@ -187,9 +187,8 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
     buffer->tree_position   = session->nib.tree_position;
     buffer->router_capacity = 0;
 
-    /*TODO: (finish beacon payload)
-     * public key
-     */
+    //public key
+    buffer->public_key = session->device_root_key.public_key;
 
     return SN_OK;
 }
@@ -456,6 +455,7 @@ typedef SN_Message_t SN_Message_internal_t;
 /*TODO: (list of internal message types)
  * address exchange
  * address change
+ * goodbye
  */
 static int SN_Message_internal_size(SN_Message_internal_t* message) {
     return SN_Message_network_size(message);
