@@ -552,7 +552,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
             //TODO: this is the most disgusting way to print a MAC address ever invented by man
-            SN_DebugPrintf("sending from our long address, %#10lx\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
+            SN_DebugPrintf("sending from our long address, %#018lx\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
             primitive.MCPS_DATA_request.SrcAddrMode = mac_extended_address;
             memcpy(primitive.MCPS_DATA_request.SrcAddr.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
         }
@@ -564,7 +564,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
             //TODO: this is the most disgusting way to print a MAC address ever invented by man
-            SN_DebugPrintf("sending to long address %#10lx\n", *(uint64_t*)dst_addr->address.ExtendedAddress);
+            SN_DebugPrintf("sending to long address %#018lx\n", *(uint64_t*)dst_addr->address.ExtendedAddress);
             assert(primitive.MCPS_DATA_request.DstAddrMode == mac_extended_address);
             memcpy(primitive.MCPS_DATA_request.DstAddr.ExtendedAddress, dst_addr->address.ExtendedAddress, 8);
         }
@@ -661,13 +661,13 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     //print some debugging information
     if(packet.MCPS_DATA_indication.DstAddrMode == mac_extended_address) {
         //TODO: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("received packet to %#10lx\n", *(uint64_t*)packet.MCPS_DATA_indication.DstAddr.ExtendedAddress);
+        SN_DebugPrintf("received packet to %#018lx\n", *(uint64_t*)packet.MCPS_DATA_indication.DstAddr.ExtendedAddress);
     } else {
         SN_DebugPrintf("received packet to %#06x\n", packet.MCPS_DATA_indication.DstAddr.ShortAddress);
     }
     if(packet.MCPS_DATA_indication.SrcAddrMode == mac_extended_address) {
         //TODO: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("received packet from %#10lx\n", *(uint64_t*)packet.MCPS_DATA_indication.SrcAddr.ExtendedAddress);
+        SN_DebugPrintf("received packet from %#018lx\n", *(uint64_t*)packet.MCPS_DATA_indication.SrcAddr.ExtendedAddress);
     } else {
         SN_DebugPrintf("received packet from %#06x\n", packet.MCPS_DATA_indication.SrcAddr.ShortAddress);
     }
@@ -805,10 +805,12 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
         if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
             //TODO: this is the most disgusting way to print a MAC address ever invented by man
-            SN_InfoPrintf("    CoordAddress=%#10lx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
+            SN_InfoPrintf("    CoordAddress=%#018lx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
         } else {
             SN_InfoPrintf("    CoordAddress=%#06x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress);
         }
+        //TODO: this is the most disgusting way to print a key ever invented by man
+        SN_InfoPrintf("    key=%#018lx%016lx%08x\n", *(uint64_t*)beacon_payload->public_key.data, *(((uint64_t*)beacon_payload->public_key.data) + 1), *(((uint32_t*)beacon_payload->public_key.data) + 4));
 
         //check that this is a network of the kind we care about
         if(beacon_payload->protocol_id  != STARFISHNET_PROTOCOL_ID)

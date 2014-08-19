@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include "sn_core.h"
+#include "sn_crypto.h"
 #include "sn_status.h"
 
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
@@ -18,14 +19,22 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    int rv = 0;
+    int ret = SN_OK;
+
+    printf("Generating master keypair...\n");
 
     SN_ECC_keypair_t master_keypair;
+    ret = SN_Crypto_generate_keypair(&master_keypair);
+
+    if(ret != SN_OK) {
+        printf("Key generation failed: %d\n", -ret);
+        return -1;
+    }
 
     printf("Initialising StarfishNet...\n");
 
     SN_Session_t network_session;
-    int ret = SN_Init(&network_session, &master_keypair, argv[1]);
+    ret = SN_Init(&network_session, &master_keypair, argv[1]);
 
     if(ret != SN_OK) {
         printf("StarfishNet initialisation failed: %d\n", -ret);
@@ -90,5 +99,5 @@ int main(int argc, char* argv[]) {
 
 main_exit:
     SN_Destroy(&network_session);
-    return rv;
+    return ret;
 }

@@ -15,12 +15,22 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    int ret = SN_OK;
+
+    printf("Generating master keypair...\n");
+
     SN_ECC_keypair_t master_keypair;
+    ret = SN_Crypto_generate_keypair(&master_keypair);
+
+    if(ret != SN_OK) {
+        printf("Key generation failed: %d\n", -ret);
+        return -1;
+    }
 
     printf("Initialising StarfishNet...\n");
 
     SN_Session_t network_session;
-    int ret = SN_Init(&network_session, &master_keypair, argv[1]);
+    ret = SN_Init(&network_session, &master_keypair, argv[1]);
 
     if(ret != SN_OK) {
         printf("StarfishNet initialisation failed: %d\n", -ret);
@@ -42,8 +52,7 @@ int main(int argc, char* argv[]) {
 
     if(ret != SN_OK) {
         printf("Network start failed: %d\n", -ret);
-        SN_Destroy(&network_session);
-        return -1;
+        goto main_exit;
     }
 
     printf("Network start complete. Attempting to receive packet.\n");
@@ -72,6 +81,7 @@ int main(int argc, char* argv[]) {
 
     printf("Instruction received. Dying.\n");
 
+main_exit:
     SN_Destroy(&network_session);
-    return 0;
+    return ret;
 }
