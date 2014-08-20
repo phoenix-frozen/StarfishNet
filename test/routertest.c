@@ -1,15 +1,19 @@
-#include <assert.h>
 #include <stdio.h>
+#include <assert.h>
 #include <string.h>
+#include <unistd.h>
 #include <stdlib.h>
 
 #include "sn_core.h"
+#include "sn_crypto.h"
 #include "sn_status.h"
 
-int main(int argc, char* argv[]) {
-    const int          channel = 0xb;
-    const mac_pan_id_t panid   = 0xcafe;
+static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
+    printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
+    *((SN_Network_descriptor_t*)extradata) = *network;
+}
 
+int main(int argc, char* argv[]) {
     if(argc != 2) {
         printf("Usage: %s <radio device>\n", argv[0]);
         return -1;
@@ -41,37 +45,31 @@ int main(int argc, char* argv[]) {
 
     printf("MAC address is %#018lx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
 
-    printf("Starting network on channel %d with ID %x...\n", channel, panid);
+    printf("Scanning for networks...\n");
 
-    SN_Network_descriptor_t network = {
-        //nearest_neighbor_address       is ignored
-        //nearest_neighbor_short_address is ignored
-        .pan_id                         = panid,
-        .radio_channel                  = channel,
-        .routing_tree_depth             = 2,
-        //routing_tree_position          is ignored
-    };
-
-    ret = SN_Start(&network_session, &network);
+    SN_Network_descriptor_t network = {};
+    ret = SN_Discover(&network_session, ~0, 1000, &network_discovered, (void*)&network);
 
     if(ret != SN_OK) {
-        printf("Network start failed: %d\n", -ret);
+        printf("Network discovery failed: %d\n", -ret);
         goto main_exit;
     }
 
-    printf("Network start complete. Attempting to receive packet.\n");
+    if(network.radio_channel == 0) {
+        printf("No networks found.\n");
+        goto main_exit;
+    }
 
-    uint8_t recvbuf_size = sizeof(struct SN_Data_message) + 5;
-    SN_Message_t* recvbuf = malloc(recvbuf_size);
-    SN_Address_t srcaddr;
+    printf("Network discovery complete. Joining network ID %x on channel %d.\n", network.pan_id, network.radio_channel);
 
-    ret = SN_Receive(&network_session, &srcaddr, &recvbuf_size, recvbuf);
+    ret = SN_Join(&network_session, &network, 0);
 
     if(ret != SN_OK) {
-        printf("Packet receive failed: %d\n", -ret);
-    } else {
-        printf("Packet received: \"%s\"\n", recvbuf->data.payload);
+        printf("Network join failed: %d\n", -ret);
+        goto main_exit;
     }
+
+    printf("Network joining complete.\n");
 
     printf("Test complete. Type \"die\" to clean up and exit.\n");
 

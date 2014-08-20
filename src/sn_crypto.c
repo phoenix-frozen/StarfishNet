@@ -1,4 +1,5 @@
 #include <string.h>
+#include <assert.h>
 
 #include "sn_crypto.h"
 #include "sn_status.h"
@@ -12,19 +13,19 @@
 //libsha1
 #include "libsha1.h"
 
-#if !(SN_ECC_key_size/8 == uECC_BYTES)
+#if !(SN_PK_key_size == uECC_BYTES)
 #error "uECC and StarfishNet disagree on ECC key size!"
-#endif //!(SN_ECC_key_size/8 == uECC_BYTES)
+#endif //!(SN_PK_key_size == uECC_BYTES)
 
 typedef struct SN_SHA1_hash {
     uint8_t data[SHA1_DIGEST_SIZE];
 } SN_SHA1_hash_t;
 
 typedef struct SN_ECC_unpacked_public_key {
-    uint8_t data[2*SN_ECC_key_size/8];
+    uint8_t data[SN_PK_key_size * 2];
 } SN_ECC_unpacked_public_key_t;
 
-int SN_Crypto_generate_keypair(SN_ECC_keypair_t* keypair) {
+int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
     SN_InfoPrintf("enter\n");
 
     if(keypair == NULL) {
@@ -48,7 +49,7 @@ int SN_Crypto_generate_keypair(SN_ECC_keypair_t* keypair) {
 }
 
 
-int SN_Crypto_sign(SN_ECC_private_key_t* private_key, uint8_t* data, int data_len, SN_ECDSA_signature_t* signature) {
+int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, int data_len, SN_Signature_t* signature) {
     SN_InfoPrintf("enter\n");
 
     if(private_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -57,7 +58,7 @@ int SN_Crypto_sign(SN_ECC_private_key_t* private_key, uint8_t* data, int data_le
     }
 
     //hash data
-    SN_SHA1_hash_t hashbuf;
+    SN_Hash_t hashbuf;
     sha1(hashbuf.data, data, data_len);
 
     //generate signature
@@ -72,7 +73,7 @@ int SN_Crypto_sign(SN_ECC_private_key_t* private_key, uint8_t* data, int data_le
     return SN_OK;
 }
 
-int SN_Crypto_verify(SN_ECC_public_key_t* public_key, uint8_t* data, int data_len, SN_ECDSA_signature_t* signature) {
+int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, int data_len, SN_Signature_t* signature) {
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -100,8 +101,7 @@ int SN_Crypto_verify(SN_ECC_public_key_t* public_key, uint8_t* data, int data_le
     return SN_OK;
 }
 
-
-int SN_Crypto_keyexchange(SN_ECC_public_key_t* public_key, SN_ECC_private_key_t* private_key, SN_AES_key_t* shared_secret) {
+int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* private_key, SN_Kex_result_t* shared_secret) {
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || private_key == NULL || shared_secret == NULL) {
@@ -114,19 +114,15 @@ int SN_Crypto_keyexchange(SN_ECC_public_key_t* public_key, SN_ECC_private_key_t*
     uECC_decompress(public_key->data, unpacked_public_key.data);
 
     //do ECDH
-    SN_ECC_private_key_t raw_shared_secret;
+    SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
     int ret = uECC_shared_secret(unpacked_public_key.data, private_key->data, raw_shared_secret.data);
     if(ret == 0) {
         SN_ErrPrintf("error performing key agreement\n");
         return -SN_ERR_KEYGEN;
     }
 
-    //hash resultant secret
-    SN_SHA1_hash_t       hashed_shared_secret;
-    sha1(hashed_shared_secret.data, raw_shared_secret.data, sizeof(raw_shared_secret.data));
-
-    //output new shared secret
-    memcpy(shared_secret->data, hashed_shared_secret.data, sizeof(shared_secret->data));
+    //hash and output resultant secret
+    sha1(shared_secret->raw.data, raw_shared_secret.data, sizeof(raw_shared_secret.data));
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

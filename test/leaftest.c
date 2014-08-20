@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
 
     printf("Generating master keypair...\n");
 
-    SN_ECC_keypair_t master_keypair;
+    SN_Keypair_t master_keypair;
     ret = SN_Crypto_generate_keypair(&master_keypair);
 
     if(ret != SN_OK) {
@@ -41,10 +41,14 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    printf("Init complete. Scanning for networks...\n");
+    printf("Init complete. Printing MAC address:\n");
+
+    printf("MAC address is %#018lx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
+
+    printf("Scanning for networks...\n");
 
     SN_Network_descriptor_t network = {};
-    ret = SN_Discover(&network_session, ~0, 1000, &network_discovered, (void*)&network);
+    ret = SN_Discover(&network_session, ~0, 10000, &network_discovered, (void*)&network);
 
     if(ret != SN_OK) {
         printf("Network discovery failed: %d\n", -ret);
@@ -77,7 +81,7 @@ int main(int argc, char* argv[]) {
     test_message->data.payload_length = 5;
     memcpy(test_message->data.payload, "test", 5);
 
-    ret = SN_Transmit(&network_session, &network.nearest_neighbor_address, &message_count, test_message, 0);
+    ret = SN_Transmit(&network_session, &network.nearest_neighbor_address, &message_count, test_message);
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);

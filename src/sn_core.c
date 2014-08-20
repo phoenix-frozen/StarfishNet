@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "mac802154.h"
+#include "libsha1.h"
 #include "sn_core.h"
 #include "sn_status.h"
 #include "sn_table.h"
@@ -60,35 +61,10 @@ typedef struct __attribute__((packed)) beacon_payload {
     uint8_t tree_position; //depth in the tree of this router
     int8_t  router_capacity; //remaining child slots. negative if children can only be leaves
 
-    SN_ECC_public_key_t public_key;
+    SN_Public_key_t public_key;
 } beacon_payload_t;
 
 #define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
-
-int SN_Message_memory_size(SN_Message_t* message) {
-    assert(message != NULL);
-
-    if(message == NULL)
-        return -SN_ERR_NULL;
-
-    switch(message->type) {
-        case SN_Data_message:
-            return sizeof(message->data)            + message->data.payload_length;
-
-        case SN_Evidence_message:
-            return sizeof(message->evidence);
-
-        case SN_Address_request:
-            return sizeof(message->address_request);
-
-        default:
-            return 1;
-    }
-}
-int SN_Message_network_size(SN_Message_t* message) {
-    //TODO: writeme
-    return SN_Message_memory_size(message);
-}
 
 static int mac_reset_radio(SN_Session_t* session, mac_primitive_t* packet) {
     SN_InfoPrintf("enter\n");
@@ -450,43 +426,130 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     return ret;
 }
 
-//TODO: these are placeholders until I write the real code
-typedef SN_Message_t SN_Message_internal_t;
-/*TODO: (list of internal message types)
- * address exchange
- * address change
- * goodbye
- */
+typedef enum {
+    /* SN_Message_t (reproduced for convenience)
+    SN_Data_message,       //standard data message
+    SN_Evidence_message,   //send one or more certificates to a StarfishNet node, usually as evidence of an attribute
+    SN_Associate_request,  //start a key-exchange
+    SN_Associate_reply,    //finishes the kex, includes a challenge
+    SN_Dissociate_request, //dissociate from a node. implicitly invalidates any short address(es) we've taken from it, and revokes those of our children if needed
+    SN_Address_request,    //request a short address from a neighboring router. Must be bundled with an ASSOCIATE request if an association doesn't already exist (and, in this event, is sent in plaintext)
+    SN_Address_release,    //release our short address. if received, handled entirely by StarfishNet, never sent to a higher layer
+    */
+    SN_Associate_finalise          //respond to the challenge with a challenge of our own
+        = SN_End_of_message_types,
+    SN_Address_grant,              //used by a router to assign a short address to its child
+    SN_Address_exchange_message,   //inform a StarfishNet node of our short address
+    SN_Address_change_notify,      //inform a StarfishNet node that our short address has changed
+
+    SN_End_of_internal_message_types
+} SN_Message_internal_type_t;
+
+typedef union SN_Message_internal {
+    //XXX: if you change this, check that SN_Message_network_size is still safe
+    uint8_t type;                //SN_Message_type_t
+
+    struct __attribute__((packed)) SN_Data_message data;
+
+    struct __attribute__((packed)) SN_Evidence_message evidence;
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        SN_Public_key_t public_key;
+    } associate_request;
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        uint8_t         finalise_now;
+        SN_Public_key_t public_key;
+        SN_Hash_t       challenge1;
+    } associate_reply;
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        SN_AES_key_id_t challenge2;
+    } associate_finalise;
+
+    struct __attribute__((packed)) {
+        uint8_t type;             //SN_Message_type_t
+        uint8_t is_block_request; //1 if it's a request for an address block, 0 if it's for a single address
+    } address_request;
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        uint8_t         block_size; //size of address block being granted. power of 2
+        uint16_t        address;
+    } address_grant;
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        uint16_t        address;
+    } address_message; //used for Address_release, Address_exchange, and Address_change
+} SN_Message_internal_t;
+
 static int SN_Message_internal_size(SN_Message_internal_t* message) {
-    return SN_Message_network_size(message);
-}
-static int SN_Message_encode(SN_Message_internal_t* hwmessage, SN_Message_t* swmessage) {
-    if(swmessage == NULL || hwmessage == NULL)
+    assert(message != NULL);
+    //XXX: if you change this, check that SN_Message_network_size is still safe
+
+    if(message == NULL)
         return -SN_ERR_NULL;
 
-    int ret = SN_Message_memory_size(swmessage);
-    if(ret < 0)
-        return ret;
+    switch(message->type) {
+        case SN_Data_message:
+            return sizeof(message->data)               + message->data.payload_length;
 
-    memcpy(hwmessage, swmessage, ret);
-    return SN_OK;
+        case SN_Evidence_message:
+            return sizeof(message->evidence);
+
+        case SN_Associate_request:
+            return sizeof(message->associate_request);
+
+        case SN_Associate_reply:
+            return sizeof(message->associate_reply);
+
+        case SN_Associate_finalise:
+            return sizeof(message->associate_finalise);
+
+        case SN_Address_request:
+            return sizeof(message->address_request);
+
+        case SN_Address_grant:
+            return sizeof(message->address_grant);
+
+        case SN_Address_release:
+        case SN_Address_exchange_message:
+        case SN_Address_change_notify:
+            return sizeof(message->address_message);
+
+        default:
+            return 1;
+    }
 }
-static int SN_Message_decode(SN_Message_t* swmessage, SN_Message_internal_t* hwmessage) {
-    if(swmessage == NULL || hwmessage == NULL)
+int SN_Message_memory_size(SN_Message_t* message) {
+    assert(message != NULL);
+
+    if(message == NULL)
         return -SN_ERR_NULL;
 
-    int ret = SN_Message_internal_size(hwmessage);
-    if(ret < 0)
-        return ret;
+    switch(message->type) {
+        case SN_Data_message:
+            return sizeof(message->data)               + message->data.payload_length;
 
-    memcpy(swmessage, hwmessage, ret);
-    return SN_OK;
+        case SN_Evidence_message:
+            return sizeof(message->evidence);
+
+        default:
+            return 1;
+    }
+}
+int SN_Message_network_size(SN_Message_t* message) {
+    //XXX: this is currently safe by inspection
+    return SN_Message_internal_size((SN_Message_internal_t*)message);
 }
 
 //transmit packet, containing one or more messages
-int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, SN_Message_t* buffer, uint8_t flags) {
+int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, SN_Message_t* buffer) {
     SN_InfoPrintf("enter\n");
-    //TODO: flags
 
     static uint8_t packet_handle = 1;
 
@@ -495,13 +558,24 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
     uint8_t max_payload_size = aMaxMACSafePayloadSize;
 
-    if(session == NULL || dst_addr == NULL || buffer == NULL || buffer_size == NULL) {
+    if(session == NULL || dst_addr == NULL || buffer_size == NULL || (buffer == NULL && *buffer_size != 0)) {
         SN_ErrPrintf("session, dst_addr, buffer, and buffer_size must all be valid");
         return -SN_ERR_NULL;
     }
 
     if(packet_handle == 0) {
         SN_ErrPrintf("packet_handle must be non-zero\n");
+        return -SN_ERR_INVALID;
+    }
+
+    //validity check on address
+    mac_address_t null_address = {};
+    if(
+            (dst_addr->type == mac_short_address && dst_addr->address.ShortAddress == SN_NO_SHORT_ADDRESS)
+            ||
+            (dst_addr->type == mac_extended_address && memcmp(dst_addr->address.ExtendedAddress, null_address.ExtendedAddress, sizeof(null_address)) == 0)
+      ) {
+        SN_ErrPrintf("attempting to send to invalid address. aborting\n");
         return -SN_ERR_INVALID;
     }
 
@@ -524,6 +598,55 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         }
     }
 
+    SN_InfoPrintf("consulting neighbor table...\n");
+    SN_Table_entry_t table_entry = {
+        .session       = session,
+        .short_address = SN_NO_SHORT_ADDRESS,
+    };
+    int ret = SN_Table_lookup_by_address(dst_addr, &table_entry, NULL);
+    if(ret != SN_OK) { //node isn't in node table, so insert it
+        SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
+
+        if(dst_addr->type == mac_short_address)
+            table_entry.short_address = dst_addr->address.ShortAddress;
+        else
+            table_entry.long_address  = dst_addr->address;
+
+        ret = SN_Table_insert(&table_entry);
+        if(ret != SN_OK) {
+            SN_ErrPrintf("cannot allocate entry in node table, aborting.\n");
+            return -SN_ERR_RESOURCES;
+        }
+    }
+
+#define REQUIRE_MESSAGE_TYPE(x, errstring) if(buffer->type != (x)) { SN_ErrPrintf("%s\n", errstring); return -SN_ERR_DISALLOWED; }
+    switch(table_entry.state) {
+        case SN_None:
+            REQUIRE_MESSAGE_TYPE(SN_Associate_request, "first message to an unassociated node must be an Associate_request");
+
+        case SN_Awaiting_reply:
+            REQUIRE_MESSAGE_TYPE(SN_Associate_request, "cannot send messages to a node while waiting for its Associate_reply");
+
+        case SN_Awaiting_finalise:
+            //we disallow message transmission other than resending Associate_reply, in case the earlier reply was corrupted
+            REQUIRE_MESSAGE_TYPE(SN_Associate_reply,   "cannot send messages to a node while waiting for its Associate_finalise");
+
+        case SN_Send_finalise:
+            {
+                //if our associate with this node is in the send_finalise state, send a finalise message
+                uint8_t temp = SN_Associate_finalise;
+                payload_length += SN_Message_network_size((SN_Message_t*)&temp); //XXX: HACK HACK!
+            }
+            //fallthrough here is deliberate, because Send_finalise is a kind of Associated
+
+        case SN_Associated:
+            break;
+
+        default:
+            assert(0); //something horrible has happened
+    }
+#undef REQUIRE_MESSAGE_TYPE
+
     if(payload_length > 0) {
         payload_length += 2; //actual MSDU will have two metadata bytes at the start
 
@@ -545,13 +668,13 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         };
 
         //SrcAddr and SrcAddrMode
-        if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
+        if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS && buffer->type != SN_Associate_request && buffer->type != SN_Address_exchange_message) {;
             SN_DebugPrintf("sending from our short address, %#06x\n", session->mib.macShortAddress);
             primitive.MCPS_DATA_request.SrcAddrMode          = mac_short_address;
             primitive.MCPS_DATA_request.SrcAddr.ShortAddress = session->mib.macShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
-            //TODO: this is the most disgusting way to print a MAC address ever invented by man
+            //XXX: this is the most disgusting way to print a MAC address ever invented by man
             SN_DebugPrintf("sending from our long address, %#018lx\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
             primitive.MCPS_DATA_request.SrcAddrMode = mac_extended_address;
             memcpy(primitive.MCPS_DATA_request.SrcAddr.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
@@ -563,46 +686,252 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             primitive.MCPS_DATA_request.DstAddr.ShortAddress = dst_addr->address.ShortAddress;
             max_payload_size += 6; //header size decreases by 6 bytes if we're using a short address
         } else {
-            //TODO: this is the most disgusting way to print a MAC address ever invented by man
+            //XXX: this is the most disgusting way to print a MAC address ever invented by man
             SN_DebugPrintf("sending to long address %#018lx\n", *(uint64_t*)dst_addr->address.ExtendedAddress);
             assert(primitive.MCPS_DATA_request.DstAddrMode == mac_extended_address);
             memcpy(primitive.MCPS_DATA_request.DstAddr.ExtendedAddress, dst_addr->address.ExtendedAddress, 8);
         }
 
         //msdu
+        //that's all the metadata, now we generate the payload
         SN_InfoPrintf("generating packet payload...\n");
+
+        //length check first
         if(payload_length > max_payload_size) {
             SN_ErrPrintf("%d-byte payload too big for %u-byte packet\n", payload_length, max_payload_size);
             return -SN_ERR_RESOURCES;
         }
+
+        //protocol ID stuff
         primitive.MCPS_DATA_request.msdu[0] = STARFISHNET_PROTOCOL_ID;
         primitive.MCPS_DATA_request.msdu[1] = STARFISHNET_PROTOCOL_VERSION;
+
+        //this is the same loop as the payload length calculation above, only augmented to actually do the encoding
+        // so reset its counters
         payload_length = 2;
         buffer_position = 0;
+        //if our associate with this node is in the send_finalise state, add a finalise message to the beginning
+        if(table_entry.state == SN_Send_finalise) {
+            SN_InfoPrintf("prefixing finalise message to packet\n");
+            SN_Message_internal_t* finalise_message = (SN_Message_internal_t*)primitive.MCPS_DATA_request.msdu;
+            finalise_message->associate_finalise.type       = SN_Associate_finalise,
+            finalise_message->associate_finalise.challenge2 = table_entry.link_key.key_id,
+
+            payload_length += SN_Message_internal_size(finalise_message);
+        }
+        int should_be_last_message = 0; //flag value to indicate that if we run into certain types of message, we must terminate
+        int dissociate_was_sent = 0;
+        int short_address_was_released = 0;
+        int security_requirements = 1;
         for(int i = 0; i < *buffer_size; i++) {
+            assert(payload_length < primitive.MCPS_DATA_request.msduLength);
+
             SN_Message_t* message = (SN_Message_t*)(((char*)buffer) + buffer_position);
+
+            if(should_be_last_message && message->type != SN_Evidence_message && message->type != SN_Address_exchange_message && message->type != SN_Address_request) {
+                SN_ErrPrintf("attempted to generate a message after a must-terminate message. aborting\n");
+                return -SN_ERR_DISALLOWED;
+            }
+
             int message_memory_size = SN_Message_memory_size(message);
             int message_network_size = SN_Message_network_size(message);
             assert(message_memory_size >= 0);
             assert(message_network_size >= 0);
             //XXX: no error-checking here, because we did this before, so it's guaranteed to succeed
-            SN_InfoPrintf("generating message %d (whose type is %d, and size is %d)\n", i, message->type, message_memory_size);
 
-            int ret = SN_Message_encode((SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_length), message);
-            if(ret != SN_OK) {
-                SN_ErrPrintf("generating message %d failed with %d\n", i, -ret);
-                return ret;
+            //actually do the message encoding
+            SN_InfoPrintf("generating message %d (whose type is %d, and size is %d)\n", i, message->type, message_memory_size);
+            SN_Message_internal_t* out = (SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_length);
+            out->type = message->type;
+            switch(out->type) {
+                case SN_Associate_request:
+                    {
+                        switch(table_entry.state) {
+                            case SN_None:
+                                //generate ephemeral keypair
+                                ret = SN_Crypto_generate_keypair(&table_entry.ephemeral_keypair);
+                                if(ret != SN_OK) {
+                                    SN_ErrPrintf("error %d during key generation, aborting send\n", -ret);
+                                    return ret;
+                                }
+
+                                //update state
+                                table_entry.state = SN_Awaiting_reply;
+
+                                //update node table
+                                ret = SN_Table_update(&table_entry);
+                                if(ret != SN_OK) {
+                                    SN_ErrPrintf("error %d during table update, aborting send\n", -ret);
+                                    return ret;
+                                }
+                                break;
+
+                            case SN_Awaiting_reply:
+                                //just a resend
+                                break;
+
+                            default:
+                                //it is an error to associate with an associated node
+                                SN_ErrPrintf("attempted to associate at inappropriate time\n");
+                                return -SN_ERR_DISALLOWED;
+                        }
+
+                        //send public key
+                        out->associate_request.public_key = table_entry.ephemeral_keypair.public_key;
+                    }
+                    should_be_last_message = 1;
+                    security_requirements  = 0;
+                    break;
+
+
+                case SN_Associate_reply:
+                    {
+                        switch(table_entry.state) {
+                            case SN_None:
+                                //generate ephemeral keypair
+                                ret = SN_Crypto_generate_keypair(&table_entry.ephemeral_keypair);
+                                if(ret != SN_OK) {
+                                    SN_ErrPrintf("error %d during key generation, aborting send\n", -ret);
+                                    return ret;
+                                }
+
+                                //do ECDH
+                                ret = SN_Crypto_key_agreement(&table_entry.key_agreement_key, &table_entry.ephemeral_keypair.private_key, &table_entry.link_key);
+                                if(ret != SN_OK) {
+                                    SN_ErrPrintf("error %d during key agreement, aborting send\n", -ret);
+                                    return ret;
+                                }
+
+                                //update state
+                                table_entry.state = SN_Awaiting_finalise;
+
+                                //update node table
+                                ret = SN_Table_update(&table_entry);
+                                if(ret != SN_OK) {
+                                    SN_ErrPrintf("error %d during table update, aborting send\n", -ret);
+                                    return ret;
+                                }
+
+                                //TODO: allocate and fill radio ACL entry
+
+                                break;
+
+                            case SN_Awaiting_finalise:
+                                //just a resend
+                                break;
+
+                            default:
+                                //it is an error to associate with an associated node
+                                SN_ErrPrintf("attempted to associate_reply at inappropriate time\n");
+                                return -SN_ERR_DISALLOWED;
+                        }
+                    }
+
+                    //send public key
+                    out->associate_request.public_key = table_entry.ephemeral_keypair.public_key;
+                    //send challenge1 (== SHA1(key_id))
+                    sha1(out->associate_reply.challenge1.data, table_entry.link_key.key_id.data, sizeof(table_entry.link_key.key_id.data));
+
+                    should_be_last_message = 1;
+                    security_requirements  = 0;
+                    break;
+
+                case SN_Address_release:
+                    {
+                        //look up our short address
+                        uint16_t short_address = session->mib.macShortAddress;
+
+                        //make sure it's not NO_SHORT_ADDRESS
+                        if(short_address == SN_NO_SHORT_ADDRESS) {
+                            SN_ErrPrintf("no short address to release\n");
+                            return -SN_ERR_UNEXPECTED;
+                        }
+
+                        //make sure destination is our parent
+                        if(
+                                (session->nib.parent_address.type == mac_short_address && session->nib.parent_address.address.ShortAddress != table_entry.short_address)
+                                ||
+                                (session->nib.parent_address.type == mac_extended_address && memcmp(session->nib.parent_address.address.ExtendedAddress, table_entry.long_address.ExtendedAddress, sizeof(session->nib.parent_address.address)) != 0)
+                          ) {
+                            SN_ErrPrintf("address-release must be sent to parent\n");
+                            return -SN_ERR_UNEXPECTED;
+                        }
+
+                        //set short address to NO_SHORT_ADDRESS (and update radio)
+                        short_address_was_released = 1;
+
+                        //send old short address to parent
+                        out->address_message.address = short_address;
+                    }
+                    break;
+
+                case SN_Associate_finalise:
+                    //this is an error
+                    SN_ErrPrintf("don't tell me to send a finalise. I'll do it myself\n");
+                    return -SN_ERR_UNEXPECTED;
+
+                case SN_Address_grant:
+                    //for the moment, this is an error
+                    SN_ErrPrintf("I can't do address grants yet\n");
+                    return -SN_ERR_UNIMPLEMENTED;
+
+                case SN_Address_exchange_message:
+                case SN_Address_change_notify:
+                    out->address_message.address = session->mib.macShortAddress;
+                    break;
+
+                case SN_Address_request:
+                    {
+                        //look up our short address
+                        uint16_t short_address = session->mib.macShortAddress;
+
+                        //make sure it's NO_SHORT_ADDRESS
+                        if(short_address != SN_NO_SHORT_ADDRESS) {
+                            SN_ErrPrintf("no short address to release\n");
+                            return -SN_ERR_UNEXPECTED;
+                        }
+
+                        //make sure destination is our parent
+                        if(
+                                (session->nib.parent_address.type == mac_short_address && session->nib.parent_address.address.ShortAddress != table_entry.short_address)
+                                ||
+                                (session->nib.parent_address.type == mac_extended_address && memcmp(session->nib.parent_address.address.ExtendedAddress, table_entry.long_address.ExtendedAddress, sizeof(session->nib.parent_address.address)) != 0)
+                          ) {
+                            SN_ErrPrintf("address-release must be sent to parent\n");
+                            return -SN_ERR_UNEXPECTED;
+                        }
+
+                        //set is_block_request if we're a router
+                        out->address_request.is_block_request = session->nib.enable_routing;
+                    }
+                    break;
+
+                case SN_Dissociate_request:
+                    short_address_was_released = 1;
+                    dissociate_was_sent = 1;
+                    //fallthrough
+
+                default:
+                    assert(message_memory_size == message_network_size);
+                    memcpy(out, message, message_memory_size);
+                    break;
             }
 
+            //loop upkeep
             payload_length += message_network_size;
             buffer_position += message_memory_size;
         }
+
+        assert(payload_length == primitive.MCPS_DATA_request.msduLength);
 
         SN_DebugPrintf("packet data:\n");
         for(int i = 0; i < primitive.MCPS_DATA_request.msduLength; i += 4) {
             SN_DebugPrintf("%2x %2x %2x %2x\n", primitive.MCPS_DATA_request.msdu[i], primitive.MCPS_DATA_request.msdu[i + 1], primitive.MCPS_DATA_request.msdu[i + 2], primitive.MCPS_DATA_request.msdu[i + 3]);
         }
         SN_DebugPrintf("end packet data\n");
+
+        //TODO: security requirements
+        //TODO: acknowledgement requirements (aligned with security requirements)
 
         SN_InfoPrintf("beginning packet transmission...\n");
         int ret = mac_transmit(session->mac_session, &primitive);
@@ -627,6 +956,9 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             SN_ErrPrintf("wait for transmission status report failed with %d\n", ret);
             return -SN_ERR_RADIO;
         }
+
+        //TODO: if(dissociate_was_sent) do dissociate logic and kill radio ACL entry
+        //TODO: if(short_address_was_released) do short address release logic and reconfigure radio
     }
 
     *buffer_size = (uint8_t)payload_length;
@@ -660,13 +992,13 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
     //print some debugging information
     if(packet.MCPS_DATA_indication.DstAddrMode == mac_extended_address) {
-        //TODO: this is the most disgusting way to print a MAC address ever invented by man
+        //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_DebugPrintf("received packet to %#018lx\n", *(uint64_t*)packet.MCPS_DATA_indication.DstAddr.ExtendedAddress);
     } else {
         SN_DebugPrintf("received packet to %#06x\n", packet.MCPS_DATA_indication.DstAddr.ShortAddress);
     }
     if(packet.MCPS_DATA_indication.SrcAddrMode == mac_extended_address) {
-        //TODO: this is the most disgusting way to print a MAC address ever invented by man
+        //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_DebugPrintf("received packet from %#018lx\n", *(uint64_t*)packet.MCPS_DATA_indication.SrcAddr.ExtendedAddress);
     } else {
         SN_DebugPrintf("received packet from %#06x\n", packet.MCPS_DATA_indication.SrcAddr.ShortAddress);
@@ -697,7 +1029,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     int payload_length = 2;
     int buffer_position = 0;
     for(int i = 0; payload_length < packet.MCPS_DATA_indication.msduLength; i++) {
-        SN_Message_internal_t* message = (SN_Message_t*)(packet.MCPS_DATA_indication.msdu + payload_length);
+        SN_Message_internal_t* message = (SN_Message_internal_t*)(packet.MCPS_DATA_indication.msdu + payload_length);
 
         int message_network_size = SN_Message_internal_size(message);
         if(message_network_size < 0) {
@@ -717,6 +1049,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
 
         SN_Message_t* decoded_message = (SN_Message_t*)(((char*)buffer) + buffer_position);
+        int SN_Message_decode(SN_Message_t* decoded_message, SN_Message_internal_t* message);
         int ret = SN_Message_decode(decoded_message, message);
         if(ret != SN_OK) {
             SN_ErrPrintf("decoding message %d failed with %d\n", i, -ret);
@@ -804,12 +1137,12 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
         SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
         if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
-            //TODO: this is the most disgusting way to print a MAC address ever invented by man
+            //XXX: this is the most disgusting way to print a MAC address ever invented by man
             SN_InfoPrintf("    CoordAddress=%#018lx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
         } else {
             SN_InfoPrintf("    CoordAddress=%#06x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress);
         }
-        //TODO: this is the most disgusting way to print a key ever invented by man
+        //XXX: this is the most disgusting way to print a key ever invented by man
         SN_InfoPrintf("    key=%#018lx%016lx%08x\n", *(uint64_t*)beacon_payload->public_key.data, *(((uint64_t*)beacon_payload->public_key.data) + 1), *(((uint32_t*)beacon_payload->public_key.data) + 4));
 
         //check that this is a network of the kind we care about
@@ -875,7 +1208,7 @@ int SN_Set_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
 }
 
 //other network-layer driver functions
-int SN_Init(SN_Session_t* session, SN_ECC_keypair_t* master_keypair, char* params) {
+int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
     SN_InfoPrintf("enter\n");
 
     assert(session != NULL);

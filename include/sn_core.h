@@ -33,9 +33,10 @@
  * seeking to guarantee, that might just be enough.  Assuming A and C trust B
  * to vouch for that property.
  *
- * StarfishNet does not use 802.15.4 MAC-layer acknowledgements.  This is
- * because they are insecure.  We instead reimplement this functionality at
- * the network layer.
+ * StarfishNet uses 802.15.4 MAC-layer acknowledgements for all packets
+ * other than those involved in establishing an association.  This is because
+ * each packet in an association transaction depends on the preceding ones,
+ * and thus implicitly acknowledges them.
  */
 
 //TODO: totally ignoring broadcasts for the moment
@@ -50,46 +51,46 @@ typedef struct SN_Address {
 typedef struct SN_Nib {
     //routing tree config
     //globals
-    uint8_t             tree_depth;      //maximum depth of the routing tree
+    uint8_t         tree_depth;      //maximum depth of the routing tree
     //node config
-    uint8_t             tree_position;   //where we are on the routing tree
-    uint8_t             tree_leaf_count; //how much of our address range should be used
-                                         // for leaf nodes (the rest is delegable blocks). power of two.
-    uint8_t             enable_routing;  //used internally to determine whether routing is enabled
+    uint8_t         tree_position;   //where we are on the routing tree
+    uint8_t         tree_leaf_count; //how much of our address range should be used
+                                     // for leaf nodes (the rest is delegable blocks). power of two.
+    uint8_t         enable_routing;  //used internally to determine whether routing is enabled
 
     //retransmission config
-    uint8_t             tx_retry_limit; //number of retransmits before reporting failure
-    uint16_t            tx_retry_timeout; //time to wait between retransmits
+    uint8_t         tx_retry_limit; //number of retransmits before reporting failure
+    uint16_t        tx_retry_timeout; //time to wait between retransmits
 
     //parent pointer
-    SN_Address_t        parent_address;
-    SN_ECC_public_key_t parent_public_key;
+    SN_Address_t    parent_address;
+    SN_Public_key_t parent_public_key;
 } SN_Nib_t;
 
 typedef struct SN_Session {
     mac_session_handle_t mac_session;
-    SN_Nib_t             nib;
-    mac_mib_t            mib;
-    mac_pib_t            pib;
+    SN_Nib_t      nib;
+    mac_mib_t     mib;
+    mac_pib_t     pib;
 
-    uint32_t             table_entries; //XXX: HACK! assumes table uses bitfields for allocation
+    uint32_t      table_entries; //XXX: HACK! assumes table uses bitfields for allocation
 
-    SN_ECC_keypair_t     device_root_key;
+    SN_Keypair_t  device_root_key;
 } SN_Session_t;
 
 typedef struct SN_Network_descriptor {
-    uint16_t             pan_id;
-    uint8_t              radio_channel;
-    uint8_t              routing_tree_depth;
-    uint8_t              routing_tree_position;
+    uint16_t        pan_id;
+    uint8_t         radio_channel;
+    uint8_t         routing_tree_depth;
+    uint8_t         routing_tree_position;
 
-    SN_Address_t         nearest_neighbor_address;
-    SN_ECC_public_key_t  nearest_neighbor_public_key;
+    SN_Address_t    nearest_neighbor_address;
+    SN_Public_key_t nearest_neighbor_public_key;
 } SN_Network_descriptor_t;
 
 //comments indicate what happens when we try to send one of these
 //the same thing in mirror if we receive one
-typedef enum {
+enum SN_Message_type {
     SN_Data_message,       //standard data message
     SN_Evidence_message,   //send one or more certificates to a StarfishNet node, usually as evidence of an attribute
     SN_Associate_request,  //associate with another StarfishNet node
@@ -99,27 +100,31 @@ typedef enum {
     SN_Address_release,    //release our short address. if received, handled entirely by StarfishNet, never sent to a higher layer
 
     SN_End_of_message_types
-} SN_Message_type_t;
+};
+
+//StarfishNet node association states
+enum SN_Relationship_state {
+    SN_None,
+    SN_Awaiting_reply,
+    SN_Awaiting_finalise,
+    SN_Send_finalise,
+    SN_Associated
+};
 
 //StarfishNet messages -- memory format
 typedef union SN_Message {
     uint8_t type;                 //SN_Message_type_t
 
-    struct SN_Data_message {
+    struct __attribute__((packed)) SN_Data_message {
         uint8_t type;             //SN_Message_type_t
         uint8_t payload_length;
         uint8_t payload[];
     } data;
 
-    struct SN_Evidence_message {
+    struct __attribute__((packed)) SN_Evidence_message {
         uint8_t          type;    //SN_Message_type_t
         SN_Certificate_t evidence;
     } evidence;
-
-    struct SN_Address_request {
-        uint8_t type;             //SN_Message_type_t
-        uint8_t is_block_request; //1 if it's a request for an address block, 0 if it's for a single address
-    } address_request;
 } SN_Message_t;
 
 int SN_Message_memory_size (
@@ -133,8 +138,7 @@ int SN_Transmit ( //transmit packet, containing one or more messages
     SN_Session_t* session,
     SN_Address_t* dst_addr,
     uint8_t*      buffer_size, //IN: length of buffer in MESSAGES; OUT: size of transmission in BYTES
-    SN_Message_t* buffer,
-    uint8_t       flags //ASSOCIATE_IF_NECESSARY, DATA_IS_INSECURE
+    SN_Message_t* buffer
 );
 int SN_Receive ( //receive a packet, containing one or more messages. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
     SN_Session_t* session,
@@ -179,7 +183,7 @@ int SN_Set_configuration ( //copies the configuration provided into session, upd
 //other network-layer driver functions
 int SN_Init (     //initialise a new StarfishNet session, passing params onto the MAC layer
     SN_Session_t* session,
-    SN_ECC_keypair_t* master_keypair,
+    SN_Keypair_t* master_keypair,
     char* params
 );
 void SN_Destroy ( //bring down this session, resetting the radio in the process

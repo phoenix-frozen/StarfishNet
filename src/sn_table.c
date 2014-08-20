@@ -47,11 +47,11 @@ static int lookup_by_short_address(table_bitmap_t limit, uint16_t address) {
     return -1;
 }
 
-static int lookup_by_public_key(table_bitmap_t limit, SN_ECC_public_key_t* public_key) {
+static int lookup_by_public_key(table_bitmap_t limit, SN_Public_key_t* public_key) {
     if(public_key == NULL)
         return -1;
 
-    SN_ECC_public_key_t null_key = {};
+    SN_Public_key_t null_key = {};
     if(!memcmp(&null_key, public_key, sizeof(null_key)))
         return -1;
 
@@ -118,7 +118,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
 
     //consistency checks to make sure we don't pollute the table with BS entries
     mac_address_t       null_address = {};
-    SN_ECC_public_key_t null_key     = {};
+    SN_Public_key_t null_key     = {};
     if((!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
      &&(entry->short_address == SN_NO_SHORT_ADDRESS)
      &&(!memcmp(&entry->public_key, &null_key, sizeof(null_key))))
@@ -218,7 +218,7 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
 
     return SN_OK;
 }
-int SN_Table_lookup_by_public_key(SN_ECC_public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
+int SN_Table_lookup_by_public_key(SN_Public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
     if(public_key == NULL || entry == NULL || entry->session == NULL)
         return -SN_ERR_NULL;
 
