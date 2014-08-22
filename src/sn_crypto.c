@@ -10,16 +10,12 @@
 #define uECC_PLATFORM uECC_x86_64
 #include "uECC.h"
 
-//libsha1
-#include "libsha1.h"
+//polarssl sha1
+#include "polarssl/sha1.h"
 
 #if !(SN_PK_key_size == uECC_BYTES)
 #error "uECC and StarfishNet disagree on ECC key size!"
 #endif //!(SN_PK_key_size == uECC_BYTES)
-
-typedef struct SN_SHA1_hash {
-    uint8_t data[SHA1_DIGEST_SIZE];
-} SN_SHA1_hash_t;
 
 typedef struct SN_ECC_unpacked_public_key {
     uint8_t data[SN_PK_key_size * 2];
@@ -59,7 +55,7 @@ int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, int data_len, S
 
     //hash data
     SN_Hash_t hashbuf;
-    sha1(hashbuf.data, data, data_len);
+    sha1(data, data_len, hashbuf.data);
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
@@ -86,8 +82,8 @@ int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, int data_len, S
     uECC_decompress(public_key->data, unpacked_public_key.data);
 
     //hash data
-    SN_SHA1_hash_t hashbuf;
-    sha1(hashbuf.data, data, data_len);
+    SN_Hash_t hashbuf;
+    sha1(data, data_len, hashbuf.data);
 
     //verify signature
     //XXX: this works because the hash and keys are the same length
@@ -122,7 +118,7 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
     }
 
     //hash and output resultant secret
-    sha1(shared_secret->raw.data, raw_shared_secret.data, sizeof(raw_shared_secret.data));
+    sha1(raw_shared_secret.data, sizeof(raw_shared_secret.data), shared_secret->raw.data);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
