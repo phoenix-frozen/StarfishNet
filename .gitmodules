@@ -5,3 +5,6 @@
 [submodule "extern/libsha1"]
 	path = extern/libsha1
 	url = git@github.com:dottedmag/libsha1.git
+[submodule "extern/polarssl"]
+	path = extern/polarssl
+	url = git@github.com:polarssl/polarssl.git
