@@ -84,7 +84,8 @@ typedef struct SN_Network_descriptor {
     uint8_t         routing_tree_depth;
     uint8_t         routing_tree_position;
 
-    SN_Address_t    nearest_neighbor_address;
+    uint16_t        nearest_neighbor_short_address;
+    mac_address_t   nearest_neighbor_long_address;
     SN_Public_key_t nearest_neighbor_public_key;
 } SN_Network_descriptor_t;
 
@@ -103,12 +104,22 @@ enum SN_Message_type {
 };
 
 //StarfishNet node association states
-enum SN_Relationship_state {
-    SN_None,
+enum SN_Association_state {
+    SN_Unassociated,       //no relationship
+    SN_Associate_received,
     SN_Awaiting_reply,
     SN_Awaiting_finalise,
     SN_Send_finalise,
-    SN_Associated
+    SN_Associated,
+};
+
+//StarfishNet node authentication states
+// (only valid when association state is SN_Associated)
+enum SN_Authentication_state {
+    SN_Unauthenticated, //unauthenticated (ie signature-free) key-exchange has happened
+    SN_Authenticated,   //a binding between the key-exchange key and a signing key has been established
+                        //(either authenticated key-exchange was done originaly, or a later key-exchange authentication message was received)
+    SN_Identified,      //the (authenticated) signing key has been independently verified to belong to the device at a particular MAC address
 };
 
 //StarfishNet messages -- memory format
@@ -125,6 +136,11 @@ typedef union SN_Message {
         uint8_t          type;    //SN_Message_type_t
         SN_Certificate_t evidence;
     } evidence;
+
+    struct SN_Association_message {
+        uint8_t type;
+        uint8_t authenticated;
+    } association;
 } SN_Message_t;
 
 int SN_Message_memory_size (

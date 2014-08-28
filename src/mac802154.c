@@ -331,7 +331,7 @@ static void mac_print_primitive (uint8_t *data, uint8_t length)
 #define GUARANTEE_STRUCT_SIZE(x, sz) _Static_assert(sizeof(x) == sz, #x " is the wrong size")
 
 int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
-    uint8_t buffer[MAC_PRIMITIVE_SIZE + 1]; //1 extra byte for the chunk size
+    uint8_t buffer[sizeof(mac_primitive_t) + 1]; //1 extra byte for the chunk size
     uint8_t chunk_size   = 2; //1 for the size byte, 1 for the type byte
     bool    copy_data_in = 1; //by default, assume the struct matches what the radio wants
 
@@ -673,7 +673,7 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
             return 0;
     }
 
-    assert(chunk_size < MAC_PRIMITIVE_SIZE);
+    assert(chunk_size < sizeof(mac_primitive_t));
     buffer[0] = chunk_size - 1; //-1 so we don't count the size byte
     if(copy_data_in) {
         memcpy(buffer + 1, primitive, chunk_size - 1); //+ 1 to skip size byte
@@ -701,7 +701,7 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
 }
 
 int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
-    uint8_t buffer[MAC_PRIMITIVE_SIZE];
+    uint8_t buffer[sizeof(mac_primitive_t)];
 
     assert(MAC_IS_SESSION_VALID(session));
     if(!MAC_IS_SESSION_VALID(session))
@@ -724,12 +724,12 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
 
     //check data size, and abort if if would be too large or too small
     assert(primitive_header.length > 0);
-    assert(primitive_header.length <= MAC_PRIMITIVE_SIZE);
-    if(primitive_header.length == 0 || primitive_header.length > MAC_PRIMITIVE_SIZE)
+    assert(primitive_header.length <= sizeof(mac_primitive_t));
+    if(primitive_header.length == 0 || primitive_header.length > sizeof(mac_primitive_t))
         return 0;
 
     //Read primitive itself to a temporary buffer for decoding
-    memset(buffer, 0, MAC_PRIMITIVE_SIZE);
+    memset(buffer, 0, sizeof(mac_primitive_t));
     int bytes_read = 0;
     while(bytes_read < primitive_header.length) {
         int retval = read(session.fd, buffer + bytes_read, primitive_header.length - bytes_read);

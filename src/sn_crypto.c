@@ -1,9 +1,9 @@
+#include <sn_crypto.h>
+#include <sn_status.h>
+#include <sn_logging.h>
+
 #include <string.h>
 #include <assert.h>
-
-#include "sn_crypto.h"
-#include "sn_status.h"
-#include "sn_logging.h"
 
 //setup uECC
 #define uECC_CURVE uECC_secp160r1
@@ -123,3 +123,30 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
+
+int SN_Crypto_add_certificate(SN_Certificate_storage_t* storage, SN_Certificate_t* certificate) {
+    SN_InfoPrintf("enter\n");
+
+    if(storage == NULL || certificate == NULL) {
+        SN_ErrPrintf("storage and certificate must be non-NULL\n");
+        return -SN_ERR_NULL;
+    }
+
+    if(SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) != SN_OK) {
+        SN_ErrPrintf("certificate signature verification failed. not adding to repository\n");
+        return -SN_ERR_SIGNATURE;
+    }
+
+    assert(storage->size <= storage->capacity);
+    if(storage->size == storage->capacity) {
+        SN_ErrPrintf("certificate repository is full\n");
+        return -SN_ERR_RESOURCES;
+    }
+
+    storage->contents[storage->size++] = *certificate;
+
+    SN_InfoPrintf("exit\n");
+    return SN_OK;
+}
+
+

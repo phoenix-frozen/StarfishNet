@@ -112,7 +112,16 @@ int SN_Crypto_key_challenge ( //issue a challenge based on the key ID
     SN_Hash_t*       challenge
 );
 
-//TODO: certificate add/remove
+int SN_Crypto_add_certificate( //add a certificate to a storage repository
+    SN_Certificate_storage_t* storage,
+    SN_Certificate_t*         certficate
+);
+
+int SN_Crypto_remove_certificate( //remove a certificate from a storage repository
+    SN_Certificate_storage_t* storage,
+    SN_Certificate_t*         certficate
+);
+
 //TODO: certificate chain validation
 //TODO: report generation
 

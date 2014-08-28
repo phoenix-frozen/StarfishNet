@@ -36,7 +36,7 @@ $(OBJS): Makefile
 	$(CC) $(CFLAGS) -MM -o $@ $<
 	sed -i -e "s=^`basename $< .c`.o:=$(patsubst %.d,%.o,$@) $@:=" $@
 
-include $(DEPS)
+-include $(DEPS)
 
 #generate static library
 $(TARGET).a: $(OBJS)

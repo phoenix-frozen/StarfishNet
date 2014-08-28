@@ -81,7 +81,12 @@ int main(int argc, char* argv[]) {
     test_message->data.payload_length = 5;
     memcpy(test_message->data.payload, "test", 5);
 
-    ret = SN_Transmit(&network_session, &network.nearest_neighbor_address, &message_count, test_message);
+    SN_Address_t address = {
+        .type = mac_extended_address,
+        .address = network.nearest_neighbor_long_address,
+    };
+
+    ret = SN_Transmit(&network_session, &address, &message_count, test_message);
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);

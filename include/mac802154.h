@@ -339,8 +339,7 @@ typedef struct mac_pib {
     uint8_t                    phyCCAMode;
 } mac_pib_t;
 
-#define MAC_PRIMITIVE_SIZE (aMaxPHYPacketSize + 5 * sizeof(mac_address_t)) //there are primitives that can contain up to 5 variable-width address fields
-//TODO: what's the biggest size this can actually be?
+//TODO: what's the biggest size mac_primitive_t can actually be?
 //TODO: some kind of poll()-based isAPacketWaiting() call
 typedef union mac_primitive {
     struct __attribute__((packed)) {
@@ -608,7 +607,7 @@ typedef union mac_primitive {
             } MLME_PROTOCOL_ERROR_indication;
         };
     };
-    uint8_t raw_data[MAC_PRIMITIVE_SIZE];
+    uint8_t raw_data[aMaxPHYPacketSize * 2]; //safe upper bound
 } mac_primitive_t;
 
 const mac_acl_entry_descriptor_t mac_default_ACLEntry;

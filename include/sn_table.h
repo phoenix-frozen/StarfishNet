@@ -21,10 +21,11 @@ typedef struct SN_Table_entry {
     SN_Public_key_t  public_key;
 
     //relationship metadata
-    uint8_t state;
+    uint8_t association_state;
+    uint8_t authentication_state;
 
     SN_Keypair_t     ephemeral_keypair; //generate a new keypair for each transaction
-    SN_Public_key_t  key_agreement_key; //remote party's ephemeral keypair
+    SN_Public_key_t  key_agreement_key; //remote party's ephemeral public key
     SN_Kex_result_t  link_key;          //result of ECDH transaction
 } SN_Table_entry_t;
 
