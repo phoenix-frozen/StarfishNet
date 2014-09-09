@@ -97,6 +97,8 @@ enum SN_Message_type {
     SN_Associate_request,  //associate with another StarfishNet node
     SN_Associate_reply,    //respond to a StarfishNet node's association request
     SN_Dissociate_request, //dissociate from a node. implicitly invalidates any short address(es) we've taken from it, and revokes those of our children if needed
+    SN_Authentication_message, //authenticate a key-exchange key
+    SN_Node_details,       //inform a StarfishNet node of our particulars. most importantly, our public key
     SN_Address_request,    //request a short address from a neighboring router. Must be bundled with an ASSOCIATE request if an association doesn't already exist (and, in this event, is sent in plaintext)
     SN_Address_release,    //release our short address. if received, handled entirely by StarfishNet, never sent to a higher layer
 
@@ -113,15 +115,6 @@ enum SN_Association_state {
     SN_Associated,
 };
 
-//StarfishNet node authentication states
-// (only valid when association state is SN_Associated)
-enum SN_Authentication_state {
-    SN_Unauthenticated, //unauthenticated (ie signature-free) key-exchange has happened
-    SN_Authenticated,   //a binding between the key-exchange key and a signing key has been established
-                        //(either authenticated key-exchange was done originaly, or a later key-exchange authentication message was received)
-    SN_Identified,      //the (authenticated) signing key has been independently verified to belong to the device at a particular MAC address
-};
-
 //StarfishNet messages -- memory format
 typedef union SN_Message {
     uint8_t type;                 //SN_Message_type_t
@@ -136,11 +129,6 @@ typedef union SN_Message {
         uint8_t          type;    //SN_Message_type_t
         SN_Certificate_t evidence;
     } evidence;
-
-    struct SN_Association_message {
-        uint8_t type;
-        uint8_t authenticated;
-    } association;
 } SN_Message_t;
 
 int SN_Message_memory_size (

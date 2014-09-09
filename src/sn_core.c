@@ -1,6 +1,8 @@
 #include <sn_core.h>
 #include <sn_status.h>
 #include <sn_table.h>
+
+#define SN_DEBUG_LEVEL 4
 #include <sn_logging.h>
 
 #include <assert.h>
@@ -12,7 +14,7 @@
 //network starts here
 
 #define STARFISHNET_PROTOCOL_ID 0x55
-#define STARFISHNET_PROTOCOL_VERSION 0x0
+#define STARFISHNET_PROTOCOL_VERSION 0x1
 
 #define DEFAULT_TX_RETRY_LIMIT 3
 #define DEFAULT_TX_RETRY_TIMEOUT 2500
@@ -448,7 +450,6 @@ typedef enum {
         = SN_End_of_message_types,
     SN_Address_grant,              //used by a router to assign a short address to its child
     SN_Address_revoke,             //used by a router to revoke a short address from its child
-    SN_Node_details,               //inform a StarfishNet node of our particulars
     SN_Address_change_notify,      //inform a StarfishNet node that our short address has changed
 
     SN_End_of_internal_message_types
@@ -501,6 +502,16 @@ typedef union SN_Message_internal {
         mac_address_t   long_address;
         SN_Public_key_t public_key;
     } node_details; //used for Node_details
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        SN_Signature_t  signature; //TODO: what does this signature cover?
+    } dissociate_request;
+
+    struct __attribute__((packed)) {
+        uint8_t         type;    //SN_Message_type_t
+        SN_Signature_t  signature;
+    } authentication_message;
 } SN_Message_internal_t;
 
 static int SN_Message_internal_size(SN_Message_internal_t* message) {
@@ -539,6 +550,12 @@ static int SN_Message_internal_size(SN_Message_internal_t* message) {
         case SN_Node_details:
             return sizeof(message->node_details);
 
+        case SN_Dissociate_request:
+            return sizeof(message->dissociate_request);
+
+        case SN_Authentication_message:
+            return sizeof(message->authentication_message);
+
         default:
             return 1;
     }
@@ -551,14 +568,10 @@ int SN_Message_memory_size(SN_Message_t* message) {
 
     switch(message->type) {
         case SN_Data_message:
-            return sizeof(message->data)               + message->data.payload_length;
+            return sizeof(message->data)      + message->data.payload_length;
 
         case SN_Evidence_message:
             return sizeof(message->evidence);
-
-        case SN_Associate_request:
-        case SN_Associate_reply:
-            return sizeof(message->association);
 
         default:
             return 1;
@@ -620,12 +633,12 @@ static int do_packet_transmission(SN_Session_t* session, SN_Table_entry_t* table
 
     //DstAddr
     if(table_entry->short_address != SN_NO_SHORT_ADDRESS && dst_address_constraint != mac_extended_address) {
-        SN_DebugPrintf("sending to short address %#06x\n", dst_addr->address.ShortAddress);
+        SN_DebugPrintf("sending to short address %#06x\n", table_entry->short_address);
         packet->MCPS_DATA_request.DstAddrMode          = mac_short_address;
         packet->MCPS_DATA_request.DstAddr.ShortAddress = table_entry->short_address;
     } else if(dst_address_constraint != mac_short_address) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("sending to long address %#018lx\n", *(uint64_t*)dst_addr->address.ExtendedAddress);
+        SN_DebugPrintf("sending to long address %#018lx\n", *(uint64_t*)table_entry->long_address.ExtendedAddress);
         packet->MCPS_DATA_request.DstAddrMode = mac_extended_address;
         packet->MCPS_DATA_request.DstAddr     = table_entry->long_address;
         max_payload_size -= 6; //header size increases by 6 bytes if we're using a long address
@@ -675,15 +688,17 @@ static int do_packet_transmission(SN_Session_t* session, SN_Table_entry_t* table
 
 //transmit packet, containing one or more messages
 typedef struct __attribute__((packed)) network_header {
-    uint16_t src_addr;
-    uint16_t dst_addr;
     uint8_t protocol_id;
     uint8_t protocol_ver;
-    struct __attribute__((packed)) {
-        uint8_t encrypt :1;
-        uint8_t sign    :1;
-        uint8_t         :6;
-    } attributes;
+    uint16_t src_addr;
+    uint16_t dst_addr;
+    union {
+        struct {
+            uint8_t encrypt :1;
+            uint8_t         :7;
+        };
+        uint8_t attributes;
+    };
 } network_header_t;
 int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_size, SN_Message_t* buffer) {
     //initial NULL-checks
@@ -697,8 +712,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
     uint8_t buffer_position = 0;
 
     //constraint trackers
-    uint8_t sign        = 0; //most messages don't need digital signatures, but sometimes it's necessary
-    uint8_t restricted  = 0; //switches off acknowledgements and encryption, but only permits addressing and association messages
+    uint8_t restricted = 0; //switches off acknowledgements and encryption, but only permits addressing and association messages
     uint8_t src_address_constraint = mac_no_address;
     uint8_t dst_address_constraint = mac_no_address;
 
@@ -767,7 +781,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
     //sanity check: zero-message packets are a way of causing an associate_finalise transmission.
     // therefore, they're not allowed to nodes that haven't reached the SN_Send_finalise state
-    if(buffer == NULL && table_entry.association_state < SN_Send_finalise) {
+    if(buffer == NULL && table_entry.state < SN_Send_finalise) {
         SN_ErrPrintf("zero-length transmission to unassociated node is not permitted\n");
         return -SN_ERR_DISALLOWED;
     }
@@ -820,7 +834,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
      */
 
     //First things first, check the association state, and impose requirements based thereon.
-    switch(table_entry.association_state) {
+    switch(table_entry.state) {
         case SN_Unassociated: {
             SN_InfoPrintf("no relationship. generating ECDH keypair\n");
 
@@ -832,7 +846,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             }
 
             //update state
-            table_entry.association_state = SN_Awaiting_reply;
+            table_entry.state = SN_Awaiting_reply;
 
             //update node table
             ret = SN_Table_update(&table_entry);
@@ -845,29 +859,29 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             //this case is a retransmission
             SN_InfoPrintf("generating associate request\n");
 
-            //TODO: this can also be a dissociate
+            restricted = 1;
+
+            if(buffer->type == SN_Dissociate_request) {
+                SN_InfoPrintf("dissociate detected; allowing normal dissociation processing\n");
+                break;
+            }
+
             if(buffer->type != SN_Associate_request) {
                 SN_ErrPrintf("SN_Associate_request must be first message between two unassociated nodes\n");
                 return -SN_ERR_DISALLOWED;
             }
 
-            restricted = 1;
-
             //generate associate-request message
             SN_Message_internal_t* out = (SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_position);
             out->type = SN_Associate_request;
             out->associate_request.public_key = table_entry.ephemeral_keypair.public_key;
-            payload_position += SN_Message_internal_size(out);
-
-            ret = SN_Message_memory_size(buffer);
-            assert(ret > 0);
-            buffer_position += ret;
-            *buffer_size--;
-
-            if(buffer->association.authenticated) {
-                SN_InfoPrintf("doing authenticated key-exchange\n");
-                sign = 1;
-            }
+            int message_memory_size = SN_Message_memory_size(buffer);
+            int message_network_size = SN_Message_internal_size(out);
+            SN_InfoPrintf("generating association message (whose type is %x, memory size is %d, and network size is %d)\n", out->type, message_memory_size, message_network_size);
+            assert(message_memory_size > 0 && message_network_size > 0);
+            buffer_position += message_memory_size;
+            payload_position += message_network_size;
+            (*buffer_size)--;
             } break;
 
         case SN_Associate_received: {
@@ -888,7 +902,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             }
 
             //update state
-            table_entry.association_state = SN_Awaiting_finalise;
+            table_entry.state = SN_Awaiting_finalise;
 
             //update node table
             ret = SN_Table_update(&table_entry);
@@ -901,29 +915,29 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             //this case is a retransmission
             SN_InfoPrintf("generating associate reply\n");
 
-            //TODO: this can also be a dissociate
+            restricted = 1;
+
+            if(buffer->type == SN_Dissociate_request) {
+                SN_InfoPrintf("dissociate detected; allowing normal dissociation processing\n");
+                break;
+            }
+
             if(buffer->type != SN_Associate_reply) {
                 SN_ErrPrintf("SN_Associate_reply must be first message back to associator\n");
                 return -SN_ERR_DISALLOWED;
             }
 
-            restricted = 1;
-
             //generate associate-reply message here
             SN_Message_internal_t* out = (SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_position);
             out->associate_reply.public_key = table_entry.ephemeral_keypair.public_key;
             sha1(table_entry.link_key.key_id.data, sizeof(table_entry.link_key.key_id.data), out->associate_reply.challenge1.data);
-            payload_position += SN_Message_internal_size(out);
-
-            ret = SN_Message_memory_size(buffer);
-            assert(ret > 0);
-            buffer_position += ret;
-            *buffer_size--;
-
-            if(buffer->association.authenticated) {
-                SN_InfoPrintf("doing authenticated key-exchange\n");
-                sign = 1;
-            }
+            int message_memory_size = SN_Message_memory_size(buffer);
+            int message_network_size = SN_Message_internal_size(out);
+            SN_InfoPrintf("generating association message (whose type is %x, memory size is %d, and network size is %d)\n", out->type, message_memory_size, message_network_size);
+            assert(message_memory_size > 0 && message_network_size > 0);
+            buffer_position += message_memory_size;
+            payload_position += message_network_size;
+            (*buffer_size)--;
             } break;
 
         case SN_Send_finalise: {
@@ -944,7 +958,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
         default:
             assert(0); //something horrible has happened
-            SN_ErrPrintf("how did table_entry.association_state become %d?!?\n", table_entry.association_state);
+            SN_ErrPrintf("how did table_entry.state become %d?!?\n", table_entry.state);
             return -SN_ERR_UNEXPECTED;
     }
 
@@ -961,10 +975,15 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
     int dissociate_was_sent = 0;
     int short_address_was_released = 0;
 
+    SN_InfoPrintf("%d messages remain.\n", *buffer_size);
     for(int i = 0; i < *buffer_size; i++) {
         assert(payload_position < primitive.MCPS_DATA_request.msduLength);
 
         SN_Message_t* message = (SN_Message_t*)(((uint8_t*)buffer) + buffer_position);
+
+        int message_memory_size = SN_Message_memory_size(message);
+        int message_network_size = SN_Message_network_size(message);
+        SN_InfoPrintf("generating message %d (whose type is %x, memory size is %d, and network size is %d)\n", i, message->type, message_memory_size, message_network_size);
 
         if(restricted) {
             //restricted mode check
@@ -976,6 +995,8 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
                 case SN_Address_grant:
                 case SN_Node_details:
                 case SN_Evidence_message:
+                case SN_Authentication_message:
+                    SN_DebugPrintf("message generation permitted...\n");
                     break;
 
                 default:
@@ -984,14 +1005,13 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             }
         }
 
-        int message_memory_size = SN_Message_memory_size(message);
-        int message_network_size = SN_Message_network_size(message);
+        SN_DebugPrintf("doing message generation...\n");
+
         assert(message_memory_size >= 0);
         assert(message_network_size >= 0);
         //XXX: no error-checking here, because we did this before, so it's guaranteed to succeed
 
         //actually do the message encoding
-        SN_InfoPrintf("generating message %d (whose type is %d, memory size is %d, and network size is %d)\n", i, message->type, message_memory_size, message_network_size);
         SN_Message_internal_t* out = (SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_position);
         out->type = message->type;
         switch(out->type) {
@@ -1050,6 +1070,18 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
                 out->node_details.public_key    = session->device_root_key.public_key;
                 break;
 
+            case SN_Authentication_message:
+                if(table_entry.state <= SN_Associate_received) {
+                    SN_ErrPrintf("attempting to authenticate a nonexistent key-exchange key\n");
+                    return -SN_ERR_INVALID;
+                }
+                ret = SN_Crypto_sign(&session->device_root_key.private_key, table_entry.ephemeral_keypair.public_key.data, sizeof(table_entry.ephemeral_keypair.public_key.data), &out->authentication_message.signature);
+                if(ret != SN_OK) {
+                    SN_ErrPrintf("signature generation failed with %d\n", -ret);
+                    return ret;
+                }
+                break;
+
             case SN_Address_request: {
                 //look up our short address
                 uint16_t short_address = session->mib.macShortAddress;
@@ -1078,9 +1110,20 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
                 short_address_was_released = 1;
                 dissociate_was_sent = 1;
                 if(restricted) {
-                    sign = 1;
+                    struct __attribute__((packed)) {
+                        SN_Address_t remote_node;
+                        uint8_t      message_type;
+                    } signature_data = {
+                        .remote_node = {
+                            .type = dst_addr->type,
+                            .address = dst_addr->address,
+                        },
+                        .message_type = message->type,
+                    };
+                    ret = SN_Crypto_sign(&session->device_root_key.private_key, (uint8_t*)&signature_data, sizeof(signature_data), &out->dissociate_request.signature);
                 }
-                //fallthrough
+                break;
+
             default:
                 assert(message_memory_size == message_network_size);
                 memcpy(out, message, message_memory_size);
@@ -1092,18 +1135,21 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         buffer_position += message_memory_size;
     }
 
-    //TODO: network header
+    //network header
     network_header_t* header = (network_header_t*)primitive.MCPS_DATA_request.msdu;
+    header->protocol_id  = STARFISHNET_PROTOCOL_ID;
+    header->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    header->attributes   = 0;
 
-    //we don't combine encryption and signing
-    assert(!restricted && sign);
+    //TODO: routing/addressing
+    header->src_addr = SN_NO_SHORT_ADDRESS;
+    header->dst_addr = SN_NO_SHORT_ADDRESS;
 
     //TODO: encryption (or not, in restricted mode)
-    //TODO: signing
 
     ret = do_packet_transmission(session, &table_entry, !restricted, src_address_constraint, dst_address_constraint, &primitive);
 
-    if(ret > 0) {
+    if(ret == SN_OK) {
         *buffer_size = primitive.MCPS_DATA_request.msduLength;
     } else {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
@@ -1164,12 +1210,11 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         SN_ErrPrintf("packet has invalid protocol ID bytes. protocol is %x (should be %x), version is %x (should be %x)\n", header->protocol_id, STARFISHNET_PROTOCOL_ID, header->protocol_ver, STARFISHNET_PROTOCOL_VERSION);
         return -SN_ERR_OLD_VERSION;
     }
-    if(header->attributes.encrypt && header->attributes.sign) {
-        SN_ErrPrintf("packet claims to be both encrypted and signed. this is invalid\n");
-        return -SN_ERR_INVALID;
-    }
 
     //TODO: routing happens here
+
+    src_addr->type    = packet.MCPS_DATA_indication.SrcAddrMode;
+    src_addr->address = packet.MCPS_DATA_indication.SrcAddr;
 
     SN_InfoPrintf("consulting neighbor table...\n");
     SN_Table_entry_t table_entry = {
@@ -1188,7 +1233,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
         ret = SN_Table_insert(&table_entry);
         if(ret != SN_OK) {
-            SN_ErrPrintf("cannot allocate entry in node table, aborting.\n");
+            SN_ErrPrintf("cannot allocate entry in node table (error %d), aborting.\n", -ret);
             return -SN_ERR_RESOURCES;
         }
     }
@@ -1197,15 +1242,12 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     SN_InfoPrintf("decoding packet payload...\n");
     uint8_t payload_length = packet.MCPS_DATA_indication.msduLength;
     uint8_t was_encrypted = 0;
-    uint8_t was_signed    = 0;
     if(payload_length > *buffer_size + sizeof(network_header_t)) {
         SN_ErrPrintf("buffer size %d is too small for a %d-byte packet\n", *buffer_size, payload_length);
         return -SN_ERR_RESOURCES;
     }
 
     /*TODO: (crypto work)
-     * if(header->attributes.sign && header->attributes.encrypt) error
-     * if(header->attributes.sign) check signature
      * if(header->attributes.encrypt) decrypt
      */
 
@@ -1219,13 +1261,12 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     uint8_t response_messages = 0;
     uint8_t send_explicit_finalise = 0;
 
-
     //state check / association protocol
     { //this is in a block so that message gets scoped out
     SN_Message_internal_t* message = (SN_Message_internal_t*)(packet.MCPS_DATA_indication.msdu + payload_position);
-    switch(table_entry.association_state) {
+    switch(table_entry.state) {
 
-        case SN_Unassociated:
+        case SN_Unassociated: {
             //if we have no relationship, first message must be an associate_request
             SN_InfoPrintf("received packet from node with no relation to us...\n");
             if(message->type != SN_Associate_request) {
@@ -1235,19 +1276,21 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
             SN_InfoPrintf("first message is an Associate_request. informing higher layer\n");
 
             //record state change in node table
-            table_entry.association_state = SN_Associate_received;
+            table_entry.state = SN_Associate_received;
             table_entry.key_agreement_key = message->associate_request.public_key;
             SN_Table_update(&table_entry);
 
             //generate message for higher layer
             buffer->type = SN_Associate_request;
-            buffer->association.authenticated = was_signed; //TODO: BUG! if this packet contains a node_details message, we won't see it here
 
             //advance counters and configure message processing
-            buffer_position += SN_Message_memory_size(buffer);
-            payload_position += SN_Message_internal_size(message);
+            int message_memory_size = SN_Message_memory_size(buffer);
+            int message_network_size = SN_Message_internal_size(message);
+            SN_InfoPrintf("decoding association message (whose type is %x, memory size is %d, and network size is %d)\n", message->type, message_memory_size, message_network_size);
+            buffer_position += message_memory_size;
+            payload_position += message_network_size;
             restricted = 1;
-            break;
+            } break;
 
         case SN_Associate_received:
             //shouldn't happen at all
@@ -1275,27 +1318,29 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
                     sha1(table_entry.link_key.key_id.data, sizeof(table_entry.link_key.key_id.data), hashbuf.data);
                     if(memcmp(hashbuf.data, message->associate_reply.challenge1.data, sizeof(hashbuf.data)) != 0) {
                         SN_ErrPrintf("challenge1 check failed, aborting handshake\n");
-                        table_entry.association_state = SN_Unassociated;
+                        table_entry.state = SN_Unassociated;
                         //TODO: send a dissociate
                     } else {
                         SN_InfoPrintf("challenge1 check succeeded\n");
-                        table_entry.association_state = SN_Send_finalise;
+                        table_entry.state = SN_Send_finalise;
                     }
 
                     //update node table
                     SN_Table_update(&table_entry);
 
-                    if(table_entry.association_state != SN_Send_finalise) {
+                    if(table_entry.state != SN_Send_finalise) {
                         return -SN_ERR_SECURITY;
                     }
 
                     //generate message for higher layer
                     buffer->type = SN_Associate_reply;
-                    buffer->association.authenticated = was_signed; //TODO: BUG! if this packet contains a node_details message, we won't see it here
 
                     //advance counters and configure message processing
-                    buffer_position += SN_Message_memory_size(buffer);
-                    payload_position += SN_Message_internal_size(message);
+                    int message_memory_size = SN_Message_memory_size(buffer);
+                    int message_network_size = SN_Message_internal_size(message);
+                    SN_InfoPrintf("decoding association message (whose type is %x, memory size is %d, and network size is %d)\n", message->type, message_memory_size, message_network_size);
+                    buffer_position += message_memory_size;
+                    payload_position += message_network_size;
                     restricted = 1;
                     send_explicit_finalise = message->associate_reply.finalise_now;
                     }; break;
@@ -1321,17 +1366,17 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
                     //check challenge2
                     if(memcmp(table_entry.link_key.key_id.data, message->associate_finalise.challenge2.data, sizeof(table_entry.link_key.key_id.data)) != 0 || !was_encrypted) {
                         SN_ErrPrintf("challenge2 check failed, aborting handshake\n");
-                        table_entry.association_state = SN_Unassociated;
+                        table_entry.state = SN_Unassociated;
                         //TODO: send a dissociate
                     } else {
                         SN_InfoPrintf("challenge2 check succeeded\n");
-                        table_entry.association_state = SN_Associated;
+                        table_entry.state = SN_Associated;
                     }
 
                     //update node table
                     SN_Table_update(&table_entry);
 
-                    if(table_entry.association_state != SN_Associated) {
+                    if(table_entry.state != SN_Associated) {
                         return -SN_ERR_SECURITY;
                     }
 
@@ -1361,26 +1406,16 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
         default:
             assert(0); //something horrible has happened
-            SN_ErrPrintf("how did table_entry.association_state become %d?!?\n", table_entry.association_state);
+            SN_ErrPrintf("how did table_entry.state become %d?!?\n", table_entry.state);
             return -SN_ERR_UNEXPECTED;
     }} //there are two of these because of the brace opened earlier. pay attention
 
     /* if we receive an unencrypted packet from an associated communications
-     * partner, it must be signed (unless we don't know the remote node's signing
-     * key)
+     * partner, it must be processed in restricted mode
      */
-    if(!restricted && !was_encrypted) {
-        SN_Public_key_t null_key = {};
-        if(was_signed) {
-            SN_WarnPrintf("received unencrypted packet from associated communications partner. proceeding with caution...\n");
-            restricted = 1;
-        } else if(table_entry.authentication_state == SN_Unauthenticated) {
-            SN_WarnPrintf("received unencrypted packet from associated, unauthenticated communications partner. proceeding with caution...\n");
-            restricted = 1;
-        } else {
-            SN_ErrPrintf("received unencrypted, unsigned packet from associated communications partner. dropping\n");
-            return -SN_ERR_SECURITY;
-        }
+    if(!was_encrypted && !restricted) {
+        SN_WarnPrintf("received unencrypted message. performing only restricted processing.\n");
+        restricted = 1;
     }
 
     for(message_count = 0; payload_position < payload_length; message_count++) {
@@ -1394,7 +1429,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         }
         assert(message_memory_size > 0);
 
-        SN_InfoPrintf("decoding message %d (whose type is %d, and size is %d)\n", message_count, message->type, message_network_size);
+        SN_InfoPrintf("decoding message %d (whose type is %x, memory size is %d, and network size is %d)\n", message_count, message->type, message_memory_size, message_network_size);
         if(payload_position + message_network_size > payload_length) {
             SN_ErrPrintf("message %d size %d would overflow the %d-length packet\n", message_count, message_network_size, payload_length);
             return -SN_ERR_END_OF_DATA;
@@ -1414,6 +1449,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
                 case SN_Address_grant:
                 case SN_Node_details:
                 case SN_Evidence_message:
+                case SN_Authentication_message:
                     break;
 
                 default:
@@ -1432,19 +1468,36 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
                 SN_ErrPrintf("association message occurred out of order\n");
                 return -SN_ERR_INVALID;
 
-            case SN_Dissociate_request:
+            case SN_Dissociate_request: {
+                //if it wasn't encrypted, do a signature check
+                struct __attribute__((packed)) {
+                    SN_Address_t remote_node;
+                    uint8_t      message_type;
+                } signature_data = {
+                    .remote_node = {
+                        .type = packet.MCPS_DATA_indication.DstAddrMode,
+                        .address = packet.MCPS_DATA_indication.DstAddr,
+                    },
+                    .message_type = message->type,
+                };
+                if(SN_Crypto_verify(&table_entry.public_key, (uint8_t*)&signature_data, sizeof(signature_data), &message->dissociate_request.signature) != SN_OK) {
+                    //signature verification failed, abort
+                    SN_ErrPrintf("signature verification failed on out-of-tunnel disconnect message\n");
+                    return -SN_ERR_SIGNATURE;
+                }
+
                 //clear entry from node table
                 if(cert_storage == NULL) {
                     SN_Table_delete(&table_entry);
                 } else {
-                    table_entry.association_state = SN_Unassociated;
+                    table_entry.state = SN_Unassociated;
                     SN_Table_update(&table_entry);
                 }
 
                 //notify higher layer
                 decoded_message->type = SN_Dissociate_request;
                 generated_upwards_message = 1;
-                break;
+                } break;
 
             case SN_Address_request:
                 //mark requestor as adjacent
@@ -1545,11 +1598,52 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
                 SN_Table_update(&table_entry);
                 break;
 
-            case SN_Node_details:
-                //TODO: one of the addresses in the message should match the source address
-                //TODO: update neighbor table
-                break;
+            case SN_Node_details: {
+                //check: one of the addresses in the message should match the source address
+                if(src_addr->type == mac_short_address) {
+                    if(memcmp(&src_addr->address.ShortAddress, &message->node_details.short_address, 2)) {
+                        SN_ErrPrintf("received node_details message about someone else...\n");
+                        return -SN_ERR_DISALLOWED;
+                    }
+                } else {
+                    if(memcmp(src_addr->address.ExtendedAddress, message->node_details.long_address.ExtendedAddress, 8)) {
+                        SN_ErrPrintf("received node_details message about someone else...\n");
+                        return -SN_ERR_DISALLOWED;
+                    }
+                }
 
+                //check: if we already know the remote node's public key, only accept a new one if it was integrity-checked
+                SN_Public_key_t null_key = {};
+                if(!was_encrypted && memcmp(&table_entry.public_key, &null_key, sizeof(null_key)) && memcmp(&table_entry.public_key, &message->node_details.public_key, sizeof(message->node_details.public_key))) {
+                    SN_ErrPrintf("received unprotected node_details message attempting to install new public key. this seems suspect...\n");
+                    return -SN_ERR_DISALLOWED;
+                }
+
+                //update neighbor table
+                table_entry.short_address = message->node_details.short_address;
+                table_entry.long_address  = message->node_details.long_address;
+                table_entry.public_key    = message->node_details.public_key;
+                SN_Table_update(&table_entry);
+                } break;
+
+            case SN_Authentication_message: {
+                //check: do we know remote node's signing key?
+                SN_Public_key_t null_key = {};
+                if(!memcpy(&null_key, &table_entry.public_key, sizeof(null_key))) {
+                    SN_WarnPrintf("remote node's public key is unknown. ignoring authentication message...\n");
+                } else {
+                    //do authentication check
+                    if(SN_Crypto_verify(&table_entry.public_key, table_entry.key_agreement_key.data, sizeof(table_entry.key_agreement_key.data), &message->authentication_message.signature) == SN_OK) {
+                        //update neighbor table
+                        table_entry.authenticated = 1;
+                        SN_Table_update(&table_entry);
+                    } else {
+                        SN_WarnPrintf("signature verification failed. node is still unauthenticated.\n");
+                    }
+                }
+                decoded_message->type = SN_Authentication_message;
+                generated_upwards_message = 1;
+                } break;
 
             case SN_Evidence_message:
                 //copy certificate into node storage
@@ -1573,10 +1667,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         payload_position += message_network_size;
     }
 
-    assert(payload_position == payload_length - sizeof(network_header_t));
-
-    src_addr->type    = packet.MCPS_DATA_indication.SrcAddrMode;
-    src_addr->address = packet.MCPS_DATA_indication.SrcAddr;
+    assert(payload_position == payload_length);
 
     *buffer_size = message_count;
 

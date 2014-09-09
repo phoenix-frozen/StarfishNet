@@ -117,11 +117,11 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
         return -SN_ERR_UNEXPECTED;
 
     //consistency checks to make sure we don't pollute the table with BS entries
-    mac_address_t       null_address = {};
+    mac_address_t   null_address = {};
     SN_Public_key_t null_key     = {};
-    if((!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
-     &&(entry->short_address == SN_NO_SHORT_ADDRESS)
-     &&(!memcmp(&entry->public_key, &null_key, sizeof(null_key))))
+    if( (!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
+     && (entry->short_address == SN_NO_SHORT_ADDRESS)
+     && (!memcmp(&entry->public_key, &null_key, sizeof(null_key))) )
         return -SN_ERR_INVALID;
 
     //entry doesn't exist. allocate a new one

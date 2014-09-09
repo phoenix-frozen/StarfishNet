@@ -4,9 +4,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "sn_core.h"
-#include "sn_crypto.h"
-#include "sn_status.h"
+#include <sn_core.h>
+#include <sn_crypto.h>
+#include <sn_status.h>
+#include <sn_table.h>
 
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
@@ -73,20 +74,68 @@ int main(int argc, char* argv[]) {
 
     sleep(2);
 
-    printf("Attempting packet transmission.\n");
+    printf("Attempting association.\n");
 
-    uint8_t message_count = 1;
-    SN_Message_t* test_message = malloc(sizeof(struct SN_Data_message) + 5);
-    test_message->type = SN_Data_message;
-    test_message->data.payload_length = 5;
-    memcpy(test_message->data.payload, "test", 5);
+    uint8_t association_message_count = 3;
+    SN_Message_t* association_message = malloc(sizeof(mac_primitive_t)); //allocate enough memory to hold the response
+    uint8_t* dodgy_hack = (uint8_t*)association_message;
+    dodgy_hack[0] = SN_Associate_request;
+    dodgy_hack[1] = SN_Node_details;
+    dodgy_hack[2] = SN_Authentication_message;
 
     SN_Address_t address = {
         .type = mac_extended_address,
         .address = network.nearest_neighbor_long_address,
     };
 
-    ret = SN_Transmit(&network_session, &address, &message_count, test_message);
+    ret = SN_Transmit(&network_session, &address, &association_message_count, association_message);
+
+    if(ret != SN_OK) {
+        printf("Associate transmission failed: %d\n", -ret);
+        goto main_exit;
+    }
+
+    printf("Associate transmission succeeded.\n");
+
+    SN_Address_t remote_address;
+    association_message_count = sizeof(mac_primitive_t);
+
+    ret = SN_Receive(&network_session, &remote_address, &association_message_count, association_message);
+
+    if(ret != SN_OK) {
+        printf("Failed to receive reply: %d\n", -ret);
+        goto main_exit;
+    }
+
+    printf("Received reply contaning %d messages\n", association_message_count);
+
+    if(association_message->type != SN_Associate_reply) {
+        printf("Received message of type %d instead of association reply...\n", association_message->type);
+        goto main_exit;
+    }
+
+    if(memcmp(&remote_address, &address, sizeof(address))) {
+        printf("Received message from %#018lx instead of %#018lx\n", *(uint64_t*)remote_address.address.ExtendedAddress, *(uint64_t*)address.address.ExtendedAddress);
+    }
+
+    SN_Table_entry_t table_entry = {
+        .session = &network_session,
+    };
+    SN_Table_lookup_by_address(&address, &table_entry, NULL);
+    printf("%suthenticated Relationship is in state %d (should be at least %d)\n", table_entry.authenticated ? "A" : "Una", table_entry.state, SN_Send_finalise);
+    if(table_entry.state < SN_Send_finalise) {
+        goto main_exit;
+    }
+
+    printf("Attempting data message transmission.\n");
+
+    uint8_t test_message_count = 1;
+    SN_Message_t* test_message = malloc(sizeof(struct SN_Data_message) + 5);
+    test_message->type = SN_Data_message;
+    test_message->data.payload_length = 5;
+    memcpy(test_message->data.payload, "test", 5);
+
+    ret = SN_Transmit(&network_session, &address, &test_message_count, test_message);
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);

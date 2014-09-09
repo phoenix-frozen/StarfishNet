@@ -21,8 +21,11 @@ typedef struct SN_Table_entry {
     SN_Public_key_t  public_key;
 
     //relationship metadata
-    uint8_t association_state;
-    uint8_t authentication_state;
+    struct {
+        uint8_t state         :3;
+        uint8_t authenticated :1;
+        uint8_t               :4;
+    };
 
     SN_Keypair_t     ephemeral_keypair; //generate a new keypair for each transaction
     SN_Public_key_t  key_agreement_key; //remote party's ephemeral public key
