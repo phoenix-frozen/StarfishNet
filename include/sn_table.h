@@ -27,9 +27,11 @@ typedef struct SN_Table_entry {
         uint8_t               :4;
     };
 
+    //cryptographic data
     SN_Keypair_t     ephemeral_keypair; //generate a new keypair for each transaction
     SN_Public_key_t  key_agreement_key; //remote party's ephemeral public key
     SN_Kex_result_t  link_key;          //result of ECDH transaction
+    uint16_t         packet_tx_count;   //packet transmission count
 } SN_Table_entry_t;
 
 //insert an entry into the table. entire data structure must be valid

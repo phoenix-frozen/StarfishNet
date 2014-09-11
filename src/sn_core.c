@@ -752,6 +752,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             return -SN_ERR_RESOURCES;
         }
     }
+    SN_InfoPrintf("packet is %d bytes long\n", payload_position);
 
     primitive.MCPS_DATA_request.msduLength = payload_position;
     payload_position                       = sizeof(network_header_t);
@@ -1135,6 +1136,8 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         buffer_position += message_memory_size;
     }
 
+    SN_InfoPrintf("payload generation complete\n");
+
     //network header
     network_header_t* header = (network_header_t*)primitive.MCPS_DATA_request.msdu;
     header->protocol_id  = STARFISHNET_PROTOCOL_ID;
@@ -1145,8 +1148,40 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
     header->src_addr = SN_NO_SHORT_ADDRESS;
     header->dst_addr = SN_NO_SHORT_ADDRESS;
 
-    //TODO: encryption (or not, in restricted mode)
+    /*Packet encryption:
+     * The payload will be encrypted in-place, followed by
+     * the tag (16 bytes) and a counter (2 bytes).
+     * This counter is updated on each packet transmission, and held in the node table.
+     * When the counter reaches 0xFFF0, we trigger a rekey. (Message transmissions are
+     * permitted to continue during the rekey, until the counter reaches 0xFFFF.)
+     */
+    if(!restricted) {
+        SN_InfoPrintf("encrypting payload...\n");
 
+        if(primitive.MCPS_DATA_request.msduLength + SN_Tag_size + 2 > aMaxMACPayloadSize) { //2 is for counter size
+            SN_ErrPrintf("packet encryption has pushed payload size to %u, too big for 802.15.4's %u-byte limit\n", primitive.MCPS_DATA_request.msduLength + SN_Tag_size + 2, aMaxMACPayloadSize);
+            return -SN_ERR_RESOURCES;
+        }
+        header->encrypt = 1;
+        ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, table_entry.packet_tx_count,
+            (uint8_t*)header, sizeof(*header),
+            primitive.MCPS_DATA_request.msdu + sizeof(*header), primitive.MCPS_DATA_request.msduLength - sizeof(*header),
+            primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength);
+        if(ret != SN_OK) {
+            SN_ErrPrintf("Packet encryption failed with %d, aborting\n", -ret);
+            return -SN_ERR_SECURITY;
+        }
+        primitive.MCPS_DATA_request.msduLength += SN_Tag_size + 2; //2 is for counter size
+
+        *(uint16_t*)(primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength - 2) = table_entry.packet_tx_count++;
+        SN_Table_update(&table_entry);
+
+        SN_InfoPrintf("payload encryption complete\n");
+
+        //TODO: rekeying
+    }
+
+    SN_InfoPrintf("beginning packet transmission...\n");
     ret = do_packet_transmission(session, &table_entry, !restricted, src_address_constraint, dst_address_constraint, &primitive);
 
     if(ret == SN_OK) {
@@ -1240,16 +1275,35 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
     //extract data
     SN_InfoPrintf("decoding packet payload...\n");
-    uint8_t payload_length = packet.MCPS_DATA_indication.msduLength;
     uint8_t was_encrypted = 0;
-    if(payload_length > *buffer_size + sizeof(network_header_t)) {
-        SN_ErrPrintf("buffer size %d is too small for a %d-byte packet\n", *buffer_size, payload_length);
+    if(packet.MCPS_DATA_indication.msduLength > *buffer_size + sizeof(network_header_t)) {
+        SN_ErrPrintf("buffer size %d is too small for a %d-byte packet\n", *buffer_size, packet.MCPS_DATA_indication.msduLength);
         return -SN_ERR_RESOURCES;
     }
 
-    /*TODO: (crypto work)
-     * if(header->attributes.encrypt) decrypt
-     */
+    //Packet decryption. See comment in SN_Transmit for more detail.
+    if(header->encrypt) {
+        SN_InfoPrintf("decrypting payload...\n");
+
+        if(packet.MCPS_DATA_indication.msduLength - sizeof(*header) < SN_Tag_size + 2) { //2 is for counter size
+            SN_ErrPrintf("packet size %u is too small to be decrypted (needs to be at least %lu)\n", packet.MCPS_DATA_indication.msduLength, sizeof(*header) + SN_Tag_size + 2);
+            return -SN_ERR_END_OF_DATA;
+        }
+        packet.MCPS_DATA_indication.msduLength -= (SN_Tag_size + 2); //2 is for counter size
+        ret = SN_Crypto_decrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, *(uint16_t*)(packet.MCPS_DATA_indication.msdu + packet.MCPS_DATA_indication.msduLength + SN_Tag_size),
+            (uint8_t*)header, sizeof(*header),
+            packet.MCPS_DATA_indication.msdu + sizeof(*header), packet.MCPS_DATA_indication.msduLength - sizeof(*header),
+            packet.MCPS_DATA_indication.msdu + packet.MCPS_DATA_indication.msduLength);
+        if(ret != SN_OK) {
+            SN_ErrPrintf("Packet decryption failed with %d, aborting\n", -ret);
+            return -SN_ERR_SECURITY;
+        }
+
+        SN_InfoPrintf("payload decryption complete. %u bytes remaining to process\n", packet.MCPS_DATA_indication.msduLength);
+        was_encrypted = 1;
+
+        //TODO: rekeying
+    }
 
     uint8_t payload_position = sizeof(network_header_t);
     uint8_t buffer_position = 0;
@@ -1422,7 +1476,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         restricted = 1;
     }
 
-    for(message_count = 0; payload_position < payload_length; message_count++) {
+    for(message_count = 0; payload_position < packet.MCPS_DATA_indication.msduLength; message_count++) {
         SN_Message_internal_t* message = (SN_Message_internal_t*)(packet.MCPS_DATA_indication.msdu + payload_position);
 
         int message_network_size = SN_Message_internal_size(message);
@@ -1434,8 +1488,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         assert(message_memory_size > 0);
 
         SN_InfoPrintf("decoding message %d (whose type is %x, memory size is %d, and network size is %d)\n", message_count, message->type, message_memory_size, message_network_size);
-        if(payload_position + message_network_size > payload_length) {
-            SN_ErrPrintf("message %d size %d would overflow the %d-length packet\n", message_count, message_network_size, payload_length);
+        if(payload_position + message_network_size > packet.MCPS_DATA_indication.msduLength) {
+            SN_ErrPrintf("message %d size %d would overflow the %d-length packet\n", message_count, message_network_size, packet.MCPS_DATA_indication.msduLength);
             return -SN_ERR_END_OF_DATA;
         }
         if(buffer_position + message_memory_size > *buffer_size) {
@@ -1671,7 +1725,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         payload_position += message_network_size;
     }
 
-    assert(payload_position == payload_length);
+    assert(payload_position == packet.MCPS_DATA_indication.msduLength);
 
     *buffer_size = message_count;
 

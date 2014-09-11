@@ -16,11 +16,13 @@
 #define SN_PK_key_bits  160
 #define SN_AES_key_bits 128 //mandated by IEEE 802.15.4
 #define SN_Hash_bits    160
+#define SN_Tag_bits     128
 
 #define SN_PK_key_size    (SN_PK_key_bits/8)
 #define SN_AES_block_size (128/8) //mandated by AES
 #define SN_AES_key_size   (SN_AES_key_bits/8)
 #define SN_Hash_size      (SN_Hash_bits/8)
+#define SN_Tag_size       (SN_Tag_bits/8)
 
 //cryptographic types
 typedef struct __attribute__((packed)) SN_Public_key {
@@ -105,11 +107,26 @@ int SN_Crypto_key_agreement ( //do a key agreement into shared_secret
     SN_Kex_result_t*  shared_secret
 );
 
-int SN_Crypto_key_challenge ( //issue a challenge based on the key ID
-    SN_AES_key_id_t* shared_secret,
-    uint8_t*         challenge_data,
-    uint8_t*         challenge_data_len,
-    SN_Hash_t*       challenge
+int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
+    SN_AES_key_t*    key,
+    SN_AES_key_id_t* key_id,
+    uint16_t         counter,
+    uint8_t*         ad,
+    uint8_t          ad_len,
+    uint8_t*         data,
+    uint8_t          data_len,
+    uint8_t*         tag
+);
+
+int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
+    SN_AES_key_t*    key,
+    SN_AES_key_id_t* key_id,
+    uint16_t         counter,
+    uint8_t*         ad,
+    uint8_t          ad_len,
+    uint8_t*         data,
+    uint8_t          data_len,
+    uint8_t*         tag
 );
 
 int SN_Crypto_add_certificate( //add a certificate to a storage repository

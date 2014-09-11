@@ -91,7 +91,7 @@
  *
  * Uncomment if the CPU supports SSE2 (IA-32 specific).
  */
-//#define POLARSSL_HAVE_SSE2
+#define POLARSSL_HAVE_SSE2
 
 /**
  * \def POLARSSL_HAVE_TIME
@@ -112,7 +112,7 @@
  *
  * Comment if your system does not support the IPv6 socket interface
  */
-#define POLARSSL_HAVE_IPV6
+//#define POLARSSL_HAVE_IPV6
 
 /**
  * \def POLARSSL_PLATFORM_MEMORY
@@ -325,7 +325,7 @@
  *
  * Uncomment this macro to remove RC4 ciphersuites by default.
  */
-//#define POLARSSL_REMOVE_ARC4_CIPHERSUITES
+#define POLARSSL_REMOVE_ARC4_CIPHERSUITES
 
 /**
  * \def POLARSSL_ECP_XXXX_ENABLED
@@ -396,7 +396,7 @@
  *      TLS_PSK_WITH_3DES_EDE_CBC_SHA
  *      TLS_PSK_WITH_RC4_128_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_PSK_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_PSK_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_DHE_PSK_ENABLED
@@ -420,7 +420,7 @@
  *      TLS_DHE_PSK_WITH_3DES_EDE_CBC_SHA
  *      TLS_DHE_PSK_WITH_RC4_128_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_DHE_PSK_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_DHE_PSK_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_ECDHE_PSK_ENABLED
@@ -440,7 +440,7 @@
  *      TLS_ECDHE_PSK_WITH_3DES_EDE_CBC_SHA
  *      TLS_ECDHE_PSK_WITH_RC4_128_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_ECDHE_PSK_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_ECDHE_PSK_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_RSA_PSK_ENABLED
@@ -465,7 +465,7 @@
  *      TLS_RSA_PSK_WITH_3DES_EDE_CBC_SHA
  *      TLS_RSA_PSK_WITH_RC4_128_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_RSA_PSK_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_RSA_PSK_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_RSA_ENABLED
@@ -493,7 +493,7 @@
  *      TLS_RSA_WITH_RC4_128_SHA
  *      TLS_RSA_WITH_RC4_128_MD5
  */
-#define POLARSSL_KEY_EXCHANGE_RSA_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_RSA_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_DHE_RSA_ENABLED
@@ -519,7 +519,7 @@
  *      TLS_DHE_RSA_WITH_CAMELLIA_128_CBC_SHA
  *      TLS_DHE_RSA_WITH_3DES_EDE_CBC_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_DHE_RSA_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_DHE_RSA_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_ECDHE_RSA_ENABLED
@@ -544,7 +544,7 @@
  *      TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
  *      TLS_ECDHE_RSA_WITH_RC4_128_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_ECDHE_RSA_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_ECDHE_RSA_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED
@@ -568,7 +568,7 @@
  *      TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA
  *      TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
  */
-#define POLARSSL_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_ECDHE_ECDSA_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_ECDH_ECDSA_ENABLED
@@ -592,7 +592,7 @@
  *      TLS_ECDH_ECDSA_WITH_CAMELLIA_128_GCM_SHA256
  *      TLS_ECDH_ECDSA_WITH_CAMELLIA_256_GCM_SHA384
  */
-#define POLARSSL_KEY_EXCHANGE_ECDH_ECDSA_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_ECDH_ECDSA_ENABLED
 
 /**
  * \def POLARSSL_KEY_EXCHANGE_ECDH_RSA_ENABLED
@@ -616,7 +616,7 @@
  *      TLS_ECDH_RSA_WITH_CAMELLIA_128_GCM_SHA256
  *      TLS_ECDH_RSA_WITH_CAMELLIA_256_GCM_SHA384
  */
-#define POLARSSL_KEY_EXCHANGE_ECDH_RSA_ENABLED
+//#define POLARSSL_KEY_EXCHANGE_ECDH_RSA_ENABLED
 
 /**
  * \def POLARSSL_PK_PARSE_EC_EXTENDED
@@ -644,7 +644,7 @@
  * Disable if you run into name conflicts and want to really remove the
  * error_strerror()
  */
-#define POLARSSL_ERROR_STRERROR_BC
+//#define POLARSSL_ERROR_STRERROR_BC
 
 /**
  * \def POLARSSL_ERROR_STRERROR_DUMMY
@@ -675,7 +675,7 @@
  *
  * Enable functions that use the filesystem.
  */
-#define POLARSSL_FS_IO
+//#define POLARSSL_FS_IO
 
 /**
  * \def POLARSSL_NO_DEFAULT_ENTROPY_SOURCES
@@ -860,7 +860,7 @@
  *
  * Comment this macro to disable support for SSL 3.0
  */
-#define POLARSSL_SSL_PROTO_SSL3
+//#define POLARSSL_SSL_PROTO_SSL3
 
 /**
  * \def POLARSSL_SSL_PROTO_TLS1
@@ -872,7 +872,7 @@
  *
  * Comment this macro to disable support for TLS 1.0
  */
-#define POLARSSL_SSL_PROTO_TLS1
+//#define POLARSSL_SSL_PROTO_TLS1
 
 /**
  * \def POLARSSL_SSL_PROTO_TLS1_1
@@ -884,7 +884,7 @@
  *
  * Comment this macro to disable support for TLS 1.1
  */
-#define POLARSSL_SSL_PROTO_TLS1_1
+//#define POLARSSL_SSL_PROTO_TLS1_1
 
 /**
  * \def POLARSSL_SSL_PROTO_TLS1_2
@@ -896,7 +896,7 @@
  *
  * Comment this macro to disable support for TLS 1.2
  */
-#define POLARSSL_SSL_PROTO_TLS1_2
+//#define POLARSSL_SSL_PROTO_TLS1_2
 
 /**
  * \def POLARSSL_SSL_ALPN
@@ -906,7 +906,7 @@
  *
  * Comment this macro to disable support for ALPN.
  */
-#define POLARSSL_SSL_ALPN
+//#define POLARSSL_SSL_ALPN
 
 /**
  * \def POLARSSL_SSL_SESSION_TICKETS
@@ -919,7 +919,7 @@
  *
  * Comment this macro to disable support for SSL session tickets
  */
-#define POLARSSL_SSL_SESSION_TICKETS
+//#define POLARSSL_SSL_SESSION_TICKETS
 
 /**
  * \def POLARSSL_SSL_SERVER_NAME_INDICATION
@@ -928,7 +928,7 @@
  *
  * Comment this macro to disable support for server name indication in SSL
  */
-#define POLARSSL_SSL_SERVER_NAME_INDICATION
+//#define POLARSSL_SSL_SERVER_NAME_INDICATION
 
 /**
  * \def POLARSSL_SSL_TRUNCATED_HMAC
@@ -937,7 +937,7 @@
  *
  * Comment this macro to disable support for truncated HMAC in SSL
  */
-#define POLARSSL_SSL_TRUNCATED_HMAC
+//#define POLARSSL_SSL_TRUNCATED_HMAC
 
 /**
  * \def POLARSSL_SSL_SET_CURVES
@@ -986,7 +986,7 @@
  *
  * Comment this to disable run-time checking and save ROM space
  */
-#define POLARSSL_VERSION_FEATURES
+//#define POLARSSL_VERSION_FEATURES
 
 /**
  * \def POLARSSL_X509_ALLOW_EXTENSIONS_NON_V3
@@ -1043,7 +1043,7 @@
  *
  * Comment this macro to disallow using RSASSA-PSS in certificates.
  */
-#define POLARSSL_X509_RSASSA_PSS_SUPPORT
+//#define POLARSSL_X509_RSASSA_PSS_SUPPORT
 
 /**
  * \def POLARSSL_ZLIB_SUPPORT
@@ -1183,7 +1183,7 @@
  *      TLS_RSA_PSK_WITH_RC4_128_SHA
  *      TLS_PSK_WITH_RC4_128_SHA
  */
-#define POLARSSL_ARC4_C
+//#define POLARSSL_ARC4_C
 
 /**
  * \def POLARSSL_ASN1_PARSE_C
@@ -1248,7 +1248,7 @@
  *
  * Module:  library/blowfish.c
  */
-#define POLARSSL_BLOWFISH_C
+//#define POLARSSL_BLOWFISH_C
 
 /**
  * \def POLARSSL_CAMELLIA_C
@@ -1303,7 +1303,7 @@
  *      TLS_PSK_WITH_CAMELLIA_128_GCM_SHA256
  *      TLS_PSK_WITH_CAMELLIA_128_CBC_SHA256
  */
-#define POLARSSL_CAMELLIA_C
+//#define POLARSSL_CAMELLIA_C
 
 /**
  * \def POLARSSL_CCM_C
@@ -1331,7 +1331,7 @@
  *
  * This module is used for testing (ssl_client/server).
  */
-#define POLARSSL_CERTS_C
+//#define POLARSSL_CERTS_C
 
 /**
  * \def POLARSSL_CIPHER_C
@@ -1371,7 +1371,7 @@
  *
  * This module provides debugging functions.
  */
-#define POLARSSL_DEBUG_C
+//#define POLARSSL_DEBUG_C
 
 /**
  * \def POLARSSL_DES_C
@@ -1397,7 +1397,7 @@
  *
  * PEM_PARSE uses DES/3DES for decrypting encrypted keys.
  */
-#define POLARSSL_DES_C
+//#define POLARSSL_DES_C
 
 /**
  * \def POLARSSL_DHM_C
@@ -1411,7 +1411,7 @@
  * This module is used by the following key exchanges:
  *      DHE-RSA, DHE-PSK
  */
-#define POLARSSL_DHM_C
+//#define POLARSSL_DHM_C
 
 /**
  * \def POLARSSL_ECDH_C
@@ -1495,7 +1495,7 @@
  * This module enables the AES-GCM and CAMELLIA-GCM ciphersuites, if other
  * requisites are enabled as well.
  */
-#define POLARSSL_GCM_C
+//#define POLARSSL_GCM_C
 
 /**
  * \def POLARSSL_HAVEGE_C
@@ -1583,7 +1583,7 @@
  * This module is required for SSL/TLS and X.509.
  * PEM_PARSE uses MD5 for decrypting encrypted keys.
  */
-#define POLARSSL_MD5_C
+//#define POLARSSL_MD5_C
 
 /**
  * \def POLARSSL_MEMORY_C
@@ -1616,7 +1616,7 @@
  *
  * This module provides TCP/IP networking routines.
  */
-#define POLARSSL_NET_C
+//#define POLARSSL_NET_C
 
 /**
  * \def POLARSSL_OID_C
@@ -1667,7 +1667,7 @@
  *
  * This module adds support for the PKCS#5 PBKDF2 key derivation function.
  */
-#define POLARSSL_PBKDF2_C
+//#define POLARSSL_PBKDF2_C
 
 /**
  * \def POLARSSL_PEM_PARSE_C
@@ -1685,7 +1685,7 @@
  *
  * This modules adds support for decoding / parsing PEM files.
  */
-#define POLARSSL_PEM_PARSE_C
+//#define POLARSSL_PEM_PARSE_C
 
 /**
  * \def POLARSSL_PEM_WRITE_C
@@ -1701,7 +1701,7 @@
  *
  * This modules adds support for encoding / writing PEM files.
  */
-#define POLARSSL_PEM_WRITE_C
+//#define POLARSSL_PEM_WRITE_C
 
 /**
  * \def POLARSSL_PK_C
@@ -1814,7 +1814,7 @@
  * Caller:  library/md.c
  *
  */
-#define POLARSSL_RIPEMD160_C
+//#define POLARSSL_RIPEMD160_C
 
 /**
  * \def POLARSSL_RSA_C
@@ -1832,7 +1832,7 @@
  *
  * Requires: POLARSSL_BIGNUM_C, POLARSSL_OID_C
  */
-#define POLARSSL_RSA_C
+//#define POLARSSL_RSA_C
 
 /**
  * \def POLARSSL_SHA1_C
@@ -1882,7 +1882,7 @@
  *
  * This module adds support for SHA-384 and SHA-512.
  */
-#define POLARSSL_SHA512_C
+//#define POLARSSL_SHA512_C
 
 /**
  * \def POLARSSL_SSL_CACHE_C
@@ -1908,7 +1908,7 @@
  *
  * This module is required for SSL/TLS client support.
  */
-#define POLARSSL_SSL_CLI_C
+//#define POLARSSL_SSL_CLI_C
 
 /**
  * \def POLARSSL_SSL_SRV_C
@@ -1922,7 +1922,7 @@
  *
  * This module is required for SSL/TLS server support.
  */
-#define POLARSSL_SSL_SRV_C
+//#define POLARSSL_SSL_SRV_C
 
 /**
  * \def POLARSSL_SSL_TLS_C
@@ -1938,7 +1938,7 @@
  *
  * This module is required for SSL/TLS.
  */
-#define POLARSSL_SSL_TLS_C
+//#define POLARSSL_SSL_TLS_C
 
 /**
  * \def POLARSSL_THREADING_C
@@ -1971,7 +1971,7 @@
  *
  * This module is used by the HAVEGE random number generator.
  */
-#define POLARSSL_TIMING_C
+//#define POLARSSL_TIMING_C
 
 /**
  * \def POLARSSL_VERSION_C
@@ -1982,7 +1982,7 @@
  *
  * This module provides run-time version information.
  */
-#define POLARSSL_VERSION_C
+//#define POLARSSL_VERSION_C
 
 /**
  * \def POLARSSL_X509_USE_C
@@ -1999,7 +1999,7 @@
  *
  * This module is required for the X.509 parsing modules.
  */
-#define POLARSSL_X509_USE_C
+//#define POLARSSL_X509_USE_C
 
 /**
  * \def POLARSSL_X509_CRT_PARSE_C
@@ -2015,7 +2015,7 @@
  *
  * This module is required for X.509 certificate parsing.
  */
-#define POLARSSL_X509_CRT_PARSE_C
+//#define POLARSSL_X509_CRT_PARSE_C
 
 /**
  * \def POLARSSL_X509_CRL_PARSE_C
@@ -2029,7 +2029,7 @@
  *
  * This module is required for X.509 CRL parsing.
  */
-#define POLARSSL_X509_CRL_PARSE_C
+//#define POLARSSL_X509_CRL_PARSE_C
 
 /**
  * \def POLARSSL_X509_CSR_PARSE_C
@@ -2043,7 +2043,7 @@
  *
  * This module is used for reading X.509 certificate request.
  */
-#define POLARSSL_X509_CSR_PARSE_C
+//#define POLARSSL_X509_CSR_PARSE_C
 
 /**
  * \def POLARSSL_X509_CREATE_C
@@ -2056,7 +2056,7 @@
  *
  * This module is the basis for creating X.509 certificates and CSRs.
  */
-#define POLARSSL_X509_CREATE_C
+//#define POLARSSL_X509_CREATE_C
 
 /**
  * \def POLARSSL_X509_CRT_WRITE_C
@@ -2069,7 +2069,7 @@
  *
  * This module is required for X.509 certificate creation.
  */
-#define POLARSSL_X509_CRT_WRITE_C
+//#define POLARSSL_X509_CRT_WRITE_C
 
 /**
  * \def POLARSSL_X509_CSR_WRITE_C
@@ -2082,7 +2082,7 @@
  *
  * This module is required for X.509 certificate request writing.
  */
-#define POLARSSL_X509_CSR_WRITE_C
+//#define POLARSSL_X509_CSR_WRITE_C
 
 /**
  * \def POLARSSL_XTEA_C
@@ -2092,7 +2092,7 @@
  * Module:  library/xtea.c
  * Caller:
  */
-#define POLARSSL_XTEA_C
+//#define POLARSSL_XTEA_C
 
 /* \} name SECTION: PolarSSL modules */
 

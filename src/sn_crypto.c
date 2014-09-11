@@ -12,6 +12,7 @@
 
 //polarssl sha1
 #include "polarssl/sha1.h"
+#include "polarssl/ccm.h"
 
 #if !(SN_PK_key_size == uECC_BYTES)
 #error "uECC and StarfishNet disagree on ECC key size!"
@@ -119,6 +120,72 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
 
     //hash and output resultant secret
     sha1(raw_shared_secret.data, sizeof(raw_shared_secret.data), shared_secret->raw.data);
+
+    SN_InfoPrintf("exit\n");
+    return SN_OK;
+}
+
+int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, uint8_t ad_len, uint8_t* data, uint8_t data_len, uint8_t* tag) {
+    SN_InfoPrintf("enter\n");
+
+    if(key == NULL || key_id == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
+        SN_ErrPrintf("key, key_id, ad, data, and tag must all be non-NULL\n");
+        return -SN_ERR_NULL;
+    }
+
+    ccm_context ctx;
+    int ret = ccm_init(&ctx, POLARSSL_CIPHER_ID_AES, key->data, SN_AES_key_bits);
+
+    if(ret != 0) {
+        SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
+        return -SN_ERR_SECURITY;
+    }
+
+    uint8_t iv[sizeof(key_id->data) + sizeof(counter) + 1]; //CCM IV must be greater than 7
+    memcpy(iv, key_id->data, sizeof(key_id->data));
+    memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
+
+    ret = ccm_encrypt_and_tag(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
+
+    ccm_free(&ctx);
+
+    if(ret != 0) {
+        SN_ErrPrintf("CCM encryption failed with error %d\n", ret);
+        return -SN_ERR_SECURITY;
+    }
+
+    SN_InfoPrintf("exit\n");
+    return SN_OK;
+}
+
+int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, uint8_t ad_len, uint8_t* data, uint8_t data_len, uint8_t* tag) {
+    SN_InfoPrintf("enter\n");
+
+    if(key == NULL || key_id == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
+        SN_ErrPrintf("key, key_id, ad, data, and tag must all be non-NULL\n");
+        return -SN_ERR_NULL;
+    }
+
+    ccm_context ctx;
+    int ret = ccm_init(&ctx, POLARSSL_CIPHER_ID_AES, key->data, SN_AES_key_bits);
+
+    if(ret != 0) {
+        SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
+        return -SN_ERR_SECURITY;
+    }
+
+    uint8_t iv[sizeof(key_id->data) + sizeof(counter) + 1]; //CCM IV must be greater than 7
+    memcpy(iv, key_id->data, sizeof(key_id->data));
+    memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
+
+    ret = ccm_auth_decrypt(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
+
+    ccm_free(&ctx);
+
+    if(ret != 0) {
+        SN_ErrPrintf("CCM decryption failed with error %d\n", ret);
+        return -SN_ERR_SECURITY;
+    }
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
