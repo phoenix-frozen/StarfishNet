@@ -87,10 +87,9 @@ int main(int argc, char* argv[]) {
 
     printf("Transmitting associate reply...\n");
 
-    association_request_size = 3;
+    association_request_size = 2;
     uint8_t* dodgy_hack = (uint8_t*)association_request;
     dodgy_hack[0] = SN_Associate_reply;
-    dodgy_hack[1] = SN_Node_details;
     dodgy_hack[2] = SN_Authentication_message;
 
     ret = SN_Transmit(&network_session, &remote_address, &association_request_size, association_request);
@@ -107,7 +106,7 @@ int main(int argc, char* argv[]) {
     };
     SN_Table_lookup_by_address(&remote_address, &table_entry, NULL);
     printf("%suthenticated Relationship is in state %d (should be at least %d)\n", table_entry.authenticated ? "A" : "Una", table_entry.state, SN_Awaiting_finalise);
-    if(table_entry.state < SN_Send_finalise) {
+    if(table_entry.state < SN_Awaiting_finalise) {
         goto main_exit;
     }
 
@@ -115,7 +114,7 @@ int main(int argc, char* argv[]) {
 
     printf("Attempting to receive data message...\n");
 
-    uint8_t recvbuf_size = sizeof(struct SN_Data_message) + 5;
+    uint8_t recvbuf_size = sizeof(mac_primitive_t);
     SN_Message_t* recvbuf = malloc(recvbuf_size);
     SN_Address_t srcaddr;
 

@@ -1,8 +1,6 @@
 #include <sn_core.h>
 #include <sn_status.h>
 #include <sn_table.h>
-
-#define SN_DEBUG_LEVEL 4
 #include <sn_logging.h>
 
 #include <assert.h>
@@ -749,7 +747,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
         if(payload_position > aMaxMACPayloadSize) {
             //this is here in order to interrupt processing before we hit any dangerous conditions
-            SN_ErrPrintf("tripped way-too-long trigger in size calculation. aborting.\n");
+            SN_ErrPrintf("tripped way-too-long trigger at %d in size calculation. aborting.\n", payload_position);
             return -SN_ERR_RESOURCES;
         }
     }
@@ -929,6 +927,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
             //generate associate-reply message here
             SN_Message_internal_t* out = (SN_Message_internal_t*)(primitive.MCPS_DATA_request.msdu + payload_position);
+            out->type = SN_Associate_reply;
             out->associate_reply.public_key = table_entry.ephemeral_keypair.public_key;
             sha1(table_entry.link_key.key_id.data, sizeof(table_entry.link_key.key_id.data), out->associate_reply.challenge1.data);
             int message_memory_size = SN_Message_memory_size(buffer);

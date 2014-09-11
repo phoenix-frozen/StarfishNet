@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
         goto main_exit;
     }
 
-    printf("Associate transmission succeeded.\n");
+    printf("Associate transmission succeeded. Waiting for reply...\n");
 
     SN_Address_t remote_address;
     association_message_count = sizeof(mac_primitive_t);
