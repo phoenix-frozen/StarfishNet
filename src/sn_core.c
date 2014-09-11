@@ -608,7 +608,8 @@ static int do_packet_transmission(SN_Session_t* session, SN_Table_entry_t* table
     //packet->MCPS_DATA_request.DstAddr     is filled below
     //packet->MCPS_DATA_request.DstAddrMode is filled below
     packet->MCPS_DATA_request.msduHandle  = packet_handle;
-    packet->MCPS_DATA_request.TxOptions   = acknowledged ? MAC_TX_OPTION_ACKNOWLEDGED : 0;
+    //TODO: packet->MCPS_DATA_request.TxOptions   = acknowledged ? MAC_TX_OPTION_ACKNOWLEDGED : 0;
+    packet->MCPS_DATA_request.TxOptions   = MAC_TX_OPTION_ACKNOWLEDGED;
     //packet->MCPS_DATA_request.msduLength  is filled by caller
     //packet->MCPS_DATA_request.msdu        is filled by caller
     SN_InfoPrintf("attempting to transmit a %d-byte packet\n", packet->MCPS_DATA_request.msduLength);
@@ -1363,7 +1364,11 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
             switch(message->type) {
                 case SN_Associate_finalise: {
                     //check challenge2
-                    if(memcmp(table_entry.link_key.key_id.data, message->associate_finalise.challenge2.data, sizeof(table_entry.link_key.key_id.data)) != 0 || !was_encrypted) {
+                    if(!was_encrypted) {
+                        SN_ErrPrintf("received unencrypted challenge2, aborting handshake\n");
+                        table_entry.state = SN_Unassociated;
+                        //TODO: send a dissociate
+                    } else if(memcmp(table_entry.link_key.key_id.data, message->associate_finalise.challenge2.data, sizeof(table_entry.link_key.key_id.data))) {
                         SN_ErrPrintf("challenge2 check failed, aborting handshake\n");
                         table_entry.state = SN_Unassociated;
                         //TODO: send a dissociate
