@@ -649,22 +649,3 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     STRUCTCLEAR(*session);
     SN_InfoPrintf("exit\n");
 }
-
-int SN_Message_memory_size(SN_Message_t* message) {
-    assert(message != NULL);
-
-    if(message == NULL)
-        return -SN_ERR_NULL;
-
-    switch(message->type) {
-        case SN_Data_message:
-            return sizeof(message->data)      + message->data.payload_length;
-
-        case SN_Evidence_message:
-            return sizeof(message->evidence);
-
-        default:
-            return 1;
-    }
-}
-//SN_Message_network_size() is in sn_txrx.c

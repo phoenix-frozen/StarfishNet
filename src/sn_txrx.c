@@ -297,6 +297,24 @@ int SN_Message_network_size(SN_Message_t* message) {
     return SN_Message_internal_size((SN_Message_internal_t*)message);
 }
 
+int SN_Message_memory_size(SN_Message_t* message) {
+    assert(message != NULL);
+
+    if(message == NULL)
+        return -SN_ERR_NULL;
+
+    switch(message->type) {
+        case SN_Data_message:
+            return sizeof(message->data)      + message->data.payload_length;
+
+        case SN_Evidence_message:
+            return sizeof(message->evidence);
+
+        default:
+            return 1;
+    }
+}
+
 //StarfishNet packet header
 typedef struct __attribute__((packed)) network_header {
     struct __attribute__((packed)) {
@@ -421,13 +439,6 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
             //update state
             table_entry.state = SN_Awaiting_reply;
-
-            //update node table
-            ret = SN_Table_update(&table_entry);
-            if(ret != SN_OK) {
-                SN_ErrPrintf("error %d during table update, aborting send\n", -ret);
-                return ret;
-            }
             }; //fallthrough
         case SN_Awaiting_reply: {
             //this case is a retransmission
@@ -477,13 +488,6 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
             //update state
             table_entry.state = SN_Awaiting_finalise;
-
-            //update node table
-            ret = SN_Table_update(&table_entry);
-            if(ret != SN_OK) {
-                SN_ErrPrintf("error %d during table update, aborting send\n", -ret);
-                return ret;
-            }
             }; //fallthrough
         case SN_Awaiting_finalise: {
             //this case is a retransmission
@@ -543,6 +547,21 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         return -SN_ERR_RESOURCES;
     }
 
+
+    //network header
+    network_header_t* header = (network_header_t*)primitive.MCPS_DATA_request.msdu;
+    header->data.protocol_id  = STARFISHNET_PROTOCOL_ID;
+    header->data.protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    header->data.attributes   = 0;
+    header->crypto.counter = table_entry.packet_tx_count++;
+
+    //lots of things that could have affected the node table entry. update it
+    ret = SN_Table_update(&table_entry);
+    if(ret != SN_OK) {
+        SN_ErrPrintf("node table update failed with %d, aborting.\n", -ret);
+        return ret;
+    }
+
     //that's all the metadata, now we generate the payload
     SN_InfoPrintf("generating packet payload...\n");
 
@@ -575,7 +594,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
                     break;
 
                 default:
-                    SN_ErrPrintf("without a security association, only association, addressing, and evidence messages allowed.\n");
+                    SN_ErrPrintf("without a security association, only security/association, addressing, and evidence messages allowed.\n");
                     return -SN_ERR_DISALLOWED;
             }
         }
@@ -686,15 +705,21 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
                 dissociate_was_sent = 1;
                 if(restricted) {
                     struct __attribute__((packed)) {
+                        uint16_t     counter;
                         SN_Address_t remote_node;
                         uint8_t      message_type;
                     } signature_data = {
                         .remote_node = {
-                            .type = dst_addr->type,
+                            .type    = dst_addr->type,
                             .address = dst_addr->address,
                         },
                         .message_type = message->type,
+                        .counter      = header->crypto.counter,
                     };
+                    if(signature_data.remote_node.type == mac_short_address) {
+                        //protect against there being garbage in the other bytes if we're using a short address
+                        memset(signature_data.remote_node.address.ExtendedAddress + 2, 0, sizeof(signature_data.remote_node.address.ExtendedAddress) - 2);
+                    }
                     ret = SN_Crypto_sign(&session->device_root_key.private_key, (uint8_t*)&signature_data, sizeof(signature_data), &out->dissociate_request.signature);
                 }
                 break;
@@ -712,12 +737,6 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
     SN_InfoPrintf("payload generation complete\n");
 
-    //network header
-    network_header_t* header = (network_header_t*)primitive.MCPS_DATA_request.msdu;
-    header->data.protocol_id  = STARFISHNET_PROTOCOL_ID;
-    header->data.protocol_ver = STARFISHNET_PROTOCOL_VERSION;
-    header->data.attributes   = 0;
-
     //TODO: routing/addressing
     header->data.src_addr = SN_NO_SHORT_ADDRESS;
     header->data.dst_addr = SN_NO_SHORT_ADDRESS;
@@ -726,13 +745,14 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
      * The payload will be encrypted in-place, followed by
      * the tag (16 bytes) and a counter (2 bytes).
      * This counter is updated on each packet transmission, and held in the node table.
-     * When the counter reaches 0xFFF0, we trigger a rekey. (Message transmissions are
-     * permitted to continue during the rekey, until the counter reaches 0xFFFF.)
+     * When the counter reaches 0xFFFF, we trigger a rekey.
      */
     if(!restricted) {
         SN_InfoPrintf("encrypting payload...\n");
 
-        ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, table_entry.packet_tx_count,
+        header->data.encrypt = 1;
+
+        ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, header->crypto.counter,
             (uint8_t*)&header->data, sizeof(header->data),
             primitive.MCPS_DATA_request.msdu + sizeof(*header), primitive.MCPS_DATA_request.msduLength - sizeof(*header),
             header->crypto.tag);
@@ -740,10 +760,6 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
             SN_ErrPrintf("Packet encryption failed with %d, aborting\n", -ret);
             return -SN_ERR_SECURITY;
         }
-
-        header->data.encrypt = 1;
-        header->crypto.counter = table_entry.packet_tx_count++;
-        SN_Table_update(&table_entry);
 
         SN_InfoPrintf("payload encryption complete\n");
 
@@ -756,6 +772,7 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         sha1_init(&hashctx);
         sha1_starts(&hashctx);
         sha1_update(&hashctx, (uint8_t*)&header->data, sizeof(header->data));
+        sha1_update(&hashctx, (uint8_t*)&header->crypto.counter, sizeof(header->crypto.counter));
         sha1_update(&hashctx, primitive.MCPS_DATA_request.msdu + sizeof(*header), primitive.MCPS_DATA_request.msduLength - sizeof(*header));
         sha1_finish(&hashctx, hashbuf.data);
         sha1_free(&hashctx);
@@ -888,6 +905,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         sha1_init(&hashctx);
         sha1_starts(&hashctx);
         sha1_update(&hashctx, (uint8_t*)&header->data, sizeof(header->data));
+        sha1_update(&hashctx, (uint8_t*)&header->crypto.counter, sizeof(header->crypto.counter));
         sha1_update(&hashctx, packet.MCPS_DATA_indication.msdu + sizeof(*header), packet.MCPS_DATA_indication.msduLength - sizeof(*header));
         sha1_finish(&hashctx, hashbuf.data);
         sha1_free(&hashctx);
@@ -1121,20 +1139,24 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
             case SN_Dissociate_request: {
                 //if it wasn't encrypted, do a signature check
-                struct __attribute__((packed)) {
-                    SN_Address_t remote_node;
-                    uint8_t      message_type;
-                } signature_data = {
-                    .remote_node = {
-                        .type = packet.MCPS_DATA_indication.DstAddrMode,
-                        .address = packet.MCPS_DATA_indication.DstAddr,
-                    },
-                    .message_type = message->type,
-                };
-                if(SN_Crypto_verify(&table_entry.public_key, (uint8_t*)&signature_data, sizeof(signature_data), &message->dissociate_request.signature) != SN_OK) {
-                    //signature verification failed, abort
-                    SN_ErrPrintf("signature verification failed on out-of-tunnel disconnect message\n");
-                    return -SN_ERR_SIGNATURE;
+                if(!was_encrypted) {
+                    struct __attribute__((packed)) {
+                        uint16_t     counter;
+                        SN_Address_t remote_node;
+                        uint8_t      message_type;
+                    } signature_data = {
+                        .remote_node = {
+                            .type    = packet.MCPS_DATA_indication.DstAddrMode,
+                            .address = packet.MCPS_DATA_indication.DstAddr,
+                        },
+                        .message_type = message->type,
+                        .counter      = header->crypto.counter,
+                    };
+                    if(SN_Crypto_verify(&table_entry.public_key, (uint8_t*)&signature_data, sizeof(signature_data), &message->dissociate_request.signature) != SN_OK) {
+                        //signature verification failed, abort
+                        SN_ErrPrintf("signature verification failed on out-of-tunnel disconnect message\n");
+                        return -SN_ERR_SIGNATURE;
+                    }
                 }
 
                 //clear relationship state from node table
