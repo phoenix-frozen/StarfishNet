@@ -1,7 +1,7 @@
 #ifndef __SN_TABLE_H__
 #define __SN_TABLE_H__
 
-#include "sn_core.h"
+#include "sn_types.h"
 
 /* Interface to StarfishNet's node table.
  *
@@ -21,10 +21,13 @@ typedef struct SN_Table_entry {
     SN_Public_key_t  public_key;
 
     //relationship metadata
-    struct {
-        uint8_t state         :3;
-        uint8_t authenticated :1;
-        uint8_t               :4;
+    union {
+        struct {
+            uint8_t state         :3;
+            uint8_t authenticated :1;
+            uint8_t               :4;
+        };
+        uint8_t     relationship;
     };
 
     //cryptographic data
@@ -51,4 +54,3 @@ int SN_Table_lookup_by_address    (SN_Address_t*    address,    SN_Table_entry_t
 int SN_Table_lookup_by_public_key (SN_Public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
 
 #endif /* __SN_TABLE_H__ */
-

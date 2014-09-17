@@ -37,4 +37,3 @@
 #endif //SN_DEBUG
 
 #endif /* __SN_LOGGING_H__ */
-

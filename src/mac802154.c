@@ -333,7 +333,7 @@ static void mac_print_primitive (uint8_t *data, uint8_t length)
 int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
     uint8_t buffer[sizeof(mac_primitive_t) + 1]; //1 extra byte for the chunk size
     uint8_t chunk_size   = 2; //1 for the size byte, 1 for the type byte
-    bool    copy_data_in = 1; //by default, assume the struct matches what the radio wants
+    uint8_t copy_data_in = 1; //by default, assume the struct matches what the radio wants
 
     assert(MAC_IS_SESSION_VALID(session));
     if(!MAC_IS_SESSION_VALID(session))

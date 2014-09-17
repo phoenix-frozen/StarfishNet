@@ -1,8 +1,8 @@
 #ifndef __SN_CORE_H__
 #define __SN_CORE_H__
 
-#include "mac802154.h"
-#include "sn_crypto.h"
+#include "sn_types.h"
+#include <stdbool.h>
 
 /*
  * This is the Starfish protocol.  Named for the neurological independence of
@@ -40,43 +40,6 @@
  */
 
 //TODO: totally ignoring broadcasts for the moment
-
-//network-layer types
-typedef struct SN_Address {
-    mac_address_t address;
-    mac_address_mode_t type;
-} SN_Address_t;
-#define SN_NO_SHORT_ADDRESS 0xFFFE
-
-typedef struct SN_Nib {
-    //routing tree config
-    //globals
-    uint8_t         tree_depth;      //maximum depth of the routing tree
-    //node config
-    uint8_t         tree_position;   //where we are on the routing tree
-    uint8_t         tree_leaf_count; //how much of our address range should be used
-                                     // for leaf nodes (the rest is delegable blocks). power of two.
-    uint8_t         enable_routing;  //used internally to determine whether routing is enabled
-
-    //retransmission config
-    uint8_t         tx_retry_limit; //number of retransmits before reporting failure
-    uint16_t        tx_retry_timeout; //time to wait between retransmits
-
-    //parent pointer
-    SN_Address_t    parent_address;
-    SN_Public_key_t parent_public_key;
-} SN_Nib_t;
-
-typedef struct SN_Session {
-    mac_session_handle_t mac_session;
-    SN_Nib_t      nib;
-    mac_mib_t     mib;
-    mac_pib_t     pib;
-
-    uint32_t      table_entries; //XXX: HACK! assumes table uses bitfields for allocation
-
-    SN_Keypair_t  device_root_key;
-} SN_Session_t;
 
 typedef struct SN_Network_descriptor {
     uint16_t        pan_id;
@@ -195,4 +158,3 @@ void SN_Destroy ( //bring down this session, resetting the radio in the process
 );
 
 #endif /* __SN_CORE_H__ */
-

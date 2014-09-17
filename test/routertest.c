@@ -4,9 +4,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "sn_core.h"
-#include "sn_crypto.h"
-#include "sn_status.h"
+#include <sn_core.h>
+#include <sn_crypto.h>
+#include <sn_status.h>
 
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
@@ -59,7 +59,6 @@ int main(int argc, char* argv[]) {
         printf("No networks found.\n");
         goto main_exit;
     }
-
     printf("Network discovery complete. Joining network ID %x on channel %d.\n", network.pan_id, network.radio_channel);
 
     ret = SN_Join(&network_session, &network, 0);

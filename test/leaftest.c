@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     printf("Attempting association.\n");
 
     uint8_t association_message_count = 3;
-    SN_Message_t* association_message = malloc(sizeof(mac_primitive_t)); //allocate enough memory to hold the response
+    SN_Message_t* association_message = malloc(aMaxPHYPacketSize); //allocate enough memory to hold the response
     uint8_t* dodgy_hack = (uint8_t*)association_message;
     dodgy_hack[0] = SN_Associate_request;
     dodgy_hack[1] = SN_Node_details;
@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
     printf("Associate transmission succeeded. Waiting for reply...\n");
 
     SN_Address_t remote_address;
-    association_message_count = sizeof(mac_primitive_t);
+    association_message_count = aMaxPHYPacketSize;
 
     ret = SN_Receive(&network_session, &remote_address, &association_message_count, association_message);
 

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include <sn_core.h>
+#include <sn_crypto.h>
 #include <sn_status.h>
 #include <sn_table.h>
 
@@ -65,7 +66,7 @@ int main(int argc, char* argv[]) {
     printf("Waiting for associate request...\n");
 
     SN_Address_t remote_address;
-    uint8_t association_request_size = sizeof(mac_primitive_t);
+    uint8_t association_request_size = aMaxPHYPacketSize;
     SN_Message_t* association_request = malloc(association_request_size);
 
     ret = SN_Receive(&network_session, &remote_address, &association_request_size, association_request);
@@ -114,7 +115,7 @@ int main(int argc, char* argv[]) {
 
     printf("Attempting to receive data message...\n");
 
-    uint8_t recvbuf_size = sizeof(mac_primitive_t);
+    uint8_t recvbuf_size = aMaxPHYPacketSize;
     SN_Message_t* recvbuf = malloc(recvbuf_size);
     SN_Address_t srcaddr;
 

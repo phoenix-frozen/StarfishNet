@@ -44,31 +44,7 @@
 #ifndef __MAC802154_H__
 #define __MAC802154_H__
 
-#include <stdint.h>
-#include <stdbool.h>
-
-/* MAC/PHY constants (using notation from the 802.15.4 spec) */
-#define aMaxPHYPacketSize                       127
-#define aTurnaroundTime                         12
-#define aBaseSlotDuration                       60 /* in symbols */
-#define aNumSuperframeSlots                     16
-#define aBaseSuperframeDuration                 (aBaseSlotDuration * aNumSuperframeSlots) /* in symbols */
-#define aGTSDescPersistenceTime                 4
-#define aMaxBeaconOverhead                      75
-#define aMaxBeaconPayloadSize                   (aMaxPHYPacketSize - aMaxBeaconOverhead)
-#define aMaxLostBeacons                         4
-#define aMaxMPDUUnsecuredOverhead               25
-#define aMinMPDUOverhead                        9
-#define aMaxMACSafePayloadSize                  (aMaxPHYPacketSize - aMaxMPDUUnsecuredOverhead)
-#define aMaxMACPayloadSize                      (aMaxPHYPacketSize - aMinMPDUOverhead)
-#define aMaxSIFSFrameSize                       18
-#define aMinCAPLength                           440
-#define aUnitBackoffPeriod                      20
-#define aMaxACLEntries                          10
-#define aMaxSecurityMaterialLength              0x1a
-#define aSymbolsPerSecond_24                    62500
-#define aMaxMACSecurityOverhead                 (5 /* AuxLen */ + 16 /* AuthLen for MIC-128 */)
-
+#include "mac802154_types.h"
 
 /* MCPS-DATA.request TxOptions flags */
 #define MAC_TX_OPTION_ACKNOWLEDGED              0x01
@@ -91,28 +67,6 @@
 #define MAC_GTS_ALLOCATE                        0x20
 #define MAC_GTS_DEALLOCATE                      0x00
 //TODO: are these constant values right?
-
-typedef union mac_session_handle {
-    int   fd;
-    void* meta;
-} mac_session_handle_t;
-#define MAC_IS_SAME_SESSION(s1, s2) ((s1).meta == (s2).meta)
-#define MAC_IS_SESSION_VALID(s1)    ((s1).meta != NULL)
-
-/* Addressing modes */
-enum mac_address_mode {
-    mac_no_address       = 0x0,
-    mac_short_address    = 0x2,
-    mac_extended_address = 0x3,
-};
-typedef uint8_t mac_address_mode_t;
-
-
-/* Address */
-typedef union mac_address {
-    uint16_t ShortAddress;
-    uint8_t  ExtendedAddress[8];
-} mac_address_t;
 
 /* Associations status' */
 enum mac_association_status {
@@ -226,36 +180,6 @@ enum mac_acl_entry {
 };
 typedef uint8_t mac_acl_entry_t;
 
-/* PAN Identifier */
-typedef uint16_t mac_pan_id_t;
-
-/* PAN descriptor */
-typedef struct __attribute__((packed)) mac_pan_descriptor {
-    uint32_t           TimeStamp;
-    uint16_t           SuperframeSpec;
-    mac_pan_id_t       CoordPANId; //2B
-    mac_address_t      CoordAddress; //8B
-    mac_address_mode_t CoordAddrMode;
-    uint8_t            LogicalChannel;
-    uint8_t            LinkQuality;
-    struct __attribute__((packed)) {
-        uint8_t        SecurityFailure :1;
-        uint8_t        SecurityUse     :1;
-        uint8_t        GTSPermit       :1;
-        uint8_t        ACLEntry        :4;
-        uint8_t                        :1;
-    };
-} mac_pan_descriptor_t;
-
-typedef struct mac_acl_entry_descriptor {
-    mac_address_t ACLExtendedAddress;
-    uint16_t      ACLShortAddress;
-    mac_pan_id_t  ACLPANId;
-    uint8_t       ACLSecurityMaterialLength;
-    uint8_t       ACLSecurityMaterial[aMaxSecurityMaterialLength];
-    uint8_t       ACLSecuritySuite;
-} mac_acl_entry_descriptor_t;
-
 /* MAC Primitive IDs */
 enum mac_primitive_type {
     mac_mcps_data_request              = 0x40,
@@ -297,48 +221,6 @@ enum mac_primitive_type {
 };
 typedef uint8_t mac_primitive_type_t;
 
-typedef struct mac_mib {
-    uint8_t                    macAckWaitDuration;
-    uint8_t                    macAssociationPermit;
-    uint8_t                    macAutoRequest;
-    uint8_t                    macBattLifeExt;
-    uint8_t                    macBattLifeExtPeriods;
-    uint8_t                    macBeaconPayload[aMaxBeaconPayloadSize];
-    uint8_t                    macBeaconPayloadLength;
-    uint8_t                    macBeaconOrder;
-    uint32_t                   macBeaconTxTime;
-    uint8_t                    macBSN;
-    uint8_t                    macCoordAddrMode;
-    mac_address_t              macCoordExtendedAddress;
-    uint16_t                   macCoordShortAddress;
-    uint8_t                    macDSN;
-    uint8_t                    macGTSPermit;
-    uint8_t                    macMaxCSMABackoffs;
-    uint8_t                    macMinBE;
-    mac_pan_id_t               macPANId;
-    uint8_t                    macPromiscuousMode;
-    uint8_t                    macRxOnWhenIdle;
-    uint16_t                   macShortAddress;
-    uint8_t                    macSuperframeOrder;
-    uint16_t                   macTransactionPersistenceTime;
-    mac_address_t              macIEEEAddress;
-    mac_acl_entry_descriptor_t macACLEntryDescriptorSet[aMaxACLEntries];
-    uint8_t                    macACLEntryDescriptorSetSize;
-    uint8_t                    macDefaultSecurity;
-    uint8_t                    macDefaultSecurityMaterialLength;
-    uint8_t                    macDefaultSecurityMaterial[aMaxSecurityMaterialLength];
-    uint8_t                    macDefaultSecuritySuite;
-    uint8_t                    macSecurityMode;
-    uint8_t                    macACLEntryDescriptorNumber;
-} mac_mib_t;
-
-typedef struct mac_pib {
-    uint8_t                    phyCurrentChannel;
-    uint32_t                   phyChannelsSupported;
-    uint8_t                    phyTransmitPower;
-    uint8_t                    phyCCAMode;
-} mac_pib_t;
-
 //TODO: what's the biggest size mac_primitive_t can actually be?
 //TODO: some kind of poll()-based isAPacketWaiting() call
 typedef union mac_primitive {
@@ -354,7 +236,7 @@ typedef union mac_primitive {
                 mac_address_mode_t DstAddrMode;
                 uint8_t         msduLength;
                 uint8_t         mpduLinkQuality;
-                bool            SecurityUse;
+                uint8_t         SecurityUse;
                 mac_acl_entry_t ACLEntry;
                 uint8_t         msdu[aMaxMACPayloadSize];
             } MCPS_DATA_indication;
@@ -410,7 +292,7 @@ typedef union mac_primitive {
                 mac_address_t            DeviceAddress;
                 uint16_t                 AssocShortAddress;
                 mac_association_status_t Status;
-                bool                     SecurityEnable;
+                uint8_t                  SecurityEnable;
             } MLME_ASSOCIATE_response;
 
             struct MLME_ASSOCIATE_request {
@@ -419,7 +301,7 @@ typedef union mac_primitive {
                 mac_address_mode_t CoordAddrMode;
                 mac_address_t CoordAddr;
                 uint8_t       CapabilityInfo;
-                bool          SecurityEnable;
+                uint8_t       SecurityEnable;
             } MLME_ASSOCIATE_request;
 
             struct __attribute__((packed)) MLME_ASSOCIATE_confirm {
@@ -440,7 +322,7 @@ typedef union mac_primitive {
             struct MLME_DISASSOCIATE_request {
                 mac_address_t             DeviceAddress;
                 mac_disassociate_reason_t DisassociateReason;
-                bool                      SecurityEnable;
+                uint8_t                   SecurityEnable;
             } MLME_DISASSOCIATE_request;
 
             struct MLME_DISASSOCIATE_confirm {
@@ -488,7 +370,7 @@ typedef union mac_primitive {
             } MLME_SET_confirm;
 
             struct MLME_RESET_request {
-                bool SetDefaultPIB;
+                uint8_t SetDefaultPIB;
             } MLME_RESET_request;
 
             struct MLME_RESET_confirm {
@@ -496,7 +378,7 @@ typedef union mac_primitive {
             } MLME_RESET_confirm;
 
             struct MLME_RX_ENABLE_request {
-                bool     DeferPermit;
+                uint8_t  DeferPermit;
                 uint32_t RxOnTime;
                 uint32_t RxOnDuration;
             } MLME_RX_ENABLE_request;
@@ -546,7 +428,7 @@ typedef union mac_primitive {
                 mac_address_mode_t CoordAddrMode;
                 mac_pan_id_t       CoordPANId;
                 mac_address_t      CoordAddress;
-                bool               SecurityEnable;
+                uint8_t            SecurityEnable;
             } MLME_POLL_request;
 
             struct MLME_POLL_confirm {
@@ -555,7 +437,7 @@ typedef union mac_primitive {
 
             struct MLME_SYNC_request {
                 uint8_t LogicalChannel;
-                bool    TrackBeacon;
+                uint8_t TrackBeacon;
             } MLME_SYNC_request;
 
             struct MLME_SYNC_LOSS_indication {
@@ -594,7 +476,7 @@ typedef union mac_primitive {
 
             struct MLME_GTS_request {
                 uint8_t GTSCharacteristics;
-                bool    SecurityEnable;
+                uint8_t SecurityEnable;
             } MLME_GTS_request;
 
             struct MLME_GTS_confirm {
