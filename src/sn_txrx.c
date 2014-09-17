@@ -1,3 +1,51 @@
+/*StarfishNet message transmission rules:
+ * SN_Associate_request:
+ *   must be unencrypted.
+ *   must be unacknowledged.
+ *   must be first.
+ *   may only be accompanied by:
+ *    SN_Evidence_message
+ *    SN_Address_request
+ *
+ * SN_Associate_reply:
+ *   must be unencrypted.
+ *   must be unacknowledged.
+ *   must be first.
+ *   may only be accompanied by:
+ *    SN_Evidence_message
+ *    SN_Address_grant
+ *
+ * SN_Associate_finalise:
+ *   must be encrypted.
+ *   must be first.
+ *
+ * SN_Dissociate_message:
+ *   must be either encrypted or signed.
+ *
+ * SN_Evidence_message:
+ *   may be unencrypted.
+ *   may be unacknowledged.
+ *
+ * SN_Address_request:
+ *   may be unencrypted.
+ *   may be unacknowledged.
+ *
+ * SN_Address_grant:
+ *   may be unencrypted.
+ *   may be unacknowledged.
+ *
+ * SN_Node_details_message:
+ *   must be either encrypted or signed.
+ *
+ * SN_Address_change_notify:
+ *   must be sent using long source address.
+ *
+ * default:
+ *   must be encrypted.
+ *   must be acknowledged.
+ */
+
+
 #include <sn_core.h>
 #include <sn_crypto.h>
 #include <sn_table.h>
@@ -251,17 +299,24 @@ int SN_Message_network_size(SN_Message_t* message) {
 
 //StarfishNet packet header
 typedef struct __attribute__((packed)) network_header {
-    uint8_t protocol_id;
-    uint8_t protocol_ver;
-    uint16_t src_addr;
-    uint16_t dst_addr;
-    union {
-        struct {
-            uint8_t encrypt :1;
-            uint8_t         :7;
+    struct __attribute__((packed)) {
+        uint8_t protocol_id;
+        uint8_t protocol_ver;
+        uint16_t src_addr;
+        uint16_t dst_addr;
+        union {
+            struct {
+                uint8_t encrypt :1;
+                uint8_t         :7;
+            };
+            uint8_t attributes;
         };
-        uint8_t attributes;
-    };
+    } data;
+
+    struct __attribute__((packed)) {
+        uint16_t counter;
+        uint8_t  tag[SN_Tag_size];
+    } crypto;
 } network_header_t;
 
 //transmit packet, containing one or more messages
@@ -351,53 +406,6 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
         SN_ErrPrintf("zero-length transmission to unassociated node is not permitted\n");
         return -SN_ERR_DISALLOWED;
     }
-
-    /*Transmission rules:
-     * SN_Associate_request:
-     *   must be unencrypted.
-     *   must be unacknowledged.
-     *   must be first.
-     *   may only be accompanied by:
-     *    SN_Evidence_message
-     *    SN_Address_request
-     *
-     * SN_Associate_reply:
-     *   must be unencrypted.
-     *   must be unacknowledged.
-     *   must be first.
-     *   may only be accompanied by:
-     *    SN_Evidence_message
-     *    SN_Address_grant
-     *
-     * SN_Associate_finalise:
-     *   must be encrypted.
-     *   must be first.
-     *
-     * SN_Dissociate_message:
-     *   must be either encrypted or signed.
-     *
-     * SN_Evidence_message:
-     *   may be unencrypted.
-     *   may be unacknowledged.
-     *
-     * SN_Address_request:
-     *   may be unencrypted.
-     *   may be unacknowledged.
-     *
-     * SN_Address_grant:
-     *   may be unencrypted.
-     *   may be unacknowledged.
-     *
-     * SN_Node_details_message:
-     *   must be either encrypted or signed.
-     *
-     * SN_Address_change_notify:
-     *   must be sent using long source address.
-     *
-     * default:
-     *   must be encrypted.
-     *   must be acknowledged.
-     */
 
     //First things first, check the association state, and impose requirements based thereon.
     switch(table_entry.state) {
@@ -706,13 +714,13 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
 
     //network header
     network_header_t* header = (network_header_t*)primitive.MCPS_DATA_request.msdu;
-    header->protocol_id  = STARFISHNET_PROTOCOL_ID;
-    header->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
-    header->attributes   = 0;
+    header->data.protocol_id  = STARFISHNET_PROTOCOL_ID;
+    header->data.protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    header->data.attributes   = 0;
 
     //TODO: routing/addressing
-    header->src_addr = SN_NO_SHORT_ADDRESS;
-    header->dst_addr = SN_NO_SHORT_ADDRESS;
+    header->data.src_addr = SN_NO_SHORT_ADDRESS;
+    header->data.dst_addr = SN_NO_SHORT_ADDRESS;
 
     /*Packet encryption:
      * The payload will be encrypted in-place, followed by
@@ -724,27 +732,35 @@ int SN_Transmit(SN_Session_t* session, SN_Address_t* dst_addr, uint8_t* buffer_s
     if(!restricted) {
         SN_InfoPrintf("encrypting payload...\n");
 
-        if(primitive.MCPS_DATA_request.msduLength + SN_Tag_size + 2 > aMaxMACPayloadSize) { //2 is for counter size
-            SN_ErrPrintf("packet encryption has pushed payload size to %u, too big for 802.15.4's %u-byte limit\n", primitive.MCPS_DATA_request.msduLength + SN_Tag_size + 2, aMaxMACPayloadSize);
-            return -SN_ERR_RESOURCES;
-        }
-        header->encrypt = 1;
         ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, table_entry.packet_tx_count,
-            (uint8_t*)header, sizeof(*header),
+            (uint8_t*)&header->data, sizeof(header->data),
             primitive.MCPS_DATA_request.msdu + sizeof(*header), primitive.MCPS_DATA_request.msduLength - sizeof(*header),
-            primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength);
+            header->crypto.tag);
         if(ret != SN_OK) {
             SN_ErrPrintf("Packet encryption failed with %d, aborting\n", -ret);
             return -SN_ERR_SECURITY;
         }
-        primitive.MCPS_DATA_request.msduLength += SN_Tag_size + 2; //2 is for counter size
 
-        *(uint16_t*)(primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength - 2) = table_entry.packet_tx_count++;
+        header->data.encrypt = 1;
+        header->crypto.counter = table_entry.packet_tx_count++;
         SN_Table_update(&table_entry);
 
         SN_InfoPrintf("payload encryption complete\n");
 
         //TODO: rekeying
+    } else {
+        //if we're not encrypting, fill tag with a hash instead (truncating if necessary)
+        SN_Hash_t hashbuf;
+        sha1_context hashctx;
+
+        sha1_init(&hashctx);
+        sha1_starts(&hashctx);
+        sha1_update(&hashctx, (uint8_t*)&header->data, sizeof(header->data));
+        sha1_update(&hashctx, primitive.MCPS_DATA_request.msdu + sizeof(*header), primitive.MCPS_DATA_request.msduLength - sizeof(*header));
+        sha1_finish(&hashctx, hashbuf.data);
+        sha1_free(&hashctx);
+
+        memcpy(header->crypto.tag, hashbuf.data, sizeof(header->crypto.tag));
     }
 
     SN_InfoPrintf("beginning packet transmission...\n");
@@ -807,8 +823,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
 
     //network header checks
     network_header_t* header = (network_header_t*)packet.MCPS_DATA_indication.msdu;
-    if(!(header->protocol_id == STARFISHNET_PROTOCOL_ID && header->protocol_ver == STARFISHNET_PROTOCOL_VERSION)) {
-        SN_ErrPrintf("packet has invalid protocol ID bytes. protocol is %x (should be %x), version is %x (should be %x)\n", header->protocol_id, STARFISHNET_PROTOCOL_ID, header->protocol_ver, STARFISHNET_PROTOCOL_VERSION);
+    if(!(header->data.protocol_id == STARFISHNET_PROTOCOL_ID && header->data.protocol_ver == STARFISHNET_PROTOCOL_VERSION)) {
+        SN_ErrPrintf("packet has invalid protocol ID bytes. protocol is %x (should be %x), version is %x (should be %x)\n", header->data.protocol_id, STARFISHNET_PROTOCOL_ID, header->data.protocol_ver, STARFISHNET_PROTOCOL_VERSION);
         return -SN_ERR_OLD_VERSION;
     }
 
@@ -848,18 +864,13 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
     }
 
     //Packet decryption. See comment in SN_Transmit for more detail.
-    if(header->encrypt) {
+    if(header->data.encrypt) {
         SN_InfoPrintf("decrypting payload...\n");
 
-        if(packet.MCPS_DATA_indication.msduLength - sizeof(*header) < SN_Tag_size + 2) { //2 is for counter size
-            SN_ErrPrintf("packet size %u is too small to be decrypted (needs to be at least %lu)\n", packet.MCPS_DATA_indication.msduLength, sizeof(*header) + SN_Tag_size + 2);
-            return -SN_ERR_END_OF_DATA;
-        }
-        packet.MCPS_DATA_indication.msduLength -= (SN_Tag_size + 2); //2 is for counter size
-        ret = SN_Crypto_decrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, *(uint16_t*)(packet.MCPS_DATA_indication.msdu + packet.MCPS_DATA_indication.msduLength + SN_Tag_size),
-            (uint8_t*)header, sizeof(*header),
+        ret = SN_Crypto_decrypt(&table_entry.link_key.key, &table_entry.link_key.key_id, header->crypto.counter,
+            (uint8_t*)&header->data, sizeof(header->data),
             packet.MCPS_DATA_indication.msdu + sizeof(*header), packet.MCPS_DATA_indication.msduLength - sizeof(*header),
-            packet.MCPS_DATA_indication.msdu + packet.MCPS_DATA_indication.msduLength);
+            header->crypto.tag);
         if(ret != SN_OK) {
             SN_ErrPrintf("Packet decryption failed with %d, aborting\n", -ret);
             return -SN_ERR_SECURITY;
@@ -869,6 +880,22 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, uint8_t* buffer_si
         was_encrypted = 1;
 
         //TODO: rekeying
+    } else {
+        //if unencrypted, do a hash check
+        SN_Hash_t hashbuf;
+        sha1_context hashctx;
+
+        sha1_init(&hashctx);
+        sha1_starts(&hashctx);
+        sha1_update(&hashctx, (uint8_t*)&header->data, sizeof(header->data));
+        sha1_update(&hashctx, packet.MCPS_DATA_indication.msdu + sizeof(*header), packet.MCPS_DATA_indication.msduLength - sizeof(*header));
+        sha1_finish(&hashctx, hashbuf.data);
+        sha1_free(&hashctx);
+
+        if(memcmp(header->crypto.tag, hashbuf.data, sizeof(header->crypto.tag)) != 0) {
+            SN_ErrPrintf("Packet integrity check failed, aborting\n");
+            return -SN_ERR_SECURITY;
+        }
     }
 
     uint8_t payload_position = sizeof(network_header_t);
