@@ -6,8 +6,6 @@
 #include <assert.h>
 
 //setup uECC
-#define uECC_CURVE uECC_secp160r1
-#define uECC_PLATFORM uECC_x86_64
 #include "uECC.h"
 
 //polarssl sha1

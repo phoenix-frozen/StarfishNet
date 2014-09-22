@@ -16,7 +16,10 @@ CC = gcc
 CFLAGS += -I./include
 CFLAGS += $(LIB_DIRS:%=-I%/include)
 CFLAGS += $(LIB_DIRS:%=-I%/inc)
-CFLAGS += -std=gnu99
+CFLAGS += -std=gnu99 -g -Wall -DuECC_CURVE=uECC_secp160r1
+
+CFLAGS += -DuECC_PLATFORM=uECC_x86_64
+
 CFLAGS += -DSN_DEBUG
 #CFLAGS += -DSN_DEBUG_LEVEL=4
 #CFLAGS += -DMAC_DEBUG
