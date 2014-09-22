@@ -5,3 +5,4 @@ cscope.*
 *.d
 *.a
 test/*test
+.idea/
