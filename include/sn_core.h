@@ -22,7 +22,7 @@
  * access points for a common example of the same problem.)  What if we didn't?
  * What if the coordinator were just a bureaucrat, if security associations
  * were performed pairwise between nodes on the network without the
- * coordinator's invovement?
+ * coordinator's involvement?
  * We'd have a handshake problem, that's what.  On a wireless sensor network,
  * where nodes routinely want to talk to each other, we have a quadratic number
  * of handshakes being performed, each of which requires manual verification to
