@@ -9,25 +9,16 @@
 #include <assert.h>
 #include <string.h>
 
-#include "polarssl/sha1.h"
-
 //network starts here
 
 #define DEFAULT_TX_RETRY_LIMIT 3
 #define DEFAULT_TX_RETRY_TIMEOUT 2500
 
-#ifdef  USE_SHORT_ADDRESSES
-#define FIXED_COORDINATOR_ADDRESS 0x0000
-#else   //USE_SHORT_ADDRESSES
-#define FIXED_COORDINATOR_ADDRESS 0xFFFE
-#endif  //USE_SHORT_ADDRESSES
+#define FIXED_COORDINATOR_ADDRESS SN_NO_SHORT_ADDRESS
+//TODO: uncomment below when routing is switched on
+//#define FIXED_COORDINATOR_ADDRESS 0x0000
 
-#ifndef NDEBUG
-#include <stdio.h>
 #define MAC_CALL(call, x...) { int ret = call(x); if(ret <= 0) { SN_ErrPrintf(#call"("#x") = %d (failure)\n", ret); return -SN_ERR_RADIO; } else { SN_DebugPrintf(#call"("#x") = %d (success)\n", ret); } }
-#else //NDEBUG
-#define MAC_CALL(call, x...) { if(call(x) <= 0) { return -SN_ERR_RADIO; } }
-#endif //NDEBUG
 
 //some templates for mac_receive_primitive
 #define MAC_CONFIRM(primitive)     const uint8_t primitive##_confirm[] = {mac_mlme_##primitive##_confirm, mac_success}
@@ -48,7 +39,7 @@ static MAC_SET_CONFIRM(macPromiscuousMode);
 static inline uint8_t log2i(uint32_t n) {
     if(n == 0)
         return 0;
-    return 31 - (uint8_t)__builtin_clz(n);
+    return (uint8_t)31 - (uint8_t)__builtin_clz(n);
 }
 
 typedef struct __attribute__((packed)) beacon_payload {
@@ -65,8 +56,6 @@ typedef struct __attribute__((packed)) beacon_payload {
 
     SN_Public_key_t public_key;
 } beacon_payload_t;
-
-#define STRUCTCLEAR(x) memset(&(x), 0, sizeof(x))
 
 static int mac_reset_radio(SN_Session_t* session, mac_primitive_t* packet) {
     SN_InfoPrintf("enter\n");
@@ -275,7 +264,7 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     session->mib.macRxOnWhenIdle                 = 1;
 
     //configure the radio
-    int ret = SN_OK;
+    int ret;
     SN_InfoPrintf("setting up beacon transmission, PAN ID, and radio channel...\n");
     ret = do_network_start(session, &packet, 1);
 
@@ -319,7 +308,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
     session->nib.tx_retry_limit   = DEFAULT_TX_RETRY_LIMIT;
     session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
-    session->nib.enable_routing   = !disable_routing;
+    session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
     if(network->nearest_neighbor_short_address != SN_NO_SHORT_ADDRESS) {
         session->nib.parent_address.type = mac_short_address;
         session->nib.parent_address.address.ShortAddress = network->nearest_neighbor_short_address;
@@ -531,7 +520,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         ndesc.pan_id                                  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
         ndesc.radio_channel                           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
         ndesc.routing_tree_depth                      = beacon_payload->tree_depth;
-        ndesc.routing_tree_position                   = beacon_payload->tree_position + 1;
+        ndesc.routing_tree_position                   = beacon_payload->tree_position + (uint8_t)1;
 
         callback(session, &ndesc, extradata);
     }
@@ -594,7 +583,7 @@ int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
 
     //allocate some stack space
     SN_Session_t protosession;
-    STRUCTCLEAR(protosession);
+    memset(&protosession, 0, sizeof(protosession));
 
     //init the mac layer
     SN_InfoPrintf("initialising MAC layer...\n");
@@ -646,6 +635,6 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     mac_destroy(session->mac_session);
 
     //clean up I/O buffers
-    STRUCTCLEAR(*session);
+    memset(session, 0, sizeof(*session));
     SN_InfoPrintf("exit\n");
 }
