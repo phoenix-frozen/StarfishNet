@@ -12,7 +12,7 @@
 
 //polarssl sha1
 #include "polarssl/sha1.h"
-#include "polarssl/ccm.h"
+#include "aes-ccm.h"
 
 #if !(SN_PK_key_size == uECC_BYTES)
 #error "uECC and StarfishNet disagree on ECC key size!"
@@ -133,8 +133,8 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
         return -SN_ERR_NULL;
     }
 
-    ccm_context ctx;
-    int ret = ccm_init(&ctx, POLARSSL_CIPHER_ID_AES, key->data, SN_AES_key_bits);
+    aes_ccm_context ctx;
+    int ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
 
     if(ret != 0) {
         SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
@@ -145,9 +145,9 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     memcpy(iv, key_id->data, sizeof(key_id->data));
     memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
 
-    ret = ccm_encrypt_and_tag(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
+    ret = aes_ccm_encrypt_and_tag(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
 
-    ccm_free(&ctx);
+    aes_ccm_free(&ctx);
 
     if(ret != 0) {
         SN_ErrPrintf("CCM encryption failed with error %d\n", ret);
@@ -166,8 +166,8 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
         return -SN_ERR_NULL;
     }
 
-    ccm_context ctx;
-    int ret = ccm_init(&ctx, POLARSSL_CIPHER_ID_AES, key->data, SN_AES_key_bits);
+    aes_ccm_context ctx;
+    int ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
 
     if(ret != 0) {
         SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
@@ -178,9 +178,9 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     memcpy(iv, key_id->data, sizeof(key_id->data));
     memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
 
-    ret = ccm_auth_decrypt(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
+    ret = aes_ccm_auth_decrypt(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
 
-    ccm_free(&ctx);
+    aes_ccm_free(&ctx);
 
     if(ret != 0) {
         SN_ErrPrintf("CCM decryption failed with error %d\n", ret);
