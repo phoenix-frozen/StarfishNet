@@ -60,7 +60,8 @@ typedef struct __attribute__((packed)) SN_Kex_result {
 typedef struct __attribute__((packed)) SN_Certificate {
     struct __attribute__((packed)) {
         SN_Public_key_t subject;
-        //TODO: assertion
+        uint8_t         type;
+        SN_Hash_t       assertion; //type indicates whether this is actually a hash, or a plain assertion
     } protected_data;
 
     SN_Signature_t  signature;

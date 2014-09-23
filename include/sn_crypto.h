@@ -72,6 +72,10 @@ int SN_Crypto_remove_certificate( //remove a certificate from a storage reposito
     SN_Certificate_t*         certficate
 );
 
+int SN_Crypto_check_certificate( //check the signature on a certificate
+    SN_Certificate_t*         certficate
+);
+
 //TODO: certificate chain validation
 //TODO: report generation
 

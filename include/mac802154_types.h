@@ -64,7 +64,7 @@ typedef struct __attribute__((packed)) mac_pan_descriptor {
         uint8_t        SecurityUse     :1;
         uint8_t        GTSPermit       :1;
         uint8_t        ACLEntry        :4;
-        uint8_t                        :1;
+        uint8_t        mbz             :1;
     };
 } mac_pan_descriptor_t;
 

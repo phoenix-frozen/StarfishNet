@@ -403,7 +403,7 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
             .session = session,
             //.long_address filled below
             //.short_address filled below
-            .is_neighbor = 1,
+            .neighbor = 1,
             //.key filled below
     };
     parent_table_entry.long_address  = network->nearest_neighbor_long_address;
@@ -432,9 +432,10 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
 int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
     //TODO: perform extra discovery step to fill in node table
 
-    //TODO: tune radio
+    //tune radio
     return do_radio_join(session, network, disable_routing);
 
-    //TODO: perform security association
-    //TODO: request address
+    //TODO: set parent
+
+    //TODO: perform security association (implicitly requesting an address)
 }
