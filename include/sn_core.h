@@ -93,15 +93,15 @@ typedef union SN_Message {
 int SN_Send ( //transmit packet, containing one or more messages
     SN_Session_t* session,
     SN_Address_t* dst_addr,
-    SN_Message_t*message
+    SN_Message_t* message
 );
 int SN_Associate ( //transmit packet, containing one or more messages
-        SN_Session_t* session,
-        SN_Address_t* dst_addr
+    SN_Session_t* session,
+    SN_Address_t* dst_addr
 );
 int SN_Dissociate ( //transmit packet, containing one or more messages
-        SN_Session_t* session,
-        SN_Address_t* dst_addr
+    SN_Session_t* session,
+    SN_Address_t* dst_addr
 );
 int SN_Receive ( //receive a packet, containing one or more messages. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
     SN_Session_t* session,

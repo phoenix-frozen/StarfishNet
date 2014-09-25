@@ -116,10 +116,11 @@ static int bootstrap_security_processing(SN_Table_entry_t* table_entry, packet_l
         SN_ErrPrintf("table_entry, packet_layout, and link_key must all be valid\n");
         return -SN_ERR_NULL;
     }
+
     int ret;
 
     //first, we do a relationship-state check
-    if(packet_layout->association_header != NULL && (table_entry->state == SN_Associate_received || table_entry->state >= SN_Awaiting_finalise)) {
+    if(packet_layout->association_header != NULL && (table_entry->state == SN_Associate_received || table_entry->state >= SN_Awaiting_finalise) && !packet_layout->association_header->signed_data.dissociate) {
         SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
         return -SN_ERR_UNEXPECTED;
     }
@@ -129,57 +130,66 @@ static int bootstrap_security_processing(SN_Table_entry_t* table_entry, packet_l
     }
 
     //assertions to double-check my logic.
-    if(packet_layout->association_header != NULL && packet_layout->key_confirm == NULL) {
-        assert(table_entry->state == SN_Unassociated);
-    }
-    if(packet_layout->association_header != NULL && packet_layout->key_confirm != NULL) {
-        assert(table_entry->state == SN_Awaiting_reply);
-    }
-    if(packet_layout->association_header == NULL && packet_layout->key_confirm != NULL) {
-        assert(table_entry->state == SN_Awaiting_finalise);
+    if(!packet_layout->association_header->signed_data.dissociate) {
+        if (packet_layout->association_header != NULL && packet_layout->key_confirm == NULL) {
+            assert(table_entry->state == SN_Unassociated);
+        }
+        if (packet_layout->association_header != NULL && packet_layout->key_confirm != NULL) {
+            assert(table_entry->state == SN_Awaiting_reply);
+        }
+        if (packet_layout->association_header == NULL && packet_layout->key_confirm != NULL) {
+            assert(table_entry->state == SN_Awaiting_finalise);
+        }
     }
 
-    SN_Public_key_t* remote_public_key = &table_entry->public_key;
+    SN_Public_key_t* remote_public_key = NULL;
 
-    //node_details
-    if(packet_layout->node_details != NULL && !table_entry->details_known) {
+    //get the signing key from node_details, if we need it
+    if(table_entry->details_known) {
+        remote_public_key = &table_entry->public_key;
+    } else if(packet_layout->node_details != NULL) {
         //if we don't know the remote node's signing key, we use the one in the message
         remote_public_key = &packet_layout->node_details->signing_key;
     }
 
-    //association_header
+    //association_header signature
     if(packet_layout->association_header != NULL) {
+        if(remote_public_key == NULL) {
+            SN_ErrPrintf("we don't know their public key, and they haven't told us. aborting\n");
+            return -SN_ERR_SECURITY;
+        }
+
         ret = SN_Crypto_verify(remote_public_key, (uint8_t *) &packet_layout->association_header->signed_data, sizeof(packet_layout->association_header->signed_data), &packet_layout->association_header->signature);
         if (ret != SN_OK) {
             SN_ErrPrintf("association header authentication failed.\n");
             return -SN_ERR_SIGNATURE;
         }
+    }
 
-        if(table_entry->state == SN_Awaiting_reply) {
-            //this is the reply we've been waiting for.
+    //if this is an associate_reply, finish the key agreement
+    if(packet_layout->association_header != NULL && !packet_layout->association_header->signed_data.dissociate) {
+        if(packet_layout->key_confirm != NULL) {
+            //associate_reply
+            assert(table_entry->state == SN_Awaiting_reply);
+
+            //finish the key agreement
             ret = SN_Crypto_key_agreement(&packet_layout->association_header->signed_data.key_agreement_key, &table_entry->local_key_agreement_keypair.private_key, link_key);
             if (ret != SN_OK) {
                 SN_ErrPrintf("key agreement failed with %d.\n", -ret);
                 return ret;
             }
 
-            assert(packet_layout->key_confirm != NULL);
-
-            //key_confirm (challenge1)
-            //this is a reply; do challenge1 check (double-hash)
+            //do the challenge1 check (double-hash) here, so we know immediately if there's a problem
             SN_Hash_t hashbuf;
             sha1(link_key->key_id.data, sizeof(link_key->key_id.data), hashbuf.data);
             sha1(hashbuf.data, sizeof(hashbuf.data), hashbuf.data);
             if(memcmp(hashbuf.data, packet_layout->key_confirm->challenge.data, sizeof(hashbuf.data)) != 0) {
-                SN_ErrPrintf("key confirmation failed");
+                SN_ErrPrintf("key confirmation (challenge1) failed");
                 return -SN_ERR_KEYGEN;
             }
         } else {
-            /* Note: there is deliberately not a
-                *link_key = table_entry->link_key;
-             * here. table_entry->link_key isn't valid in this state,
-             * and copying out would allow the use of stale keys.
-             */
+            //associate_request
+            //nothing to do here
         }
     } else {
         *link_key = table_entry->link_key;
@@ -191,14 +201,76 @@ static int bootstrap_security_processing(SN_Table_entry_t* table_entry, packet_l
 static int process_packet_headers(SN_Table_entry_t* table_entry, packet_layout_t* packet_layout, SN_Kex_result_t* temp_link_key) {
     //at this point, security and integrity checks are guaranteed to have passed
 
-    /*TODO: (process_packet_headers)
-     * network_header
-     * association_header
-     * key_confirm (challenge2)
-     * node_details
-     * address_allocation
-     * address_block_allocation
-     */
+    if(table_entry == NULL || packet_layout == NULL || temp_link_key == NULL) {
+        SN_ErrPrintf("table_entry, packet_layout, and temp_link_key must all be valid\n");
+        return -SN_ERR_NULL;
+    }
+
+    //network_header
+    table_entry->knows_details = packet_layout->network_header->data.req_details;
+
+    //node_details
+    if(packet_layout->node_details != NULL) {
+        if(!table_entry->details_known) {
+            table_entry->details_known = 1;
+            table_entry->public_key = packet_layout->node_details->signing_key;
+        }
+        table_entry->long_address = packet_layout->node_details->long_address;
+        table_entry->short_address = packet_layout->node_details->short_address;
+    }
+
+    //association_header
+    if(packet_layout->association_header != NULL) {
+        //relationship state is checked in bootstrap_security_processing
+        //signature is checked in bootstrap_security_processing
+        if(!packet_layout->association_header->signed_data.dissociate) {
+            //association processing
+            table_entry->remote_key_agreement_key = packet_layout->association_header->signed_data.key_agreement_key;
+
+            if(packet_layout->key_confirm == NULL) {
+                //associate_request
+                assert(table_entry->state == SN_Unassociated);
+
+                table_entry->child  = packet_layout->association_header->signed_data.child;
+                table_entry->router = packet_layout->association_header->signed_data.router;
+
+                table_entry->state = SN_Associate_received;
+            } else {
+                //associate_reply
+                assert(table_entry->state == SN_Awaiting_reply);
+                //key agreement processing in bootstrap_security_processing
+                table_entry->link_key = *temp_link_key;
+            }
+
+            //TODO: packet_layout->association_header->signed_data.delegate;
+        } else {
+            //TODO: dissociation processing
+        }
+    }
+
+    //key_confirm
+    if(packet_layout->key_confirm != NULL) {
+        if(packet_layout->association_header != NULL) {
+            //associate_reply
+            assert(table_entry->state == SN_Awaiting_reply);
+            //key confirmation processing in bootstrap_security_processing
+            table_entry->state = SN_Send_finalise;
+        } else {
+            //associate_finalise
+            assert(table_entry->state == SN_Awaiting_finalise);
+            //do challenge2 check
+            SN_Hash_t hashbuf;
+            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
+            if(memcmp(hashbuf.data, packet_layout->key_confirm->challenge.data, sizeof(hashbuf.data)) != 0) {
+                SN_ErrPrintf("key confirmation (challenge1) failed");
+                return -SN_ERR_KEYGEN;
+            }
+            table_entry->state = SN_Associated;
+        }
+    }
+
+    //TODO: address_allocation
+    //TODO: address_block_allocation
 
     return SN_OK;
 }

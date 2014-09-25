@@ -461,6 +461,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr) {
     header->data.details      = (uint8_t)!table_entry.knows_details;
     header->data.associate    = 1;
     header->data.key_confirm  = (uint8_t)(table_entry.state == SN_Associate_received);
+    header->data.encrypt      = header->data.key_confirm;
     //update packet
     primitive.MCPS_DATA_request.msduLength = sizeof(network_header_t);
 
