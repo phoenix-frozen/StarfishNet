@@ -12,9 +12,9 @@
 #include "polarssl/sha1.h"
 #include "aes-ccm.h"
 
-#if !(SN_PK_key_size == uECC_BYTES)
+#if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"
-#endif //!(SN_PK_key_size == uECC_BYTES)
+#endif //SN_PK_key_size != uECC_BYTES
 
 typedef struct SN_ECC_unpacked_public_key {
     uint8_t data[SN_PK_key_size * 2];
@@ -44,7 +44,7 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
 }
 
 
-int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, int data_len, SN_Signature_t* signature) {
+int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, size_t data_len, SN_Signature_t* signature) {
     SN_InfoPrintf("enter\n");
 
     if(private_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -68,7 +68,7 @@ int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, int data_len, S
     return SN_OK;
 }
 
-int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, int data_len, SN_Signature_t* signature) {
+int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, size_t data_len, SN_Signature_t* signature) {
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -95,6 +95,7 @@ int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, int data_len, S
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
+
 
 int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* private_key, SN_Kex_result_t* shared_secret) {
     SN_InfoPrintf("enter\n");
@@ -123,6 +124,7 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
     return SN_OK;
 }
 
+
 int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, uint8_t ad_len, uint8_t* data, uint8_t data_len, uint8_t* tag) {
     SN_InfoPrintf("enter\n");
 
@@ -140,6 +142,7 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     }
 
     uint8_t iv[sizeof(key_id->data) + sizeof(counter) + 1]; //CCM IV must be greater than 7
+    memset(iv, 0, sizeof(iv));
     memcpy(iv, key_id->data, sizeof(key_id->data));
     memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
 
@@ -173,6 +176,7 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     }
 
     uint8_t iv[sizeof(key_id->data) + sizeof(counter) + 1]; //CCM IV must be greater than 7
+    memset(iv, 0, sizeof(iv));
     memcpy(iv, key_id->data, sizeof(key_id->data));
     memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
 
@@ -189,6 +193,18 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     return SN_OK;
 }
 
+
+int SN_Crypto_check_certificate(SN_Certificate_t* certificate) {
+    SN_InfoPrintf("enter\n");
+
+    if(certificate == NULL) {
+        SN_ErrPrintf("certificate must be non-NULL\n");
+        return -SN_ERR_NULL;
+    }
+
+    return SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) != SN_OK;
+}
+
 int SN_Crypto_add_certificate(SN_Certificate_storage_t* storage, SN_Certificate_t* certificate) {
     SN_InfoPrintf("enter\n");
 
@@ -197,7 +213,7 @@ int SN_Crypto_add_certificate(SN_Certificate_storage_t* storage, SN_Certificate_
         return -SN_ERR_NULL;
     }
 
-    if(SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) != SN_OK) {
+    if(SN_Crypto_check_certificate(certificate) != SN_OK) {
         SN_ErrPrintf("certificate signature verification failed. not adding to repository\n");
         return -SN_ERR_SIGNATURE;
     }
@@ -213,5 +229,3 @@ int SN_Crypto_add_certificate(SN_Certificate_storage_t* storage, SN_Certificate_
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
-
-

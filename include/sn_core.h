@@ -2,6 +2,7 @@
 #define __SN_CORE_H__
 
 #include "sn_types.h"
+#include <stddef.h>
 #include <stdbool.h>
 
 /*
@@ -57,20 +58,15 @@ typedef struct SN_Network_descriptor {
 enum SN_Message_type {
     SN_Data_message,       //standard data message
     SN_Evidence_message,   //send one or more certificates to a StarfishNet node, usually as evidence of an attribute
-    SN_Associate_request,  //associate with another StarfishNet node
-    SN_Associate_reply,    //respond to a StarfishNet node's association request
-    SN_Dissociate_request, //dissociate from a node. implicitly invalidates any short address(es) we've taken from it, and revokes those of our children if needed
-    SN_Authentication_message, //authenticate a key-exchange key
-    SN_Node_details,       //inform a StarfishNet node of our particulars. most importantly, our public key
-    SN_Address_request,    //request a short address from a neighboring router. Must be bundled with an ASSOCIATE request if an association doesn't already exist (and, in this event, is sent in plaintext)
-    SN_Address_release,    //release our short address. if received, handled entirely by StarfishNet, never sent to a higher layer
+    SN_Dissociation_request, //used by the network layer to signal a dissociation request from another node. implicitly invalidates any short address(es) we've taken from or given to it, forcing a recursive dissociation if needs be
+    SN_Association_request,  //used by the network layer to signal an association request from another node
 
     SN_End_of_message_types
 };
 
 //StarfishNet node association states
 enum SN_Association_state {
-    SN_Unassociated,       //no relationship
+    SN_Unassociated,
     SN_Associate_received,
     SN_Awaiting_reply,
     SN_Awaiting_finalise,
@@ -82,36 +78,36 @@ enum SN_Association_state {
 typedef union SN_Message {
     uint8_t type;                 //SN_Message_type_t
 
-    struct __attribute__((packed)) SN_Data_message {
+    struct __attribute__((packed)) {
         uint8_t type;             //SN_Message_type_t
         uint8_t payload_length;
         uint8_t payload[];
-    } data;
+    } data_message;
 
-    struct __attribute__((packed)) SN_Evidence_message {
+    struct __attribute__((packed)) {
         uint8_t          type;    //SN_Message_type_t
         SN_Certificate_t evidence;
-    } evidence;
+    } evidence_message;
 } SN_Message_t;
 
-int SN_Message_memory_size (
-    SN_Message_t* message
-);
-int SN_Message_network_size (
-    SN_Message_t* message
-);
-
-int SN_Transmit ( //transmit packet, containing one or more messages
+int SN_Send ( //transmit packet, containing one or more messages
     SN_Session_t* session,
     SN_Address_t* dst_addr,
-    uint8_t*      buffer_size, //IN: length of buffer in MESSAGES; OUT: size of transmission in BYTES
-    SN_Message_t* buffer
+    SN_Message_t*message
+);
+int SN_Associate ( //transmit packet, containing one or more messages
+        SN_Session_t* session,
+        SN_Address_t* dst_addr
+);
+int SN_Dissociate ( //transmit packet, containing one or more messages
+        SN_Session_t* session,
+        SN_Address_t* dst_addr
 );
 int SN_Receive ( //receive a packet, containing one or more messages. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
     SN_Session_t* session,
     SN_Address_t* src_addr,
-    uint8_t*      buffer_size, //IN: size of buffer in BYTES; OUT: length of buffer in MESSAGES
-    SN_Message_t* buffer
+    SN_Message_t* buffer,
+    size_t buffer_size
 );
 
 typedef void (SN_Discovery_callback_t) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata);

@@ -12,6 +12,7 @@
  */
 
 #include <stdint.h>
+#include <stddef.h>
 
 #include "sn_types.h"
 
@@ -23,14 +24,14 @@ int SN_Crypto_generate_keypair ( //generate a new ECC keypair, storing it in the
 int SN_Crypto_sign ( //sign data into sigbuf
     SN_Private_key_t* private_key,
     uint8_t*          data,
-    int               data_len,
+    size_t            data_len,
     SN_Signature_t*   signature
 );
 
 int SN_Crypto_verify ( //verify signature of data in sigbuf
     SN_Public_key_t*  public_key,
     uint8_t*          data,
-    int               data_len,
+    size_t            data_len,
     SN_Signature_t*   signature
 );
 
@@ -62,18 +63,18 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     uint8_t*         tag
 );
 
-int SN_Crypto_add_certificate( //add a certificate to a storage repository
+int SN_Crypto_add_certificate( //add a certificate to a storage repository. implicitly calls SN_Crypto_check_certificate on it first
     SN_Certificate_storage_t* storage,
-    SN_Certificate_t*         certficate
+    SN_Certificate_t*         certificate
 );
 
 int SN_Crypto_remove_certificate( //remove a certificate from a storage repository
     SN_Certificate_storage_t* storage,
-    SN_Certificate_t*         certficate
+    SN_Certificate_t*         certificate
 );
 
 int SN_Crypto_check_certificate( //check the signature on a certificate
-    SN_Certificate_t*         certficate
+    SN_Certificate_t*         certificate
 );
 
 //TODO: certificate chain validation

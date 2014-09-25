@@ -17,24 +17,26 @@ typedef struct SN_Table_entry {
     //addressing information
     mac_address_t    long_address; //always in 64-bit mode
     uint16_t         short_address;
-    uint8_t          is_neighbor;
     SN_Public_key_t  public_key;
 
     //relationship metadata
     union {
         struct {
-            uint8_t state         :3;
-            uint8_t authenticated :1;
-            uint8_t               :4;
+            uint8_t state         :3; //taken from SN_Association_state
+            uint8_t details_known :1; //we know the other node's details; don't ask for them
+            uint8_t knows_details :1; //the other node needs our details; send them in our next transmission
+            uint8_t neighbor      :1; //this node is our neighbor
+            uint8_t child         :1; //only valid if neighbor == 1. this node is our child
+            uint8_t router        :1; //only valid if child == 1. this node is a router (and thus possesses an address block)
         };
         uint8_t     relationship;
     };
 
     //cryptographic data
-    SN_Keypair_t     ephemeral_keypair; //generate a new keypair for each transaction
-    SN_Public_key_t  key_agreement_key; //remote party's ephemeral public key
-    SN_Kex_result_t  link_key;          //result of ECDH transaction
-    uint16_t         packet_tx_count;   //packet transmission count
+    SN_Keypair_t    local_key_agreement_keypair; //our ephemeral keypair
+    SN_Public_key_t remote_key_agreement_key;    //remote party's ephemeral public key
+    SN_Kex_result_t link_key;                    //result of ECDH transaction
+    uint16_t        packet_tx_count;             //packet transmission count
 } SN_Table_entry_t;
 
 //insert an entry into the table. entire data structure must be valid

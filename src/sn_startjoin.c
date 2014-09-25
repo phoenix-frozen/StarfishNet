@@ -45,9 +45,6 @@ typedef struct __attribute__((packed)) beacon_payload {
 } beacon_payload_t;
 
 static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer) {
-    assert(session != NULL);
-    assert(buffer != NULL);
-
     if(session == NULL || buffer == NULL)
         return -SN_ERR_NULL;
 
@@ -69,9 +66,7 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
 }
 
 static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
-    SN_InfoPrintf("enter\n");
-    assert(session != NULL);
-    assert(packet != NULL);
+    SN_DebugPrintf("enter\n");
 
     if(session == NULL || packet == NULL)
         return -SN_ERR_NULL;
@@ -110,16 +105,13 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     MAC_CALL(mac_transmit, session->mac_session, packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)start_confirm);
 
-    SN_InfoPrintf("exit\n");
+    SN_DebugPrintf("exit\n");
     return SN_OK;
 }
 
 //start a new StarfishNet network as coordinator
 int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     SN_InfoPrintf("enter\n");
-
-    assert(session != NULL);
-    assert(network != NULL);
 
     if(session == NULL || network == NULL) {
         SN_ErrPrintf("session and network must be non-NULL\n");
@@ -302,9 +294,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
  * Note that if routing is disabled, we don't transmit beacons.
  */
 int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
-    SN_InfoPrintf("enter\n");
-    assert(session != NULL);
-    assert(network != NULL);
+    SN_DebugPrintf("enter\n");
 
     if(session == NULL || network == NULL) {
         SN_ErrPrintf("session and network must be non-NULL\n");
@@ -414,13 +404,13 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
         ret = SN_Table_insert(&parent_table_entry);
     }
 
-    //And we're done. Setting up a security association with our new parent is deferred until the first packet exchange.
+    //And we're done
     if(ret != SN_OK) {
         SN_ErrPrintf("an error occurred; resetting radio and clearing node table...\n");
         SN_Table_clear(session);
         mac_reset_radio(session, &packet);
     }
-    SN_InfoPrintf("exit\n");
+    SN_DebugPrintf("exit\n");
     return ret;
 }
 
