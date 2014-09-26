@@ -9,7 +9,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "polarssl/sha1.h"
+#include <polarssl/sha1.h>
 
 #include "mac_util.h"
 #include "sn_constants.h"
@@ -460,7 +460,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
                     if(header->data.data_type) {
                         //evidence packet
                         if(payload_length != sizeof(SN_Certificate_t)) {
-                            SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %ld)\n", payload_length, sizeof(SN_Certificate_t));
+                            SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %zu)\n", payload_length, sizeof(SN_Certificate_t));
                             return -SN_ERR_INVALID;
                         }
 

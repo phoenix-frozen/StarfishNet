@@ -1,1 +1,0 @@
-../extern/polarssl/library/sha1.c

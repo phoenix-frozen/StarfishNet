@@ -53,7 +53,7 @@
 
 #include <string.h>
 
-#include "polarssl/sha1.h"
+#include <polarssl/sha1.h>
 
 #include "mac_util.h"
 #include "sn_constants.h"
@@ -370,7 +370,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
 
             case SN_Evidence_message:
                 if (primitive.MCPS_DATA_request.msduLength + sizeof(message->evidence_message.evidence) > aMaxMACPayloadSize) {
-                    SN_ErrPrintf("evidence packet is too large, at %ld bytes (maximum length is %d bytes)\n", primitive.MCPS_DATA_request.msduLength + sizeof(message->evidence_message.evidence), aMaxMACPayloadSize);
+                    SN_ErrPrintf("evidence packet is too large, at %zu bytes (maximum length is %d bytes)\n", primitive.MCPS_DATA_request.msduLength + sizeof(message->evidence_message.evidence), aMaxMACPayloadSize);
                     return -SN_ERR_RESOURCES;
                 }
                 memcpy(primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength, &message->evidence_message.evidence, sizeof(message->evidence_message.evidence));

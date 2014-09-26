@@ -9,7 +9,7 @@
 #include "uECC.h"
 
 //polarssl sha1
-#include "polarssl/sha1.h"
+#include <polarssl/sha1.h>
 #include "aes-ccm.h"
 
 #if SN_PK_key_size != uECC_BYTES

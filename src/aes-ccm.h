@@ -29,7 +29,7 @@
 #ifndef POLARSSL_AES_CCM_H
 #define POLARSSL_AES_CCM_H
 
-#include "polarssl/aes.h"
+#include <polarssl/aes.h>
 
 #define POLARSSL_ERR_CCM_BAD_INPUT      -0x000D /**< Bad input parameters to function. */
 #define POLARSSL_ERR_CCM_AUTH_FAILED    -0x000F /**< Authenticated decryption failed. */

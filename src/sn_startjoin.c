@@ -249,16 +249,16 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
         if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
             //XXX: this is the most disgusting way to print a MAC address ever invented by man
-            SN_InfoPrintf("    CoordAddress=%#018lx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
+            SN_InfoPrintf("    CoordAddress=%#018llx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
             if(memcmp(beacon_payload->address.ExtendedAddress, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress, 8) != 0) {
-                SN_ErrPrintf("    Address mismatch! %#018lx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
+                SN_ErrPrintf("    Address mismatch! %#018llx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
             }
         } else {
             SN_InfoPrintf("    CoordAddress=%#06x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress);
-            SN_InfoPrintf("    CoordAddress=%#018lx\n", *(uint64_t*)beacon_payload->address.ExtendedAddress);
+            SN_InfoPrintf("    CoordAddress=%#018llx\n", *(uint64_t*)beacon_payload->address.ExtendedAddress);
         }
         //XXX: this is the most disgusting way to print a key ever invented by man
-        SN_InfoPrintf("    key=%#018lx%016lx%08x\n", *(uint64_t*)beacon_payload->public_key.data, *(((uint64_t*)beacon_payload->public_key.data) + 1), *(((uint32_t*)beacon_payload->public_key.data) + 4));
+        SN_InfoPrintf("    key=%#018llx%016llx%08x\n", *(uint64_t*)beacon_payload->public_key.data, *(((uint64_t*)beacon_payload->public_key.data) + 1), *(((uint32_t*)beacon_payload->public_key.data) + 4));
 
         //check that this is a network of the kind we care about
         if(beacon_payload->protocol_id  != STARFISHNET_PROTOCOL_ID)
