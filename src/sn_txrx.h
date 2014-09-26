@@ -36,8 +36,8 @@ typedef struct __attribute__((packed)) network_header {
                 uint8_t associate    :1; //flags the presence of an association request header
                 uint8_t key_confirm  :1; //flags the presence of a key confirmation header
                 uint8_t data_type    :1;
-                    //if 1: the data section is plain data
-                    //if 0: the data section is a certificate
+                    //if 0: the data section is plain data
+                    //if 1: the data section is a certificate
                 uint8_t mbz          :2;
             };
             uint8_t attributes;
@@ -64,7 +64,7 @@ typedef struct __attribute__((packed)) association_request_header {
                 uint8_t child      :1;
                     //in a request   : request an address as well (implying you're my neighbor)
                     //in a reply     : flags the presence of an address allocation header
-                    //in a dissociate: flags that this is an address revocation, not a dissociation
+                    //in a dissociate: this is an address revocation, not a full dissociation
                 uint8_t router     :1; //only valid if child == 1
                     //in a request   : the address request is for a block, not a single
                     //in a reply     : the following address allocation header is for a block
@@ -72,7 +72,7 @@ typedef struct __attribute__((packed)) association_request_header {
                 uint8_t delegate   :1; //only valid if child == 1
                     //in a request   : request that the remote node perform association transactions on our behalf
                     //in a reply     : indicates that the remote node is willing to perform association transactions on our behalf
-                    //in a dissociate: revokes the above rights delegation
+                    //in a dissociate: this is a delegate revocation, not a full dissociation
                 uint8_t mbz        :4;
             };
             uint8_t flags;

@@ -1,8 +1,5 @@
 #include <stdio.h>
-#include <assert.h>
 #include <string.h>
-#include <unistd.h>
-#include <stdlib.h>
 
 #include <sn_core.h>
 #include <sn_crypto.h>
@@ -11,6 +8,7 @@
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
     *((SN_Network_descriptor_t*)extradata) = *network;
+    (void)session;
 }
 
 int main(int argc, char* argv[]) {
@@ -19,7 +17,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    int ret = SN_OK;
+    int ret;
 
     printf("Generating master keypair...\n");
 
@@ -43,12 +41,12 @@ int main(int argc, char* argv[]) {
 
     printf("Init complete. Printing MAC address:\n");
 
-    printf("MAC address is %#018lx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
+    printf("MAC address is %#018llx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
 
     printf("Scanning for networks...\n");
 
     SN_Network_descriptor_t network = {};
-    ret = SN_Discover(&network_session, ~0, 1000, &network_discovered, (void*)&network);
+    ret = SN_Discover(&network_session, 0xFFFFFFFF, 1000, &network_discovered, (void*)&network);
 
     if(ret != SN_OK) {
         printf("Network discovery failed: %d\n", -ret);

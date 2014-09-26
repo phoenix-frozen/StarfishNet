@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -17,7 +16,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    int ret = SN_OK;
+    int ret;
 
     printf("Generating master keypair...\n");
 
@@ -41,7 +40,7 @@ int main(int argc, char* argv[]) {
 
     printf("Init complete. Printing MAC address:\n");
 
-    printf("MAC address is %#018lx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
+    printf("MAC address is %#018llx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
 
     printf("Starting network on channel %d with ID %x...\n", channel, panid);
 
@@ -66,34 +65,23 @@ int main(int argc, char* argv[]) {
     printf("Waiting for associate request...\n");
 
     SN_Address_t remote_address;
-    uint8_t association_request_size = aMaxPHYPacketSize;
-    SN_Message_t* association_request = malloc(association_request_size);
+    SN_Message_t association_request;
 
-    ret = SN_Receive(&network_session, &remote_address, &association_request_size, association_request);
+    ret = SN_Receive(&network_session, &remote_address, &association_request, sizeof(association_request));
 
     if(ret != SN_OK) {
         printf("Receive failed with %d\n", -ret);
         goto main_exit;
     }
 
-    printf("Received packet contaning %d messages\n", association_request_size);
-    if(association_request_size != 3) {
-        printf("Should have been 3 messages. Proceeding with caution...\n");
-    }
-
-    if(association_request->type != SN_Associate_request) {
-        printf("Received message of type %d instead of association request...\n", association_request->type);
+    if(association_request.type != SN_Association_request) {
+        printf("Received message of type %d instead of association request...\n", association_request.type);
         goto main_exit;
     }
 
     printf("Transmitting associate reply...\n");
 
-    association_request_size = 2;
-    uint8_t* dodgy_hack = (uint8_t*)association_request;
-    dodgy_hack[0] = SN_Associate_reply;
-    dodgy_hack[2] = SN_Authentication_message;
-
-    ret = SN_Transmit(&network_session, &remote_address, &association_request_size, association_request);
+    ret = SN_Associate(&network_session, &remote_address, NULL);
 
     if(ret != SN_OK) {
         printf("Associate reply transmission failed: %d\n", -ret);
@@ -106,7 +94,7 @@ int main(int argc, char* argv[]) {
         .session = &network_session,
     };
     SN_Table_lookup_by_address(&remote_address, &table_entry, NULL);
-    printf("%suthenticated Relationship is in state %d (should be at least %d)\n", table_entry.authenticated ? "A" : "Una", table_entry.state, SN_Awaiting_finalise);
+    printf("Relationship is in state %d (should be at least %d)\n", table_entry.state, SN_Awaiting_finalise);
     if(table_entry.state < SN_Awaiting_finalise) {
         goto main_exit;
     }
@@ -119,12 +107,12 @@ int main(int argc, char* argv[]) {
     SN_Message_t* recvbuf = malloc(recvbuf_size);
     SN_Address_t srcaddr;
 
-    ret = SN_Receive(&network_session, &srcaddr, &recvbuf_size, recvbuf);
+    ret = SN_Receive(&network_session, &srcaddr, recvbuf, recvbuf_size);
 
     if(ret != SN_OK) {
         printf("Packet receive failed: %d\n", -ret);
     } else {
-        printf("Packet received: \"%s\"\n", recvbuf->data.payload);
+        printf("Packet received: \"%s\"\n", recvbuf->data_message.payload);
     }
 
     printf("Test complete. Type \"die\" to clean up and exit.\n");

@@ -248,15 +248,15 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        association_request_header_t * key_agreement_header = (association_request_header_t *)(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength);
+        association_request_header_t* association_header = (association_request_header_t*)(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength);
         packet->MCPS_DATA_request.msduLength += sizeof(association_request_header_t);
         *crypto_margin += sizeof(association_request_header_t);
 
-        key_agreement_header->signed_data.flags            = 0;
-        key_agreement_header->signed_data.key_agreement_key = table_entry->local_key_agreement_keypair.public_key;
-        key_agreement_header->signed_data.router           = session->nib.enable_routing;
-        //TODO: address request
-        if(SN_Crypto_sign(&session->device_root_key.private_key, (uint8_t*)&key_agreement_header->signed_data, sizeof(key_agreement_header->signed_data), &key_agreement_header->signature) != SN_OK) {
+        association_header->signed_data.flags             = 0;
+        association_header->signed_data.key_agreement_key = table_entry->local_key_agreement_keypair.public_key;
+        association_header->signed_data.router            = session->nib.enable_routing;
+        association_header->signed_data.child             = memcmp(session->nib.parent_public_key.data, table_entry->public_key.data, sizeof(session->nib.parent_public_key.data)) == 0 ? (uint8_t)1 : (uint8_t)0;
+        if(SN_Crypto_sign(&session->device_root_key.private_key, (uint8_t*)&association_header->signed_data, sizeof(association_header->signed_data), &association_header->signature) != SN_OK) {
             SN_ErrPrintf("could not sign key exchange header\n");
             return -SN_ERR_SIGNATURE;
         }
@@ -287,6 +287,34 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
     //TODO: address_allocation_header_t
 
     SN_DebugPrintf("exit\n");
+    return SN_OK;
+}
+
+static int generate_payload(SN_Message_t* message, mac_primitive_t* packet) {
+    switch (message->type) {
+        case SN_Data_message:
+            if (packet->MCPS_DATA_request.msduLength + message->data_message.payload_length > aMaxMACPayloadSize) {
+                SN_ErrPrintf("data packet is too large, at %d bytes (maximum length is %d bytes)\n", packet->MCPS_DATA_request.msduLength + message->data_message.payload_length, aMaxMACPayloadSize);
+                return -SN_ERR_RESOURCES;
+            }
+            memcpy(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength, message->data_message.payload, message->data_message.payload_length);
+            packet->MCPS_DATA_request.msduLength += message->data_message.payload_length;
+            break;
+
+        case SN_Evidence_message:
+            if (packet->MCPS_DATA_request.msduLength + sizeof(SN_Certificate_t) > aMaxMACPayloadSize) {
+                SN_ErrPrintf("evidence packet is too large, at %zu bytes (maximum length is %d bytes)\n", packet->MCPS_DATA_request.msduLength + sizeof(SN_Certificate_t), aMaxMACPayloadSize);
+                return -SN_ERR_RESOURCES;
+            }
+            *(SN_Certificate_t*)(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength) = message->evidence_message;
+            packet->MCPS_DATA_request.msduLength += sizeof(SN_Certificate_t);
+            break;
+
+        default:
+            SN_ErrPrintf("invalid message type %d, aborting\n", message->type);
+            return -SN_ERR_INVALID;
+    }
+
     return SN_OK;
 }
 
@@ -355,31 +383,17 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     SN_InfoPrintf("generating subheaders...\n");
     uint8_t crypto_margin = 0;
     ret = generate_packet_headers(session, &table_entry, &crypto_margin, &primitive);
+    if(ret != SN_OK) {
+        SN_ErrPrintf("header generation failed with %d\n", -ret);
+        return ret;
+    }
 
     if(message != NULL) {
         SN_InfoPrintf("generating payload...\n");
-        switch (message->type) {
-            case SN_Data_message:
-                if (primitive.MCPS_DATA_request.msduLength + message->data_message.payload_length > aMaxMACPayloadSize) {
-                    SN_ErrPrintf("data packet is too large, at %d bytes (maximum length is %d bytes)\n", primitive.MCPS_DATA_request.msduLength + message->data_message.payload_length, aMaxMACPayloadSize);
-                    return -SN_ERR_RESOURCES;
-                }
-                memcpy(primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength, message->data_message.payload, message->data_message.payload_length);
-                primitive.MCPS_DATA_request.msduLength += message->data_message.payload_length;
-                break;
-
-            case SN_Evidence_message:
-                if (primitive.MCPS_DATA_request.msduLength + sizeof(message->evidence_message.evidence) > aMaxMACPayloadSize) {
-                    SN_ErrPrintf("evidence packet is too large, at %zu bytes (maximum length is %d bytes)\n", primitive.MCPS_DATA_request.msduLength + sizeof(message->evidence_message.evidence), aMaxMACPayloadSize);
-                    return -SN_ERR_RESOURCES;
-                }
-                memcpy(primitive.MCPS_DATA_request.msdu + primitive.MCPS_DATA_request.msduLength, &message->evidence_message.evidence, sizeof(message->evidence_message.evidence));
-                primitive.MCPS_DATA_request.msduLength += sizeof(message->evidence_message.evidence);
-                break;
-
-            default:
-                SN_ErrPrintf("invalid message type %d, aborting\n", message->type);
-                return -SN_ERR_INVALID;
+        ret = generate_payload(message, &primitive);
+        if(ret != SN_OK) {
+            SN_ErrPrintf("payload generation failed with %d\n", -ret);
+            return ret;
         }
         SN_InfoPrintf("packet data generation complete\n");
     } else {
@@ -404,7 +418,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     return SN_OK;
 }
 
-int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr) {
+int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message) {
     //initial NULL-checks
     if(session == NULL || dst_addr == NULL) {
         SN_ErrPrintf("session, dst_addr, and buffer must all be valid\n");
@@ -523,6 +537,24 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr) {
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in header generation\n", -ret);
         return ret;
+    }
+
+    //do data stapling
+    if(message != NULL) {
+        if(header->data.encrypt) {
+            SN_InfoPrintf("generating stapled data...\n");
+            ret = generate_payload(message, &primitive);
+            if(ret != SN_OK) {
+                SN_ErrPrintf("payload generation failed with %d\n", -ret);
+                return ret;
+            }
+            SN_InfoPrintf("stapled data generation complete\n");
+        } else {
+            SN_ErrPrintf("cannot staple data to an associate_request\n");
+            return -SN_ERR_INVALID;
+        }
+    } else {
+        SN_InfoPrintf("no data to staple\n");
     }
 
     SN_InfoPrintf("beginning packet crypto...\n");
