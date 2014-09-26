@@ -91,16 +91,6 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
         margin += sizeof(key_confirmation_header_t);
     }
 
-    if(decoded_packet->network_header->encrypt) {
-        if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(encryption_header_t)) {
-            SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found encryption header\n");
-        decoded_packet->encryption_header = (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
-        current_position += sizeof(encryption_header_t);
-    }
-
     //address_allocation_header_t / address_block_allocation_header_t (only found in associate_reply packets
     if(decoded_packet->network_header->associate && decoded_packet->network_header->key_confirm && decoded_packet->association_header->signed_data.child) {
         if(decoded_packet->association_header->signed_data.router) {
@@ -112,6 +102,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             SN_InfoPrintf("found address block allocation header\n");
             decoded_packet->address_block_allocation = (address_block_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
             current_position += sizeof(address_block_allocation_header_t);
+            margin += sizeof(address_block_allocation_header_t);
         } else {
             //single allocation
             if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(address_allocation_header_t)) {
@@ -121,7 +112,18 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             SN_InfoPrintf("found address allocation header\n");
             decoded_packet->address_allocation = (address_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
             current_position += sizeof(address_allocation_header_t);
+            margin += sizeof(address_allocation_header_t);
         }
+    }
+
+    if(decoded_packet->network_header->encrypt) {
+        if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(encryption_header_t)) {
+            SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        SN_InfoPrintf("found encryption header\n");
+        decoded_packet->encryption_header = (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+        current_position += sizeof(encryption_header_t);
     }
 
     decoded_packet->payload_length = packet->MCPS_DATA_indication.msduLength - current_position;

@@ -271,6 +271,8 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
         }
     }
 
+    //TODO: address_allocation_header_t
+
     if(header->encrypt) {
         SN_InfoPrintf("generating encryption header\n");
         if(packet->MCPS_DATA_request.msduLength + sizeof(encryption_header_t) > aMaxMACPayloadSize) {
@@ -282,8 +284,6 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
 
         encryption_header->counter = table_entry->packet_tx_count++;
     }
-
-    //TODO: address_allocation_header_t
 
     SN_DebugPrintf("exit\n");
     return SN_OK;
