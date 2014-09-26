@@ -46,9 +46,9 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     SN_AES_key_id_t* key_id,
     uint16_t         counter,
     uint8_t*         ad,
-    uint8_t          ad_len,
+    size_t           ad_len,
     uint8_t*         data,
-    uint8_t          data_len,
+    size_t           data_len,
     uint8_t*         tag
 );
 
@@ -57,9 +57,9 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     SN_AES_key_id_t* key_id,
     uint16_t         counter,
     uint8_t*         ad,
-    uint8_t          ad_len,
+    size_t           ad_len,
     uint8_t*         data,
-    uint8_t          data_len,
+    size_t           data_len,
     uint8_t*         tag
 );
 

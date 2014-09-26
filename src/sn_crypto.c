@@ -125,7 +125,7 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
 }
 
 
-int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, uint8_t ad_len, uint8_t* data, uint8_t data_len, uint8_t* tag) {
+int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
     SN_InfoPrintf("enter\n");
 
     if(key == NULL || key_id == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
@@ -159,7 +159,7 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     return SN_OK;
 }
 
-int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, uint8_t ad_len, uint8_t* data, uint8_t data_len, uint8_t* tag) {
+int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
     SN_InfoPrintf("enter\n");
 
     if(key == NULL || key_id == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {

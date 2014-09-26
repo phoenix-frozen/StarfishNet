@@ -24,6 +24,7 @@ typedef struct decoded_packet {
     network_header_t* network_header;
     node_details_header_t* node_details;
     association_request_header_t* association_header;
+    encryption_header_t* encryption_header;
     key_confirmation_header_t* key_confirm;
     address_allocation_header_t* address_allocation;
     address_block_allocation_header_t* address_block_allocation;
@@ -42,6 +43,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
     }
 
     uint8_t current_position = 0;
+    uint8_t margin = 0;
     memset(decoded_packet, 0, sizeof(*decoded_packet));
 
     decoded_packet->network_header = (network_header_t*)packet->MCPS_DATA_indication.msdu;
@@ -49,33 +51,43 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
         SN_ErrPrintf("packet doesn't appear to have a valid network header. aborting\n");
         return -SN_ERR_END_OF_DATA;
     }
-    current_position += sizeof(network_header_t);
-
     if(!(decoded_packet->network_header->protocol_id == STARFISHNET_PROTOCOL_ID && decoded_packet->network_header->protocol_ver == STARFISHNET_PROTOCOL_VERSION)) {
         SN_ErrPrintf("packet has invalid protocol ID bytes. protocol is %x (should be %x), version is %x (should be %x)\n", decoded_packet->network_header->protocol_id, STARFISHNET_PROTOCOL_ID, decoded_packet->network_header->protocol_ver, STARFISHNET_PROTOCOL_VERSION);
         return -SN_ERR_OLD_VERSION;
     }
+    current_position += sizeof(network_header_t);
+    margin += sizeof(network_header_t);
 
-
-    if(decoded_packet->network_header->data.details) {
+    if(decoded_packet->network_header->details) {
         if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(node_details_header_t)) {
             SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
         decoded_packet->node_details = (node_details_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(node_details_header_t);
+        margin += sizeof(node_details_header_t);
     }
 
-    if(decoded_packet->network_header->data.associate) {
+    if(decoded_packet->network_header->associate) {
         if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(association_request_header_t)) {
             SN_ErrPrintf("packet indicates an association request header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
         decoded_packet->association_header = (association_request_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(association_request_header_t);
+        margin += sizeof(association_request_header_t);
     }
 
-    if(decoded_packet->network_header->data.key_confirm) {
+    if(decoded_packet->network_header->encrypt) {
+        if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(encryption_header_t)) {
+            SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        decoded_packet->encryption_header = (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+        current_position += sizeof(encryption_header_t);
+    }
+
+    if(decoded_packet->network_header->key_confirm) {
         if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(key_confirmation_header_t)) {
             SN_ErrPrintf("packet indicates a key confirmation header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -85,7 +97,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
     }
 
     //address_allocation_header_t / address_block_allocation_header_t (only found in associate_reply packets
-    if(decoded_packet->network_header->data.associate && decoded_packet->network_header->data.key_confirm && decoded_packet->association_header->signed_data.child) {
+    if(decoded_packet->network_header->associate && decoded_packet->network_header->key_confirm && decoded_packet->association_header->signed_data.child) {
         if(decoded_packet->association_header->signed_data.router) {
             //block allocation
             if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(address_block_allocation_header_t)) {
@@ -106,7 +118,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
     }
 
     decoded_packet->payload_data  = (current_position == packet->MCPS_DATA_indication.msduLength) ? NULL : (packet->MCPS_DATA_indication.msdu + current_position);
-    decoded_packet->crypto_margin = current_position - (uint8_t)sizeof(network_header_t);
+    decoded_packet->crypto_margin = margin;
     decoded_packet->payload_length = packet->MCPS_DATA_indication.msduLength - current_position;
 
     assert(current_position <= packet->MCPS_DATA_indication.msduLength);
@@ -154,17 +166,17 @@ static int bootstrap_security_processing(SN_Table_entry_t* table_entry, decoded_
         }
     }
 
-    //packet security check: require encryption on all packets.
-    // the only exception is a lone association header with no stapled data or a stapled certificate
-    if(!decoded_packet->network_header->data.encrypt) {
+    //packet security check: encryption requirements
+    // the only exceptions are association and key confirmation with no stapled data or a stapled certificate
+    if(!decoded_packet->network_header->encrypt) {
         if(
             //decoded_packet->network_header is always present
-            //decoded_packet->node_details is except from this rule
+            //decoded_packet->node_details is exempt from this rule
+            //decoded_packet->key_confirm is exempt from this rule
             decoded_packet->association_header != NULL &&
-                decoded_packet->key_confirm == NULL &&
                 decoded_packet->address_allocation == NULL &&
                 decoded_packet->address_block_allocation == NULL &&
-                (decoded_packet->payload_data == NULL || decoded_packet->network_header->data.data_type)
+                (decoded_packet->payload_data == NULL || decoded_packet->network_header->data_type)
             ) {
             //this is OK, so do nothing
         } else {
@@ -239,7 +251,7 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
     }
 
     //network_header
-    table_entry->knows_details = decoded_packet->network_header->data.req_details;
+    table_entry->knows_details = decoded_packet->network_header->req_details;
 
     //node_details
     if(decoded_packet->node_details != NULL) {
@@ -309,53 +321,33 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
  * margin: how much data to skip (after the network header, before the payload) for encryption
  * safe  : if true, arrange so that the original data is untouched on a decryption failure
  */
-static int decrypt_verify_packet(SN_Kex_result_t* link_key, uint8_t margin, network_header_t* network_header, mac_primitive_t* packet) {
+static int decrypt_verify_packet(SN_Kex_result_t* link_key, uint8_t margin, mac_primitive_t* packet) {
     SN_DebugPrintf("enter\n");
 
     if(link_key == NULL || packet == NULL) {
-        SN_ErrPrintf("link_key, and packet must all be valid\n");
+        SN_ErrPrintf("link_key, and packet must be valid\n");
         return -SN_ERR_NULL;
     }
 
-    if(packet->MCPS_DATA_request.msduLength < sizeof(network_header_t) + margin) {
+    const size_t skip_size = margin + sizeof(encryption_header_t);
+    if(packet->MCPS_DATA_indication.msduLength < skip_size) {
         SN_ErrPrintf("cannot decrypt packet of length %d with a margin of %d\n", packet->MCPS_DATA_request.msduLength, margin);
         return -SN_ERR_END_OF_DATA;
     }
 
-    int ret;
+    encryption_header_t* encryption_header = (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + margin);
 
-    if(network_header->data.encrypt) {
-        ret = SN_Crypto_decrypt(&link_key->key, &link_key->key_id, network_header->crypto.counter,
-                (uint8_t*)&network_header->data, (uint8_t)sizeof(network_header->data) + margin, //XXX: this line makes assumptions about packet layout in order to integrity-check the margin
-                packet->MCPS_DATA_request.msdu + sizeof(network_header_t) + margin, packet->MCPS_DATA_request.msduLength - (uint8_t)(sizeof(network_header_t) + margin),
-                network_header->crypto.tag);
-        if(ret != SN_OK) {
-            SN_ErrPrintf("Packet dencryption failed with %d, aborting\n", -ret);
-            return -SN_ERR_SECURITY;
-        }
-
-        SN_InfoPrintf("payload decryption complete\n");
-    } else {
-        SN_InfoPrintf("packet not encrypted. doing hash check instead...\n");
-        //if the packet wasn't encrypted, tag contains a hash instead (truncated if necessary)
-        SN_Hash_t hashbuf;
-        sha1_context hashctx;
-
-        sha1_init(&hashctx);
-        sha1_starts(&hashctx);
-        sha1_update(&hashctx, (uint8_t*)&network_header->data, sizeof(network_header->data));
-        sha1_update(&hashctx, (uint8_t*)&network_header->crypto.counter, sizeof(network_header->crypto.counter));
-        sha1_update(&hashctx, packet->MCPS_DATA_request.msdu + sizeof(network_header_t), packet->MCPS_DATA_request.msduLength - sizeof(network_header_t));
-        sha1_finish(&hashctx, hashbuf.data);
-        sha1_free(&hashctx);
-
-        if(memcmp(network_header->crypto.tag, hashbuf.data, sizeof(network_header->crypto.tag)) != 0) { //XXX: crypto.tag is smaller than hashbuf
-            SN_ErrPrintf("Packet hash check failed\n");
-            return -SN_ERR_SIGNATURE;
-        }
-
-        SN_InfoPrintf("hash check complete\n");
+    int ret = SN_Crypto_decrypt(&link_key->key, &link_key->key_id, encryption_header->counter,
+        packet->MCPS_DATA_request.msdu, margin,
+        packet->MCPS_DATA_indication.msdu + skip_size,
+        packet->MCPS_DATA_indication.msduLength - skip_size,
+        encryption_header->tag);
+    if(ret != SN_OK) {
+        SN_ErrPrintf("Packet decryption failed with %d, aborting\n", -ret);
+        return -SN_ERR_SECURITY;
     }
+
+    SN_InfoPrintf("payload decryption complete\n");
 
     SN_DebugPrintf("exit\n");
     return SN_OK;
@@ -457,11 +449,13 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         return ret;
     }
 
-    SN_InfoPrintf("doing decryption and integrity checking...\n");
-    ret = decrypt_verify_packet(&link_key, decoded_packet.crypto_margin, decoded_packet.network_header, &packet);
-    if(ret != SN_OK) {
-        SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
-        return ret;
+    if(decoded_packet.network_header->encrypt) {
+        SN_InfoPrintf("doing decryption and integrity checking...\n");
+        ret = decrypt_verify_packet(&link_key, decoded_packet.crypto_margin, &packet);
+        if(ret != SN_OK) {
+            SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
+            return ret;
+        }
     }
 
     SN_InfoPrintf("processing packet headers...\n");
@@ -501,11 +495,11 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     SN_InfoPrintf("processing packet...\n");
     if(decoded_packet.payload_data != NULL) {
-        if(!decoded_packet.network_header->data.encrypt) {
+        if(!decoded_packet.network_header->encrypt) {
             //stapled data on unencrypted packet. warn and ignore
             SN_WarnPrintf("received data in unencrypted packet. ignoring.\n");
         } else {
-            if(decoded_packet.network_header->data.data_type) {
+            if(decoded_packet.network_header->data_type) {
                 //evidence packet
                 if(decoded_packet.payload_length != sizeof(SN_Certificate_t)) {
                     SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %zu)\n", decoded_packet.payload_length, sizeof(SN_Certificate_t));

@@ -25,9 +25,7 @@ static MAC_SET_CONFIRM(macPromiscuousMode);
 #define DEFAULT_TX_RETRY_LIMIT 3
 #define DEFAULT_TX_RETRY_TIMEOUT 2500
 
-#define FIXED_COORDINATOR_ADDRESS SN_NO_SHORT_ADDRESS
-//TODO: uncomment below when routing is switched on
-//#define FIXED_COORDINATOR_ADDRESS 0x0000
+#define FIXED_COORDINATOR_ADDRESS 0x0000
 
 typedef struct __attribute__((packed)) beacon_payload {
     //protocol ID information

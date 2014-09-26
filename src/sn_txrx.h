@@ -18,31 +18,24 @@ typedef struct __attribute__((packed)) network_header {
     uint8_t protocol_id;
     uint8_t protocol_ver;
 
-    struct __attribute__((packed)) {
-        uint16_t counter;
-        uint8_t  tag[SN_Tag_size]; //XXX: this is smaller than a hash. assumption made in sn_transmit.c and sn_receive.c
-    } crypto;
-
-    struct __attribute__((packed)) {
-        uint16_t src_addr;
-        uint16_t dst_addr;
-        union {
-            struct {
-                uint8_t encrypt      :1;
-                    //if true, the packet is AES-128-CCM encrypted, with the CCM tag in the tag field
-                    //if false, the packet is unencrypted, with a truncated SHA1 hash in the tag field
-                uint8_t req_details  :1; //requests that the remote party send its details
-                uint8_t details      :1; //flags the presence of a node details header
-                uint8_t associate    :1; //flags the presence of an association request header
-                uint8_t key_confirm  :1; //flags the presence of a key confirmation header
-                uint8_t data_type    :1;
-                    //if 0: the data section is plain data
-                    //if 1: the data section is a certificate
-                uint8_t mbz          :2;
-            };
-            uint8_t attributes;
+    uint16_t src_addr;
+    uint16_t dst_addr;
+    union {
+        struct {
+            uint8_t encrypt      :1;
+            //if true, the packet is AES-128-CCM encrypted, with the CCM tag in the tag field
+            //if false, the packet is unencrypted, with a truncated SHA1 hash in the tag field
+            uint8_t req_details  :1; //requests that the remote party send its details
+            uint8_t details      :1; //flags the presence of a node details header
+            uint8_t associate    :1; //flags the presence of an association request header
+            uint8_t key_confirm  :1; //flags the presence of a key confirmation header
+            uint8_t data_type    :1;
+            //if 0: the data section is plain data
+            //if 1: the data section is a certificate
+            uint8_t mbz          :2;
         };
-    } data;
+        uint8_t attributes;
+    };
 } network_header_t;
 
 typedef struct __attribute__((packed)) node_details_header {
@@ -79,6 +72,11 @@ typedef struct __attribute__((packed)) association_request_header {
 
     SN_Signature_t  signature;
 } association_request_header_t;
+
+typedef struct __attribute__((packed)) encryption_header {
+    uint16_t counter;
+    uint8_t  tag[SN_Tag_size];
+} encryption_header_t;
 
 typedef struct __attribute__((packed)) key_confirmation_header {
     SN_Hash_t       challenge;
