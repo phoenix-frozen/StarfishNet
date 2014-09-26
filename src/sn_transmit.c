@@ -515,13 +515,6 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
             return -SN_ERR_UNEXPECTED;
     }
 
-    //update node table
-    ret = SN_Table_update(&table_entry);
-    if(ret != SN_OK) {
-        SN_ErrPrintf("error %d updating node table\n", -ret);
-        return ret;
-    }
-
     //generate subheaders
     SN_InfoPrintf("generating subheaders...\n");
     uint8_t crypto_margin = 0;
@@ -564,6 +557,9 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
     }
+
+    //update node table
+    SN_Table_update(&table_entry);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

@@ -63,6 +63,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
+        SN_InfoPrintf("found node details header\n");
         decoded_packet->node_details = (node_details_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(node_details_header_t);
         margin += sizeof(node_details_header_t);
@@ -73,6 +74,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             SN_ErrPrintf("packet indicates an association request header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
+        SN_InfoPrintf("found association request header\n");
         decoded_packet->association_header = (association_request_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(association_request_header_t);
         margin += sizeof(association_request_header_t);
@@ -83,6 +85,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
+        SN_InfoPrintf("found encryption header\n");
         decoded_packet->encryption_header = (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(encryption_header_t);
     }
@@ -92,6 +95,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             SN_ErrPrintf("packet indicates a key confirmation header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
+        SN_InfoPrintf("found key confirmation header\n");
         decoded_packet->key_confirm = (key_confirmation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(key_confirmation_header_t);
     }
@@ -104,6 +108,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
                 SN_ErrPrintf("packet indicates an address block allocation header, but is too small. aborting\n");
                 return -SN_ERR_END_OF_DATA;
             }
+            SN_InfoPrintf("found address block allocation header\n");
             decoded_packet->address_block_allocation = (address_block_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
             current_position += sizeof(address_block_allocation_header_t);
         } else {
@@ -112,19 +117,28 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
                 SN_ErrPrintf("packet indicates an address allocation header, but is too small. aborting\n");
                 return -SN_ERR_END_OF_DATA;
             }
+            SN_InfoPrintf("found address allocation header\n");
             decoded_packet->address_allocation = (address_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
             current_position += sizeof(address_allocation_header_t);
         }
     }
 
-    decoded_packet->payload_data  = (current_position == packet->MCPS_DATA_indication.msduLength) ? NULL : (packet->MCPS_DATA_indication.msdu + current_position);
-    decoded_packet->crypto_margin = margin;
     decoded_packet->payload_length = packet->MCPS_DATA_indication.msduLength - current_position;
+    if(decoded_packet->payload_length > 0) {
+        SN_InfoPrintf("found payload (%d bytes)\n", decoded_packet->payload_length);
+        decoded_packet->payload_data = packet->MCPS_DATA_indication.msdu + current_position;
+    } else {
+        decoded_packet->payload_data = NULL;
+    }
 
+    decoded_packet->crypto_margin = margin;
+
+    //some logic-checking assertions
     assert(current_position <= packet->MCPS_DATA_indication.msduLength);
-    assert(decoded_packet->crypto_margin <= packet->MCPS_DATA_indication.msduLength);
     assert(decoded_packet->payload_length < packet->MCPS_DATA_indication.msduLength);
-
+    if(decoded_packet->encryption_header != NULL) {
+        assert(decoded_packet->crypto_margin < packet->MCPS_DATA_indication.msduLength);
+    }
 
     SN_DebugPrintf("exit\n");
     return SN_OK;
@@ -148,7 +162,7 @@ static int bootstrap_security_processing(SN_Table_entry_t* table_entry, decoded_
         SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
         return -SN_ERR_UNEXPECTED;
     }
-    if(decoded_packet->key_confirm != NULL && (table_entry->state != SN_Awaiting_reply || table_entry->state != SN_Awaiting_finalise)) {
+    if(decoded_packet->key_confirm != NULL && table_entry->state != SN_Awaiting_reply && table_entry->state != SN_Awaiting_finalise) {
         SN_ErrPrintf("received key confirmation header when we're not waiting for one. this is an error\n");
         return -SN_ERR_UNEXPECTED;
     }
