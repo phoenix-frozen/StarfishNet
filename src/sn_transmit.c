@@ -236,8 +236,6 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
         node_details_header_t* node_details = (node_details_header_t*)(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength);
         packet->MCPS_DATA_request.msduLength += sizeof(node_details_header_t);
 
-        node_details->long_address = session->mib.macIEEEAddress;
-        node_details->short_address = session->mib.macShortAddress;
         node_details->signing_key = session->device_root_key.public_key;
     }
 
@@ -377,9 +375,6 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
         table_entry.knows_details = 1;
     }
 
-    //we've changed the table entry. update it
-    SN_Table_update(&table_entry);
-
     SN_InfoPrintf("generating subheaders...\n");
     uint8_t crypto_margin = 0;
     ret = generate_packet_headers(session, &table_entry, &crypto_margin, &primitive);
@@ -413,6 +408,9 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
     }
+
+    //we've changed the table entry. update it
+    SN_Table_update(&table_entry);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

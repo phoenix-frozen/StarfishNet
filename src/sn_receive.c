@@ -247,8 +247,6 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
             table_entry->details_known = 1;
             table_entry->public_key = decoded_packet->node_details->signing_key;
         }
-        table_entry->long_address = decoded_packet->node_details->long_address;
-        table_entry->short_address = decoded_packet->node_details->short_address;
     }
 
     //association_header
@@ -495,7 +493,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         association_request->type = decoded_packet.association_header->signed_data.dissociate ? SN_Dissociation_request : SN_Association_request;
         association_request->association_message.stapled_data = buffer_size == 0 ? NULL : buffer;
 
-        SN_InfoPrintf("message synthesis done. output buffer has %d bytes remaining.\n", buffer_size);
+        SN_InfoPrintf("message synthesis done. output buffer has %zu bytes remaining.\n", buffer_size);
         if (buffer_size == 0) {
             SN_WarnPrintf("output buffer has no space remaining after association message synthesis\n");
         }

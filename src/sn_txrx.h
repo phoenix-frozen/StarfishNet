@@ -47,8 +47,6 @@ typedef struct __attribute__((packed)) network_header {
 
 typedef struct __attribute__((packed)) node_details_header {
     //node information
-    uint16_t short_address;
-    mac_address_t long_address;
     SN_Public_key_t signing_key;
 } node_details_header_t;
 

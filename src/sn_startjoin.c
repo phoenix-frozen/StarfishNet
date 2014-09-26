@@ -390,15 +390,13 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
 
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
-            .session = session,
-            //.long_address filled below
-            //.short_address filled below
-            .neighbor = 1,
-            //.key filled below
+        .session = session,
+        .long_address = network->nearest_neighbor_long_address,
+        .short_address = network->nearest_neighbor_short_address,
+        .neighbor = 1,
+        .public_key = network->nearest_neighbor_public_key,
+        .details_known = 1,
     };
-    parent_table_entry.long_address  = network->nearest_neighbor_long_address;
-    parent_table_entry.short_address = network->nearest_neighbor_short_address;
-    parent_table_entry.public_key    = network->nearest_neighbor_public_key;
     if(ret == SN_OK) {
         SN_InfoPrintf("adding parent to node table...\n");
         ret = SN_Table_insert(&parent_table_entry);
