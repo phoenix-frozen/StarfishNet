@@ -251,7 +251,7 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
     }
 
     //network_header
-    table_entry->knows_details = decoded_packet->network_header->req_details;
+    table_entry->knows_details = (uint8_t)!decoded_packet->network_header->req_details;
 
     //node_details
     if(decoded_packet->node_details != NULL) {
@@ -365,7 +365,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     const size_t min_buffer_size = (uint8_t*)&buffer->association_message.stapled_data - (uint8_t*)buffer + sizeof(SN_Message_t*);
     if(buffer_size < min_buffer_size) {
         //too small to even hold an associate message, hence too small for anything
-        SN_ErrPrintf("buffer is below minimum size (is %d bytes, should be %zu bytes)\n", buffer_size, min_buffer_size);
+        SN_ErrPrintf("buffer is below minimum size (is %zu bytes, should be %zu bytes)\n", buffer_size, min_buffer_size);
         return -SN_ERR_RESOURCES;
     }
 
