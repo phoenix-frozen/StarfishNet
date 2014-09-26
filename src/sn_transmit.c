@@ -245,6 +245,32 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
         }
     }
 
+    //key_confirmation_header_t
+    if(header->key_confirm) {
+        SN_InfoPrintf("generating key confirmation header\n");
+        if(packet->MCPS_DATA_request.msduLength + sizeof(key_confirmation_header_t) > aMaxMACPayloadSize) {
+            SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        key_confirmation_header_t* key_confirmation_header = (key_confirmation_header_t*)(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength);
+        packet->MCPS_DATA_request.msduLength += sizeof(key_confirmation_header_t);
+        *crypto_margin += sizeof(key_confirmation_header_t);
+
+        if(header->associate) {
+            //this is a reply; do challenge1 (double-hash)
+            SN_InfoPrintf("generating challenge1\n");
+            SN_Hash_t hashbuf;
+            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
+            sha1(hashbuf.data, sizeof(hashbuf.data), key_confirmation_header->challenge.data);
+            SN_DebugPrintf("challenge1 = %#18llx%16llx\n", *(uint64_t*)key_confirmation_header->challenge.data, *((uint64_t*)key_confirmation_header->challenge.data + 1));
+        } else {
+            //this is a finalise; do challenge2 (single-hash)
+            SN_InfoPrintf("generating challenge2\n");
+            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), key_confirmation_header->challenge.data);
+            SN_DebugPrintf("challenge2 = %#18llx%16llx\n", *(uint64_t*)key_confirmation_header->challenge.data, *((uint64_t*)key_confirmation_header->challenge.data + 1));
+        }
+    }
+
     if(header->encrypt) {
         SN_InfoPrintf("generating encryption header\n");
         if(packet->MCPS_DATA_request.msduLength + sizeof(encryption_header_t) > aMaxMACPayloadSize) {
@@ -255,27 +281,6 @@ static int generate_packet_headers(SN_Session_t *session, SN_Table_entry_t *tabl
         packet->MCPS_DATA_request.msduLength += sizeof(encryption_header_t);
 
         encryption_header->counter = table_entry->packet_tx_count++;
-    }
-
-    //key_confirmation_header_t
-    if(header->key_confirm) {
-        SN_InfoPrintf("generating key confirmation header\n");
-        if(packet->MCPS_DATA_request.msduLength + sizeof(key_confirmation_header_t) > aMaxMACPayloadSize) {
-            SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        key_confirmation_header_t* key_confirmation_header = (key_confirmation_header_t*)(packet->MCPS_DATA_request.msdu + packet->MCPS_DATA_request.msduLength);
-        packet->MCPS_DATA_request.msduLength += sizeof(key_confirmation_header_t);
-
-        if(header->associate) {
-            //this is a reply; do challenge1 (double-hash)
-            SN_Hash_t hashbuf;
-            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
-            sha1(hashbuf.data, sizeof(hashbuf.data), key_confirmation_header->challenge.data);
-        } else {
-            //this is a finalise; do challenge2 (single-hash)
-            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), key_confirmation_header->challenge.data);
-        }
     }
 
     //TODO: address_allocation_header_t
