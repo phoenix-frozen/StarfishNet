@@ -122,7 +122,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
     decoded_packet->payload_length = packet->MCPS_DATA_indication.msduLength - current_position;
 
     assert(current_position <= packet->MCPS_DATA_indication.msduLength);
-    assert(decoded_packet->crypto_margin < packet->MCPS_DATA_indication.msduLength);
+    assert(decoded_packet->crypto_margin <= packet->MCPS_DATA_indication.msduLength);
     assert(decoded_packet->payload_length < packet->MCPS_DATA_indication.msduLength);
 
 
