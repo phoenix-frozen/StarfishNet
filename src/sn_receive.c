@@ -21,15 +21,15 @@ static MAC_SET_CONFIRM(macShortAddress);
 //outputs crypto margin, and pointers to the key agreement header and payload data
 //also detects basic protocol failures
 typedef struct decoded_packet {
-    network_header_t* network_header;
-    node_details_header_t* node_details;
-    association_request_header_t* association_header;
-    encryption_header_t* encryption_header;
-    key_confirmation_header_t* key_confirm;
-    address_allocation_header_t* address_allocation;
+    network_header_t                 * network_header;
+    node_details_header_t            * node_details;
+    association_request_header_t     * association_header;
+    encryption_header_t              * encryption_header;
+    key_confirmation_header_t        * key_confirm;
+    address_allocation_header_t      * address_allocation;
     address_block_allocation_header_t* address_block_allocation;
-    packet_signature_header_t* signature_header;
-    uint8_t* payload_data;
+    signature_header_t               * signature_header;
+    uint8_t                          * payload_data;
 
     uint8_t payload_length;
     uint8_t crypto_margin;
@@ -44,7 +44,7 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
     }
 
     uint8_t current_position = 0;
-    uint8_t margin = 0;
+    uint8_t margin           = 0;
     memset(decoded_packet, 0, sizeof(*decoded_packet));
 
     decoded_packet->network_header = (network_header_t*)packet->MCPS_DATA_indication.msdu;
@@ -52,7 +52,9 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
         SN_ErrPrintf("packet doesn't appear to have a valid network header. aborting\n");
         return -SN_ERR_END_OF_DATA;
     }
-    if(!(decoded_packet->network_header->protocol_id == STARFISHNET_PROTOCOL_ID && decoded_packet->network_header->protocol_ver == STARFISHNET_PROTOCOL_VERSION)) {
+    if(!(decoded_packet->network_header->protocol_id == STARFISHNET_PROTOCOL_ID &&
+         decoded_packet->network_header->protocol_ver == STARFISHNET_PROTOCOL_VERSION
+    )) {
         SN_ErrPrintf("packet has invalid protocol ID bytes. protocol is %x (should be %x), version is %x (should be %x)\n", decoded_packet->network_header->protocol_id, STARFISHNET_PROTOCOL_ID, decoded_packet->network_header->protocol_ver, STARFISHNET_PROTOCOL_VERSION);
         return -SN_ERR_OLD_VERSION;
     }
@@ -76,7 +78,8 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             return -SN_ERR_END_OF_DATA;
         }
         SN_InfoPrintf("found association request header\n");
-        decoded_packet->association_header = (association_request_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+        decoded_packet->association_header =
+            (association_request_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(association_request_header_t);
         margin += sizeof(association_request_header_t);
     }
@@ -87,13 +90,15 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             return -SN_ERR_END_OF_DATA;
         }
         SN_InfoPrintf("found key confirmation header\n");
-        decoded_packet->key_confirm = (key_confirmation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+        decoded_packet->key_confirm =
+            (key_confirmation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(key_confirmation_header_t);
         margin += sizeof(key_confirmation_header_t);
     }
 
     //address_allocation_header_t / address_block_allocation_header_t (only found in associate_reply packets
-    if(decoded_packet->network_header->associate && decoded_packet->network_header->key_confirm && decoded_packet->association_header->child) {
+    if(decoded_packet->network_header->associate && decoded_packet->network_header->key_confirm &&
+       decoded_packet->association_header->child) {
         if(decoded_packet->association_header->router) {
             //block allocation
             if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(address_block_allocation_header_t)) {
@@ -101,7 +106,8 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
                 return -SN_ERR_END_OF_DATA;
             }
             SN_InfoPrintf("found address block allocation header\n");
-            decoded_packet->address_block_allocation = (address_block_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+            decoded_packet->address_block_allocation =
+                (address_block_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
             current_position += sizeof(address_block_allocation_header_t);
             margin += sizeof(address_block_allocation_header_t);
         } else {
@@ -111,7 +117,8 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
                 return -SN_ERR_END_OF_DATA;
             }
             SN_InfoPrintf("found address allocation header\n");
-            decoded_packet->address_allocation = (address_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+            decoded_packet->address_allocation =
+                (address_allocation_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
             current_position += sizeof(address_allocation_header_t);
             margin += sizeof(address_allocation_header_t);
         }
@@ -123,7 +130,8 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             return -SN_ERR_END_OF_DATA;
         }
         SN_InfoPrintf("found encryption header\n");
-        decoded_packet->encryption_header = (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+        decoded_packet->encryption_header =
+            (encryption_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
         current_position += sizeof(encryption_header_t);
     } else {
         if(packet->MCPS_DATA_indication.msduLength < current_position + sizeof(encryption_header_t)) {
@@ -131,8 +139,9 @@ static int detect_packet_layout(mac_primitive_t* packet, decoded_packet_t* decod
             return -SN_ERR_END_OF_DATA;
         }
         SN_InfoPrintf("found signature header\n");
-        decoded_packet->signature_header = (packet_signature_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
-        current_position += sizeof(packet_signature_header_t);
+        decoded_packet->signature_header =
+            (signature_header_t*)(packet->MCPS_DATA_indication.msdu + current_position);
+        current_position += sizeof(signature_header_t);
     }
 
     decoded_packet->payload_length = packet->MCPS_DATA_indication.msduLength - current_position;
@@ -163,25 +172,28 @@ static int do_security_checks(SN_Table_entry_t* table_entry, decoded_packet_t* d
     }
 
     //relationship-state check: make sure the headers we see match the state the relationship is in
-    if(decoded_packet->association_header != NULL && (table_entry->state == SN_Associate_received || table_entry->state >= SN_Awaiting_finalise) && !decoded_packet->association_header->dissociate) {
+    if(decoded_packet->association_header != NULL &&
+       (table_entry->state == SN_Associate_received || table_entry->state >= SN_Awaiting_finalise) &&
+       !decoded_packet->association_header->dissociate) {
         SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
         return -SN_ERR_UNEXPECTED;
     }
-    if(decoded_packet->key_confirm != NULL && table_entry->state != SN_Awaiting_reply && table_entry->state != SN_Awaiting_finalise) {
+    if(decoded_packet->key_confirm != NULL && table_entry->state != SN_Awaiting_reply &&
+       table_entry->state != SN_Awaiting_finalise) {
         SN_ErrPrintf("received key confirmation header when we're not waiting for one. this is an error\n");
         return -SN_ERR_UNEXPECTED;
     }
 
     //assertions to double-check my logic.
     if(decoded_packet->association_header != NULL && !decoded_packet->association_header->dissociate) {
-        if (decoded_packet->key_confirm == NULL) {
+        if(decoded_packet->key_confirm == NULL) {
             assert(table_entry->state == SN_Unassociated);
         }
-        if (decoded_packet->key_confirm != NULL) {
+        if(decoded_packet->key_confirm != NULL) {
             assert(table_entry->state == SN_Awaiting_reply);
         }
     }
-    if (decoded_packet->association_header == NULL && decoded_packet->key_confirm != NULL) {
+    if(decoded_packet->association_header == NULL && decoded_packet->key_confirm != NULL) {
         assert(table_entry->state == SN_Awaiting_finalise);
     }
 
@@ -204,9 +216,8 @@ static int do_security_checks(SN_Table_entry_t* table_entry, decoded_packet_t* d
     }
     //3.
     if(decoded_packet->signature_header == NULL &&
-        decoded_packet->association_header != NULL &&
-        !decoded_packet->association_header->dissociate)
-    {
+       decoded_packet->association_header != NULL &&
+       !decoded_packet->association_header->dissociate) {
         SN_ErrPrintf("received unsigned association packet. this is an error.\n");
         return -SN_ERR_SECURITY;
     }
@@ -215,7 +226,7 @@ static int do_security_checks(SN_Table_entry_t* table_entry, decoded_packet_t* d
     return SN_OK;
 }
 
-static int do_public_key_operations(SN_Table_entry_t *table_entry, decoded_packet_t* decoded_packet) {
+static int do_public_key_operations(SN_Table_entry_t* table_entry, decoded_packet_t* decoded_packet) {
     /* at this point, security checks have passed, but no integrity-checking has happened.
      * if this packet is signed, we check the signature, and thus integrity-checking is done.
      * if not, it must be encrypted. we must therefore finish key-agreement so that we can
@@ -273,9 +284,8 @@ static int do_public_key_operations(SN_Table_entry_t *table_entry, decoded_packe
 
     //if this is an associate_reply, finish the key agreement, so we can use the link key in decrypt_and_verify
     if(decoded_packet->association_header != NULL &&
-        !decoded_packet->association_header->dissociate &&
-        decoded_packet->key_confirm != NULL)
-    {
+       !decoded_packet->association_header->dissociate &&
+       decoded_packet->key_confirm != NULL) {
         //associate_reply
         assert(table_entry->state == SN_Awaiting_reply);
 
@@ -309,7 +319,7 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
     if(decoded_packet->node_details != NULL) {
         if(!table_entry->details_known) {
             table_entry->details_known = 1;
-            table_entry->public_key = decoded_packet->node_details->signing_key;
+            table_entry->public_key    = decoded_packet->node_details->signing_key;
         }
     }
 
@@ -351,8 +361,14 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
             SN_Hash_t hashbuf;
             sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
             sha1(hashbuf.data, sizeof(hashbuf.data), hashbuf.data);
-            SN_DebugPrintf("challenge1 (received)   = %#18llx%16llx\n", *(uint64_t*)decoded_packet->key_confirm->challenge.data, *((uint64_t*)decoded_packet->key_confirm->challenge.data + 1));
-            SN_DebugPrintf("challenge1 (calculated) = %#18llx%16llx\n", *(uint64_t*)hashbuf.data, *((uint64_t*)hashbuf.data + 1));
+            SN_DebugPrintf("challenge1 (received)   = %#18llx%16llx%08lx\n",
+                *(uint64_t*)decoded_packet->key_confirm->challenge.data,
+                *((uint64_t*)decoded_packet->key_confirm->challenge.data + 1),
+                *((uint32_t*)decoded_packet->key_confirm->challenge.data + 4));
+            SN_DebugPrintf("challenge1 (calculated) = %#18llx%16llx%08lx\n",
+                *(uint64_t*)hashbuf.data,
+                *((uint64_t*)hashbuf.data + 1),
+                *((uint32_t*)hashbuf.data + 4));
             if(memcmp(hashbuf.data, decoded_packet->key_confirm->challenge.data, sizeof(hashbuf.data)) != 0) {
                 SN_ErrPrintf("key confirmation (challenge1) failed.\n");
                 return -SN_ERR_KEYGEN;
@@ -367,8 +383,14 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, decoded_packet_
             //do challenge2 check (single-hash)
             SN_Hash_t hashbuf;
             sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
-            SN_DebugPrintf("challenge2 (received)   = %#18llx%16llx\n", *(uint64_t*)decoded_packet->key_confirm->challenge.data, *((uint64_t*)decoded_packet->key_confirm->challenge.data + 1));
-            SN_DebugPrintf("challenge2 (calculated) = %#18llx%16llx\n", *(uint64_t*)hashbuf.data, *((uint64_t*)hashbuf.data + 1));
+            SN_DebugPrintf("challenge2 (received)   = %#18llx%16llx%08lx\n",
+                *(uint64_t*)decoded_packet->key_confirm->challenge.data,
+                *((uint64_t*)decoded_packet->key_confirm->challenge.data + 1),
+                *((uint32_t*)decoded_packet->key_confirm->challenge.data + 4));
+            SN_DebugPrintf("challenge2 (calculated) = %#18llx%16llx%08lx\n",
+                *(uint64_t*)hashbuf.data,
+                *((uint64_t*)hashbuf.data + 1),
+                *((uint32_t*)hashbuf.data + 4));
             if(memcmp(hashbuf.data, decoded_packet->key_confirm->challenge.data, sizeof(hashbuf.data)) != 0) {
                 SN_ErrPrintf("key confirmation (challenge1) failed");
                 return -SN_ERR_KEYGEN;
@@ -430,10 +452,9 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         return -SN_ERR_NULL;
     }
 
-    const size_t min_buffer_size = (uint8_t*)&buffer->association_message.stapled_data - (uint8_t*)buffer + sizeof(SN_Message_t*);
-    if(buffer_size < min_buffer_size) {
+    if(buffer_size < sizeof(buffer->association_message)) {
         //too small to even hold an associate message, hence too small for anything
-        SN_ErrPrintf("buffer is below minimum size (is %zu bytes, should be %zu bytes)\n", buffer_size, min_buffer_size);
+        SN_ErrPrintf("buffer is below minimum size (is %zu bytes, should be %zu bytes)\n", buffer_size, sizeof(buffer->association_message));
         return -SN_ERR_RESOURCES;
     }
 
@@ -446,7 +467,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     //TODO: switch to a raw mac_receive() and do network-layer housekeeping (including retransmission)
     int ret = mac_receive_primitive_type(session->mac_session, &packet, mac_mcps_data_indication);
 
-    if (ret <= 0) {
+    if(ret <= 0) {
         SN_ErrPrintf("packet receive failed with %d\n", ret);
         return -SN_ERR_RADIO;
     }
@@ -467,8 +488,17 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     SN_InfoPrintf("received packet containing %d-byte payload\n", packet.MCPS_DATA_indication.msduLength);
 
     SN_DebugPrintf("packet data:\n");
-    for(int i = 0; i < packet.MCPS_DATA_indication.msduLength; i += 4) {
-        SN_DebugPrintf("%2x %2x %2x %2x\n", packet.MCPS_DATA_indication.msdu[i], packet.MCPS_DATA_indication.msdu[i + 1], packet.MCPS_DATA_indication.msdu[i + 2], packet.MCPS_DATA_indication.msdu[i + 3]);
+    for(int i = 0; i < packet.MCPS_DATA_indication.msduLength; i += 8) {
+        SN_DebugPrintf("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+            packet.MCPS_DATA_indication.msdu[i],
+            packet.MCPS_DATA_indication.msdu[i + 1],
+            packet.MCPS_DATA_indication.msdu[i + 2],
+            packet.MCPS_DATA_indication.msdu[i + 3],
+            packet.MCPS_DATA_indication.msdu[i + 4],
+            packet.MCPS_DATA_indication.msdu[i + 5],
+            packet.MCPS_DATA_indication.msdu[i + 6],
+            packet.MCPS_DATA_indication.msdu[i + 7]
+        );
     }
     SN_DebugPrintf("end packet data\n");
 
@@ -486,18 +516,19 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     SN_InfoPrintf("consulting neighbor table...\n");
     SN_Table_entry_t table_entry = {
-            .session       = session,
-            .short_address = SN_NO_SHORT_ADDRESS,
+        .session       = session,
+        .short_address = SN_NO_SHORT_ADDRESS,
     };
     SN_Certificate_storage_t* cert_storage = NULL;
     ret = SN_Table_lookup_by_address(src_addr, &table_entry, &cert_storage);
     if(ret != SN_OK) { //node isn't in node table, so insert it
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
-        if(src_addr->type == mac_short_address)
+        if(src_addr->type == mac_short_address) {
             table_entry.short_address = src_addr->address.ShortAddress;
-        else
-            table_entry.long_address  = src_addr->address;
+        } else {
+            table_entry.long_address = src_addr->address;
+        }
 
         ret = SN_Table_insert(&table_entry);
         if(ret != SN_OK) {
@@ -540,27 +571,28 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     }
 
     if(decoded_packet.association_header != NULL &&
-    //we have an association header, and...
-                    !(decoded_packet.association_header->dissociate && (decoded_packet.association_header->child || decoded_packet.association_header->delegate))
-                    //...it's not a rights revocation
-            )
-    {
+       //we have an association header, and...
+       !(decoded_packet.association_header->dissociate &&
+         (decoded_packet.association_header->child || decoded_packet.association_header->delegate)
+       )
+        //...it's not a rights revocation
+        ) {
         //this was an association packet; generate an association message
         SN_InfoPrintf("received association/dissociation request; synthesising appropriate message...\n");
 
         //the association request will be the first of two message
-        SN_Message_t *association_request = buffer;
+        SN_Message_t* association_request = buffer;
 
         //advance the buffer by one association message
-        buffer = (SN_Message_t *) ((uint8_t *) buffer + min_buffer_size);
-        buffer_size -= min_buffer_size;
+        buffer = (SN_Message_t*)((uint8_t*)buffer + sizeof(buffer->association_message));
+        buffer_size -= sizeof(buffer->association_message);
 
         //fill in the association message contents
-        association_request->type = decoded_packet.association_header->dissociate ? SN_Dissociation_request : SN_Association_request;
+        association_request->type                             = decoded_packet.association_header->dissociate ? SN_Dissociation_request : SN_Association_request;
         association_request->association_message.stapled_data = buffer_size == 0 ? NULL : buffer;
 
         SN_InfoPrintf("message synthesis done. output buffer has %zu bytes remaining.\n", buffer_size);
-        if (buffer_size == 0) {
+        if(buffer_size == 0) {
             SN_WarnPrintf("output buffer has no space remaining after association message synthesis\n");
         }
     }
@@ -581,7 +613,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
                 //error-check the certificate, and add it to certificate storage
                 SN_Certificate_t* evidence = (SN_Certificate_t*)decoded_packet.payload_data;
                 ret = SN_Crypto_add_certificate(cert_storage, evidence);
-                if(ret == -SN_ERR_SIGNATURE || (ret == -SN_ERR_NULL && SN_Crypto_check_certificate(evidence) != SN_OK)) {
+                if(ret == -SN_ERR_SIGNATURE ||
+                   (ret == -SN_ERR_NULL && SN_Crypto_check_certificate(evidence) != SN_OK)) {
                     SN_ErrPrintf("received evidence packet with invalid payload\n");
                     return -SN_ERR_SIGNATURE;
                 }
@@ -591,15 +624,15 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
                     SN_ErrPrintf("output buffer is too small for incoming certificate\n");
                     return -SN_ERR_RESOURCES;
                 }
-                buffer->type = SN_Evidence_message;
-                buffer->evidence_message = *evidence;
+                buffer->type                      = SN_Evidence_message;
+                buffer->evidence_message.evidence = *evidence;
             } else {
                 //data packet
                 if(buffer_size < buffer->data_message.payload - (uint8_t*)buffer + decoded_packet.payload_length) {
                     SN_ErrPrintf("output buffer is too small for incoming data\n");
                     return -SN_ERR_RESOURCES;
                 }
-                buffer->type = SN_Data_message;
+                buffer->type                        = SN_Data_message;
                 buffer->data_message.payload_length = decoded_packet.payload_length;
                 memcpy(buffer->data_message.payload, decoded_packet.payload_data, decoded_packet.payload_length);
             }

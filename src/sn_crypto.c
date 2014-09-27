@@ -30,7 +30,7 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
 
     //generate keypair
     SN_ECC_unpacked_public_key_t unpacked_public_key;
-    int ret = uECC_make_key(unpacked_public_key.data, keypair->private_key.data);
+    int                          ret = uECC_make_key(unpacked_public_key.data, keypair->private_key.data);
     if(ret != 1) {
         SN_ErrPrintf("key generation failed\n");
         return -SN_ERR_KEYGEN;
@@ -111,7 +111,7 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
 
     //do ECDH
     SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
-    int ret = uECC_shared_secret(unpacked_public_key.data, private_key->data, raw_shared_secret.data);
+    int              ret = uECC_shared_secret(unpacked_public_key.data, private_key->data, raw_shared_secret.data);
     if(ret == 0) {
         SN_ErrPrintf("error performing key agreement\n");
         return -SN_ERR_KEYGEN;
@@ -134,7 +134,7 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     }
 
     aes_ccm_context ctx;
-    int ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
+    int             ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
 
     if(ret != 0) {
         SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
@@ -168,7 +168,7 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     }
 
     aes_ccm_context ctx;
-    int ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
+    int             ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
 
     if(ret != 0) {
         SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
@@ -202,7 +202,9 @@ int SN_Crypto_check_certificate(SN_Certificate_t* certificate) {
         return -SN_ERR_NULL;
     }
 
-    return SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) != SN_OK;
+    return
+        SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) !=
+        SN_OK;
 }
 
 int SN_Crypto_add_certificate(SN_Certificate_storage_t* storage, SN_Certificate_t* certificate) {

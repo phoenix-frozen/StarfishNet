@@ -14,15 +14,17 @@ int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
     //Assumption: config is kept current!
     mac_primitive_t packet;
 
-    if(session == NULL)
+    if(session == NULL) {
         return -SN_ERR_NULL;
+    }
 
-    if(nib != NULL)
+    if(nib != NULL) {
         memcpy(nib, &session->nib, sizeof(*nib));
+    }
 
     if(mib != NULL) {
         //load macDSN
-        packet.type = mac_mlme_get_request;
+        packet.type                          = mac_mlme_get_request;
         packet.MLME_SET_request.PIBAttribute = macDSN;
         MAC_CALL(mac_transmit, session->mac_session, &packet);
         MAC_CALL(mac_receive_primitive_type, session->mac_session, &packet, mac_mlme_get_confirm);
@@ -33,17 +35,20 @@ int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
         memcpy(mib, &session->mib, sizeof(*mib));
     }
 
-    if(pib != NULL)
+    if(pib != NULL) {
         memcpy(pib, &session->pib, sizeof(*pib));
+    }
 
     return SN_OK;
 }
+
 //copies the configuration provided into session, updating lower layers as necessary. anything but session can be NULL
 int SN_Set_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
     //Assumption: config is kept current!
 
-    if(session == NULL)
+    if(session == NULL) {
         return -SN_ERR_NULL;
+    }
 
     //TODO: for each information base, check each member, and set the ones that have changed
     //      (obviously, ignoring the ones we're not supposed to set)
@@ -93,6 +98,7 @@ int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
+
 void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting the radio in the process
     mac_primitive_t packet;
     SN_InfoPrintf("enter\n");
@@ -118,4 +124,17 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     //clean up I/O buffers
     memset(session, 0, sizeof(*session));
     SN_InfoPrintf("exit\n");
+}
+
+static void struct_checks() __attribute__((unused));
+
+static void struct_checks() {
+    SN_Message_t message;
+
+    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.data_message.type,
+        "SN_Message_t.data_message is misaligned");
+    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.association_message.type,
+        "SN_Message_t.association_message is misaligned");
+    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.evidence_message.type,
+        "SN_Message_t.evidence_message is misaligned");
 }

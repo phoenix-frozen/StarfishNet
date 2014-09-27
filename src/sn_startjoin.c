@@ -10,15 +10,25 @@
 #include "mac_util.h"
 
 static MAC_CONFIRM(start);
+
 static MAC_SET_CONFIRM(macAssociationPermit);
+
 static MAC_SET_CONFIRM(macBeaconPayload);
+
 static MAC_SET_CONFIRM(macBeaconPayloadLength);
+
 static MAC_SET_CONFIRM(macPANId);
+
 static MAC_SET_CONFIRM(macRxOnWhenIdle);
+
 static MAC_SET_CONFIRM(macShortAddress);
+
 static MAC_SET_CONFIRM(phyCurrentChannel);
+
 static MAC_SET_CONFIRM(macCoordShortAddress);
+
 static MAC_SET_CONFIRM(macCoordExtendedAddress);
+
 static MAC_SET_CONFIRM(macPromiscuousMode);
 
 //network configuration defaults
@@ -43,12 +53,13 @@ typedef struct __attribute__((packed)) beacon_payload {
 } beacon_payload_t;
 
 static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer) {
-    if(session == NULL || buffer == NULL)
+    if(session == NULL || buffer == NULL) {
         return -SN_ERR_NULL;
+    }
 
     //protocol ID information
-    buffer->protocol_id  = STARFISHNET_PROTOCOL_ID;
-    buffer->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    buffer->protocol_id     = STARFISHNET_PROTOCOL_ID;
+    buffer->protocol_ver    = STARFISHNET_PROTOCOL_VERSION;
     //routing tree metadata
     buffer->tree_depth      = session->nib.tree_depth;
     buffer->tree_position   = session->nib.tree_position;
@@ -66,8 +77,9 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
 static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
     SN_DebugPrintf("enter\n");
 
-    if(session == NULL || packet == NULL)
+    if(session == NULL || packet == NULL) {
         return -SN_ERR_NULL;
+    }
 
     //build beacon payload
     beacon_payload_t* proto_beacon = (beacon_payload_t*)session->mib.macBeaconPayload;
@@ -75,23 +87,23 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     session->mib.macBeaconPayloadLength = sizeof(beacon_payload_t);
 
     //set beacon payload length
-    packet->type = mac_mlme_set_request;
-    packet->MLME_SET_request.PIBAttribute         = macBeaconPayloadLength;
-    packet->MLME_SET_request.PIBAttributeSize     = 1;
+    packet->type                              = mac_mlme_set_request;
+    packet->MLME_SET_request.PIBAttribute     = macBeaconPayloadLength;
+    packet->MLME_SET_request.PIBAttributeSize = 1;
     packet->MLME_SET_request.PIBAttributeValue[0] = session->mib.macBeaconPayloadLength;
     MAC_CALL(mac_transmit, session->mac_session, packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macBeaconPayloadLength_set_confirm);
 
     //set beacon payload
-    packet->type = mac_mlme_set_request;
-    packet->MLME_SET_request.PIBAttribute         = macBeaconPayload;
-    packet->MLME_SET_request.PIBAttributeSize     = session->mib.macBeaconPayloadLength;
+    packet->type                              = mac_mlme_set_request;
+    packet->MLME_SET_request.PIBAttribute     = macBeaconPayload;
+    packet->MLME_SET_request.PIBAttributeSize = session->mib.macBeaconPayloadLength;
     memcpy(packet->MLME_SET_request.PIBAttributeValue, session->mib.macBeaconPayload, session->mib.macBeaconPayloadLength);
     MAC_CALL(mac_transmit, session->mac_session, packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macBeaconPayload_set_confirm);
 
     //start beacon transmissions
-    packet->type = mac_mlme_start_request;
+    packet->type                                    = mac_mlme_start_request;
     packet->MLME_START_request.PANId                = session->mib.macPANId;
     packet->MLME_START_request.LogicalChannel       = session->pib.phyCurrentChannel;
     packet->MLME_START_request.BeaconOrder          = session->mib.macBeaconOrder;
@@ -124,39 +136,39 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
 
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
-    session->nib.tree_depth       = network->routing_tree_depth;
-    session->nib.tree_position    = 0;
-    session->nib.tx_retry_limit   = DEFAULT_TX_RETRY_LIMIT;
-    session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
+    session->nib.tree_depth          = network->routing_tree_depth;
+    session->nib.tree_position       = 0;
+    session->nib.tx_retry_limit      = DEFAULT_TX_RETRY_LIMIT;
+    session->nib.tx_retry_timeout    = DEFAULT_TX_RETRY_TIMEOUT;
     session->nib.parent_address.type = mac_no_address;
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
-    session->pib.phyCurrentChannel        = network->radio_channel;
-    session->mib.macPANId                 = network->pan_id;
-    session->mib.macCoordAddrMode         = mac_extended_address;
-    session->mib.macCoordShortAddress     = FIXED_COORDINATOR_ADDRESS;
+    session->pib.phyCurrentChannel    = network->radio_channel;
+    session->mib.macPANId             = network->pan_id;
+    session->mib.macCoordAddrMode     = mac_extended_address;
+    session->mib.macCoordShortAddress = FIXED_COORDINATOR_ADDRESS;
     memcpy(session->mib.macCoordExtendedAddress.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
-    session->mib.macShortAddress          = FIXED_COORDINATOR_ADDRESS;
+    session->mib.macShortAddress = FIXED_COORDINATOR_ADDRESS;
 
     //Set our short address
     SN_InfoPrintf("setting our short address...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macShortAddress;
-    packet.MLME_SET_request.PIBAttributeSize     = 2;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = macShortAddress;
+    packet.MLME_SET_request.PIBAttributeSize = 2;
     memcpy(packet.MLME_SET_request.PIBAttributeValue, &session->mib.macShortAddress, 2);
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macShortAddress_set_confirm);
 
     //Switch on RX_ON_IDLE
     SN_InfoPrintf("switching on radio while idle...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macRxOnWhenIdle;
-    packet.MLME_SET_request.PIBAttributeSize     = 1;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = macRxOnWhenIdle;
+    packet.MLME_SET_request.PIBAttributeSize = 1;
     packet.MLME_SET_request.PIBAttributeValue[0] = 1;
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macRxOnWhenIdle_set_confirm);
-    session->mib.macRxOnWhenIdle                 = 1;
+    session->mib.macRxOnWhenIdle = 1;
 
     //configure the radio
     int ret;
@@ -173,8 +185,9 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
 }
 
 static inline uint8_t log2i(uint32_t n) {
-    if(n == 0)
+    if(n == 0) {
         return 0;
+    }
     return (uint8_t)31 - (uint8_t)__builtin_clz(n);
 }
 
@@ -201,9 +214,9 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
     //Setup a network scan
     mac_primitive_t packet;
-    packet.type                               = mac_mlme_scan_request;
-    packet.MLME_SCAN_request.ScanType         = mac_active_scan;
-    packet.MLME_SCAN_request.ScanChannels     = channel_mask;
+    packet.type                           = mac_mlme_scan_request;
+    packet.MLME_SCAN_request.ScanType     = mac_active_scan;
+    packet.MLME_SCAN_request.ScanChannels = channel_mask;
 
     //Timeout is in ms. We need to convert it into a form the radio will understand.
     //We're given ms, the radio wants an exponent for a calculation denominated in radio symbols.
@@ -212,7 +225,8 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         SN_ErrPrintf("timeout value %u is too short\n", timeout);
         return -SN_ERR_INVALID;
     }
-    packet.MLME_SCAN_request.ScanDuration     = log2i((timeout * aSymbolsPerSecond_24 / 1000 - aBaseSuperframeDuration) / aBaseSuperframeDuration);
+    packet.MLME_SCAN_request.ScanDuration = log2i(
+        (timeout * aSymbolsPerSecond_24 / 1000 - aBaseSuperframeDuration) / aBaseSuperframeDuration);
     if(packet.MLME_SCAN_request.ScanDuration > 14) {
         SN_WarnPrintf("ScanDuration %u is too high, capping.\n", packet.MLME_SCAN_request.ScanDuration);
         packet.MLME_SCAN_request.ScanDuration = 14;
@@ -226,15 +240,18 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
     //During a scan, we get a MLME-BEACON.indication for each received beacon.
     //MLME-SCAN.confirm is received when a scan finishes.
-    static const mac_primitive_type_t scan_primitive_types[] = {mac_mlme_beacon_notify_indication, mac_mlme_scan_confirm};
+    static const mac_primitive_type_t scan_primitive_types[] = {mac_mlme_beacon_notify_indication,
+                                                                mac_mlme_scan_confirm};
     while(1) {
         //receive a primitive
-        MAC_CALL(mac_receive_primitive_types, session->mac_session, &packet, scan_primitive_types, sizeof(scan_primitive_types)/sizeof(mac_primitive_type_t));
+        MAC_CALL(mac_receive_primitive_types, session->mac_session, &packet, scan_primitive_types,
+            sizeof(scan_primitive_types) / sizeof(mac_primitive_type_t));
         //implicitly drops anything that isn't of that type
 
         //if it's an MLME-SCAN.confirm, we're done -- quit out
-        if(packet.type == mac_mlme_scan_confirm)
+        if(packet.type == mac_mlme_scan_confirm) {
             break;
+        }
 
         //during a scan, the radio's only supposed to generate MLME-BEACON-NOTIFY.indication or MLME-SCAN.confirm
         assert(packet.type == mac_mlme_beacon_notify_indication);
@@ -242,13 +259,16 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         SN_InfoPrintf("found network. channel=0x%x, PANId=0x%x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
 
         //if we get to here, we're looking at an MLME-BEACON-NOTIFY.indication
-        beacon_payload_t* beacon_payload = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
+        beacon_payload_t* beacon_payload  = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
 
         SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
         if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
             //XXX: this is the most disgusting way to print a MAC address ever invented by man
             SN_InfoPrintf("    CoordAddress=%#018llx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
-            if(memcmp(beacon_payload->address.ExtendedAddress, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress, 8) != 0) {
+            if(memcmp(
+                beacon_payload->address.ExtendedAddress,
+                packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress,
+                8) != 0) {
                 SN_ErrPrintf("    Address mismatch! %#018llx\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
             }
         } else {
@@ -256,26 +276,31 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
             SN_InfoPrintf("    CoordAddress=%#018llx\n", *(uint64_t*)beacon_payload->address.ExtendedAddress);
         }
         //XXX: this is the most disgusting way to print a key ever invented by man
-        SN_InfoPrintf("    key=%#018llx%016llx%08x\n", *(uint64_t*)beacon_payload->public_key.data, *(((uint64_t*)beacon_payload->public_key.data) + 1), *(((uint32_t*)beacon_payload->public_key.data) + 4));
+        SN_InfoPrintf("    key=%#018llx%016llx%08x\n",
+            *(uint64_t*)beacon_payload->public_key.data,
+            *(((uint64_t*)beacon_payload->public_key.data) + 1),
+            *(((uint32_t*)beacon_payload->public_key.data) + 4));
 
         //check that this is a network of the kind we care about
-        if(beacon_payload->protocol_id  != STARFISHNET_PROTOCOL_ID)
+        if(beacon_payload->protocol_id != STARFISHNET_PROTOCOL_ID) {
             continue;
-        if(beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION)
+        }
+        if(beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
             continue;
+        }
 
         if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
-            ndesc.nearest_neighbor_long_address = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress;
+            ndesc.nearest_neighbor_long_address  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress;
             ndesc.nearest_neighbor_short_address = SN_NO_SHORT_ADDRESS;
         } else {
-            ndesc.nearest_neighbor_long_address = beacon_payload->address;
+            ndesc.nearest_neighbor_long_address  = beacon_payload->address;
             ndesc.nearest_neighbor_short_address = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress;
         }
-        ndesc.nearest_neighbor_public_key             = beacon_payload->public_key;
-        ndesc.pan_id                                  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
-        ndesc.radio_channel                           = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
-        ndesc.routing_tree_depth                      = beacon_payload->tree_depth;
-        ndesc.routing_tree_position                   = beacon_payload->tree_position + (uint8_t)1;
+        ndesc.nearest_neighbor_public_key = beacon_payload->public_key;
+        ndesc.pan_id                      = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
+        ndesc.radio_channel               = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
+        ndesc.routing_tree_depth          = beacon_payload->tree_depth;
+        ndesc.routing_tree_position       = beacon_payload->tree_position + (uint8_t)1;
 
         callback(session, &ndesc, extradata);
     }
@@ -314,47 +339,47 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
     session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
     session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
     if(network->nearest_neighbor_short_address != SN_NO_SHORT_ADDRESS) {
-        session->nib.parent_address.type = mac_short_address;
+        session->nib.parent_address.type                 = mac_short_address;
         session->nib.parent_address.address.ShortAddress = network->nearest_neighbor_short_address;
     } else {
-        session->nib.parent_address.type = mac_extended_address;
+        session->nib.parent_address.type    = mac_extended_address;
         session->nib.parent_address.address = network->nearest_neighbor_long_address;
     }
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
-    session->pib.phyCurrentChannel        = network->radio_channel;
-    session->mib.macPANId                 = network->pan_id;
-    session->mib.macCoordAddrMode         = mac_short_address;
-    session->mib.macCoordShortAddress     = FIXED_COORDINATOR_ADDRESS;
+    session->pib.phyCurrentChannel    = network->radio_channel;
+    session->mib.macPANId             = network->pan_id;
+    session->mib.macCoordAddrMode     = mac_short_address;
+    session->mib.macCoordShortAddress = FIXED_COORDINATOR_ADDRESS;
     //... (including setting our short address to the "we don't have a short address" flag value)
-    session->mib.macShortAddress          = SN_NO_SHORT_ADDRESS;
+    session->mib.macShortAddress      = SN_NO_SHORT_ADDRESS;
 
     //configure the radio
 
     //Tune to the right channel
     SN_InfoPrintf("setting channel...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = phyCurrentChannel;
-    packet.MLME_SET_request.PIBAttributeSize     = 1;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = phyCurrentChannel;
+    packet.MLME_SET_request.PIBAttributeSize = 1;
     packet.MLME_SET_request.PIBAttributeValue[0] = session->pib.phyCurrentChannel;
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)phyCurrentChannel_set_confirm);
 
     //Set our PAN Id
     SN_InfoPrintf("setting PAN ID...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macPANId;
-    packet.MLME_SET_request.PIBAttributeSize     = 2;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = macPANId;
+    packet.MLME_SET_request.PIBAttributeSize = 2;
     memcpy(packet.MLME_SET_request.PIBAttributeValue, &session->mib.macPANId, 2);
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macPANId_set_confirm);
 
     //Set our coord short address
     SN_InfoPrintf("setting coord short address...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macCoordShortAddress;
-    packet.MLME_SET_request.PIBAttributeSize     = 2;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = macCoordShortAddress;
+    packet.MLME_SET_request.PIBAttributeSize = 2;
     memcpy(packet.MLME_SET_request.PIBAttributeValue, &session->mib.macCoordShortAddress, 2);
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macCoordShortAddress_set_confirm);
@@ -363,22 +388,22 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
 
     //Set our short address
     SN_InfoPrintf("setting our short address...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macShortAddress;
-    packet.MLME_SET_request.PIBAttributeSize     = 2;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = macShortAddress;
+    packet.MLME_SET_request.PIBAttributeSize = 2;
     memcpy(packet.MLME_SET_request.PIBAttributeValue, &session->mib.macShortAddress, 2);
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macShortAddress_set_confirm);
 
     //Switch on RX_ON_IDLE
     SN_InfoPrintf("switching on radio while idle...\n");
-    packet.type = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute         = macRxOnWhenIdle;
-    packet.MLME_SET_request.PIBAttributeSize     = 1;
+    packet.type                              = mac_mlme_set_request;
+    packet.MLME_SET_request.PIBAttribute     = macRxOnWhenIdle;
+    packet.MLME_SET_request.PIBAttributeSize = 1;
     packet.MLME_SET_request.PIBAttributeValue[0] = 1;
     MAC_CALL(mac_transmit, session->mac_session, &packet);
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macRxOnWhenIdle_set_confirm);
-    session->mib.macRxOnWhenIdle                 = 1;
+    session->mib.macRxOnWhenIdle = 1;
 
     int ret = SN_OK;
     if(session->nib.enable_routing) {
@@ -388,11 +413,11 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
 
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
-        .session = session,
-        .long_address = network->nearest_neighbor_long_address,
+        .session       = session,
+        .long_address  = network->nearest_neighbor_long_address,
         .short_address = network->nearest_neighbor_short_address,
-        .neighbor = 1,
-        .public_key = network->nearest_neighbor_public_key,
+        .neighbor      = 1,
+        .public_key    = network->nearest_neighbor_public_key,
         .details_known = 1,
     };
     if(ret == SN_OK) {

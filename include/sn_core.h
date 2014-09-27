@@ -71,21 +71,24 @@ typedef enum SN_Message_type {
 } SN_Message_type_t;
 
 //StarfishNet messages
-typedef struct SN_Message {
+typedef union SN_Message {
     SN_Message_type_t type;
 
-    union {
-        struct {
-            uint8_t payload_length;
-            uint8_t payload[];
-        } data_message;
+    struct {
+        SN_Message_type_t type;
+        uint8_t           payload_length;
+        uint8_t           payload[];
+    } data_message;
 
-        SN_Certificate_t evidence_message;
+    struct {
+        SN_Message_type_t type;
+        SN_Certificate_t evidence;
+    } evidence_message;
 
-        struct {
-            struct SN_Message* stapled_data;
-        } association_message;
-    };
+    struct {
+        SN_Message_type_t type;
+        union SN_Message* stapled_data;
+    } association_message;
 } SN_Message_t;
 
 int SN_Send ( //transmit packet, containing one or more messages

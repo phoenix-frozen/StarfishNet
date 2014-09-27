@@ -22,9 +22,7 @@ typedef struct __attribute__((packed)) network_header {
     uint16_t dst_addr;
     union {
         struct {
-            uint8_t encrypt      :1;
-                //if true, the packet is AES-128-CCM encrypted, with the CCM tag in the tag field
-                //if false, the packet is unencrypted, with a truncated SHA1 hash in the tag field
+            uint8_t encrypt      :1; //this packed is encrypted. (false means it's signed.)
             uint8_t req_details  :1; //requests that the remote party send its details
             uint8_t details      :1; //flags the presence of a node details header
             uint8_t associate    :1; //flags the presence of an association request header
@@ -48,7 +46,7 @@ typedef struct __attribute__((packed)) association_request_header {
     //flags
     union {
         struct {
-            uint8_t dissociate :1; //flags that this is a dissociation message
+            uint8_t dissociate :1; //this is a dissociation message
             uint8_t child      :1;
             //in a request   : request an address as well (implying you're my neighbor)
             //in a reply     : flags the presence of an address allocation header
@@ -62,18 +60,15 @@ typedef struct __attribute__((packed)) association_request_header {
             //in a reply     : indicates that the remote node is willing to perform association transactions on our behalf
             //in a dissociate: this is a delegate revocation, not a full dissociation
             uint8_t mbz        :4;
+
+            //note: dissociate, child, and delegate may all be true
         };
         uint8_t flags;
     };
 } association_request_header_t;
 
-typedef struct __attribute__((packed)) encryption_header {
-    uint16_t counter;
-    uint8_t  tag[SN_Tag_size];
-} encryption_header_t;
-
 typedef struct __attribute__((packed)) key_confirmation_header {
-    SN_Hash_t       challenge;
+    SN_Hash_t challenge;
 } key_confirmation_header_t;
 
 typedef struct __attribute__((packed)) address_allocation_header {
@@ -85,8 +80,13 @@ typedef struct __attribute__((packed)) address_block_allocation_header {
     uint8_t  block_size; //size of address block being granted. power of 2
 } address_block_allocation_header_t;
 
-typedef struct __attribute__((packed)) packet_signature_header {
+typedef struct __attribute__((packed)) encryption_header {
+    uint16_t counter;
+    uint8_t  tag[SN_Tag_size];
+} encryption_header_t;
+
+typedef struct __attribute__((packed)) signature_header {
     SN_Signature_t signature;
-} packet_signature_header_t;
+} signature_header_t;
 
 #endif /* __SN_TXRX_H__ */
