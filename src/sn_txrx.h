@@ -99,32 +99,69 @@ typedef struct __attribute__((packed)) signed_ack_header {
     SN_Signature_t signature; //the signature of the packet we're acknowledging
 } signed_ack_header_t;
 
+typedef uint8_t payload_data_t;
+
 typedef struct packet {
+    /* This structure is a table of offsets in contents.MCPS_DATA_{indication,request}.msdu.
+     * It also contains a bitfield indicating which of thses offsets are valid.
+     *
+     * The PACKET_ENTRY macro does the appropriate pointer arithmetic and typecasts to make
+     * use of them. In particular, it will generate a NULL pointer when looking up an entry
+     * whose present bit isn't set.
+     *
+     * The names of the various pieces that go into making this system work must abide by
+     * the following pattern:
+     * * presence entry is called [name] (_header for header entries, by convention)
+     * * table    entry is called [name]
+     * * structure type is called [name]_t
+     */
     struct packet_layout {
-        network_header_t                 * network_header;
-        node_details_header_t            * node_details_header;
-        association_header_t             * association_header;
-        encryption_header_t              * encryption_header;
-        key_confirmation_header_t        * key_confirmation_header;
-        address_allocation_header_t      * address_allocation_header;
-        address_block_allocation_header_t* address_block_allocation_header;
-        signature_header_t               * signature_header;
-        encrypted_ack_header_t           * encrypted_ack_header;
-        signed_ack_header_t              * signed_ack_header;
+        union {
+            struct {
+                uint16_t network_header                  :1;
+                uint16_t node_details_header             :1;
+                uint16_t association_header              :1;
+                uint16_t encryption_header               :1;
+                uint16_t key_confirmation_header         :1;
+                uint16_t address_allocation_header       :1;
+                uint16_t address_block_allocation_header :1;
+                uint16_t signature_header                :1;
+                uint16_t encrypted_ack_header            :1;
+                uint16_t signed_ack_header               :1;
 
-        uint8_t                          * payload_data;
+                uint16_t payload_data                    :1;
 
+                uint16_t mbz                             :5;
+            };
+
+            uint16_t raw;
+        } present;
+
+        uint8_t network_header;
+        uint8_t node_details_header;
+        uint8_t association_header;
+        uint8_t encryption_header;
+        uint8_t key_confirmation_header;
+        uint8_t address_allocation_header;
+        uint8_t address_block_allocation_header;
+        uint8_t signature_header;
+        uint8_t encrypted_ack_header;
+        uint8_t signed_ack_header;
+
+        uint8_t payload_data;
         uint8_t payload_length;
-        uint8_t crypto_margin;
-    } packet_layout;
+    } layout;
 
-    mac_primitive_t packet_data;
+    mac_primitive_t contents;
 } packet_t;
 
-//#define PACKET_HEADER(packet, header, req_type) (header##_header_t*)((packet).packet_data.MCPS_DATA_##req_type.msdu + (packet).packet_layout.##header##_header)
-//#define PACKET_DATA(packet, req_type) ((packet).packet_data.MCPS_DATA_##req_type.msdu + (packet).packet_layout.payload_data)
-#define PACKET_HEADER(packet, header, req_type) ((packet).packet_layout.header##_header)
-#define PACKET_DATA(packet, req_type) ((packet).packet_layout.payload_data)
-#define PACKET_SIZE(packet, req_type) ((packet).packet_data.MCPS_DATA_##req_type.msduLength)
+/*argument type notes:
+ * packet must be of type packet_t (not packet_t*)
+ * req_type must be one of:
+ *  "request", if this is an outgoing packet
+ *  "indication", if this is an incoming packet
+ */
+#define PACKET_ENTRY(packet, header, req_type) ((header##_t*)((packet).layout.present.header ? (packet).contents.MCPS_DATA_##req_type.msdu + (packet).layout.header : NULL))
+#define PACKET_SIZE(packet, req_type) ((packet).contents.MCPS_DATA_##req_type.msduLength)
 
 #endif /* __SN_TXRX_H__ */

@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT 8
@@ -49,7 +50,7 @@ static int do_packet_transmission(int slot) {
     }
 
     SN_Session_t* session = slot_data->session;
-    mac_primitive_t* packet = &slot_data->packet.packet_data;
+    mac_primitive_t* packet = &slot_data->packet.contents;
     SN_Table_entry_t* table_entry = slot_data->destination;
 
     //TODO: should do encryption here as well
@@ -105,7 +106,7 @@ static int do_packet_transmission(int slot) {
     }
 
     SN_DebugPrintf("packet data:\n");
-    for(int i = 0; i < packet->MCPS_DATA_request.msduLength; i += 4) {
+    for(int i = 0; i < packet->MCPS_DATA_request.msduLength; i += 8) {
         SN_DebugPrintf("%02x %02x %02x %02x %02x %02x %02x %02x\n",
             packet->MCPS_DATA_request.msdu[i],
             packet->MCPS_DATA_request.msdu[i + 1],
@@ -187,90 +188,9 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
 
     assert(slot_data->allocated);
 
-    //WARNING: EVIL POINTER ARITHMETIC AHEAD
-    //this code generates a new packet layout structure pointing into the packet in the transmission slot structure
-    slot_data->packet.packet_layout.network_header                  =
-        packet->packet_layout.network_header == NULL ? NULL :
-            (network_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                ((uint8_t*)packet->packet_layout.network_header -
-                                 packet->packet_data.MCPS_DATA_request.msdu
-                                )
-            );
-    slot_data->packet.packet_layout.node_details_header             =
-        packet->packet_layout.node_details_header == NULL ? NULL :
-            (node_details_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                     ((uint8_t*)packet->packet_layout.node_details_header -
-                                      packet->packet_data.MCPS_DATA_request.msdu
-                                     )
-            );
-    slot_data->packet.packet_layout.association_header              =
-        packet->packet_layout.association_header == NULL ? NULL :
-            (association_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                    ((uint8_t*)packet->packet_layout.association_header -
-                                     packet->packet_data.MCPS_DATA_request.msdu
-                                    )
-            );
-    slot_data->packet.packet_layout.encryption_header               =
-        packet->packet_layout.encryption_header == NULL ? NULL :
-            (encryption_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                   ((uint8_t*)packet->packet_layout.encryption_header -
-                                    packet->packet_data.MCPS_DATA_request.msdu
-                                   )
-            );
-    slot_data->packet.packet_layout.key_confirmation_header         =
-        packet->packet_layout.key_confirmation_header == NULL ? NULL :
-            (key_confirmation_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                         ((uint8_t*)packet->packet_layout.key_confirmation_header -
-                                          packet->packet_data.MCPS_DATA_request.msdu
-                                         )
-            );
-    slot_data->packet.packet_layout.address_allocation_header       =
-        packet->packet_layout.address_allocation_header == NULL ? NULL :
-            (address_allocation_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                           ((uint8_t*)packet->packet_layout.address_allocation_header -
-                                            packet->packet_data.MCPS_DATA_request.msdu
-                                           )
-            );
-    slot_data->packet.packet_layout.address_block_allocation_header =
-        packet->packet_layout.address_block_allocation_header == NULL ? NULL :
-            (address_block_allocation_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                                 ((uint8_t*)packet->packet_layout.address_block_allocation_header -
-                                                  packet->packet_data.MCPS_DATA_request.msdu
-                                                 )
-            );
-    slot_data->packet.packet_layout.signature_header                =
-        packet->packet_layout.signature_header == NULL ? NULL :
-            (signature_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                  ((uint8_t*)packet->packet_layout.signature_header -
-                                   packet->packet_data.MCPS_DATA_request.msdu
-                                  )
-            );
-    slot_data->packet.packet_layout.encrypted_ack_header            =
-        packet->packet_layout.encrypted_ack_header == NULL ? NULL :
-            (encrypted_ack_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                      ((uint8_t*)packet->packet_layout.encrypted_ack_header -
-                                       packet->packet_data.MCPS_DATA_request.msdu
-                                      )
-            );
-    slot_data->packet.packet_layout.signed_ack_header               =
-        packet->packet_layout.signed_ack_header == NULL ? NULL :
-            (signed_ack_header_t*)(slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-                                   ((uint8_t*)packet->packet_layout.signed_ack_header -
-                                    packet->packet_data.MCPS_DATA_request.msdu
-                                   )
-            );
-
-    slot_data->packet.packet_layout.payload_data = packet->packet_layout.payload_data == NULL ? NULL :
-        (slot_data->packet.packet_data.MCPS_DATA_request.msdu +
-         (packet->packet_layout.payload_data - packet->packet_data.MCPS_DATA_request.msdu)
-        );
-
-    slot_data->packet.packet_layout.payload_length = packet->packet_layout.payload_length;
-    slot_data->packet.packet_layout.crypto_margin  = packet->packet_layout.crypto_margin;
-
     slot_data->session            = session;
     slot_data->destination        = table_entry;
-    slot_data->packet.packet_data = packet->packet_data;
+    slot_data->packet             = *packet;
     slot_data->valid              = 1;
 
     return do_packet_transmission(slot);

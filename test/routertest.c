@@ -4,6 +4,7 @@
 #include <sn_core.h>
 #include <sn_crypto.h>
 #include <sn_status.h>
+#include <inttypes.h>
 
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
@@ -41,7 +42,7 @@ int main(int argc, char* argv[]) {
 
     printf("Init complete. Printing MAC address:\n");
 
-    printf("MAC address is %#018llx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
+    printf("MAC address is %#018"PRIx64"\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
 
     printf("Scanning for networks...\n");
 

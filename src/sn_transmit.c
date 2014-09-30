@@ -65,25 +65,28 @@
 static MAC_SET_CONFIRM(macShortAddress);
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
-static int encrypt_authenticate_packet(SN_Table_entry_t* table_entry, uint8_t margin, mac_primitive_t* packet) {
+static int encrypt_authenticate_packet(SN_Table_entry_t* table_entry, packet_t* packet) {
     SN_DebugPrintf("enter\n");
 
     if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry, and packet must all be valid\n");
+        SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
     }
 
-    encryption_header_t* encryption_header = (encryption_header_t*)(packet->MCPS_DATA_request.msdu + margin);
-    const size_t skip_size = margin + sizeof(encryption_header_t);
-    if(packet->MCPS_DATA_request.msduLength < skip_size) {
-        SN_ErrPrintf("cannot encrypt packet of length %d with a margin of %d\n", packet->MCPS_DATA_request.msduLength, margin);
+    encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, request);
+    assert(encryption_header != NULL);
+    const size_t skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
+    if(PACKET_SIZE(*packet, request) < skip_size) {
+        SN_ErrPrintf("cannot encrypt packet of length %d with an encryption header at %d\n", PACKET_SIZE(*packet, request), packet->layout.encryption_header);
         return -SN_ERR_END_OF_DATA;
     }
 
+    SN_InfoPrintf("encrypting packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, request), packet->layout.encryption_header, encryption_header->counter);
+
     int ret = SN_Crypto_encrypt(&table_entry->link_key.key, &table_entry->link_key.key_id, encryption_header->counter,
-        packet->MCPS_DATA_request.msdu, margin,
-        packet->MCPS_DATA_request.msdu + skip_size,
-        packet->MCPS_DATA_request.msduLength - skip_size,
+        packet->contents.MCPS_DATA_request.msdu, packet->layout.encryption_header,
+        packet->contents.MCPS_DATA_request.msdu + skip_size,
+        packet->contents.MCPS_DATA_request.msduLength - skip_size,
         encryption_header->tag);
     if(ret != SN_OK) {
         SN_ErrPrintf("Packet encryption failed with %d, aborting\n", -ret);
@@ -106,49 +109,42 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         return -SN_ERR_NULL;
     }
 
-    packet->packet_layout.crypto_margin = 0;
-
-    network_header_t* network_header = PACKET_HEADER(*packet, network, request);
+    network_header_t* network_header = PACKET_ENTRY(*packet, network_header, request);
     if(PACKET_SIZE(*packet, request) != sizeof(network_header_t)) {
         SN_ErrPrintf("packet doesn't appear to have a valid network header, aborting\n");
         return -SN_ERR_END_OF_DATA;
     }
-    packet->packet_layout.crypto_margin += sizeof(network_header_t);
 
     //node_details_header_t
     if(network_header->details) {
-        SN_InfoPrintf("generating node details header\n");
+        SN_InfoPrintf("generating node details header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(node_details_header_t) > aMaxMACPayloadSize) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        node_details_header_t* node_details_header =
-                                 (node_details_header_t*)(packet->packet_data.MCPS_DATA_request.msdu +
-                                                          PACKET_SIZE(*packet, request)
-                                 );
-        PACKET_HEADER(*packet, node_details, request) = node_details_header;
-        PACKET_SIZE(*packet, request) += sizeof(node_details_header_t);
 
-        packet->packet_layout.crypto_margin += sizeof(node_details_header_t);
+        packet->layout.node_details_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.node_details_header = 1;
+        PACKET_SIZE(*packet, request) += sizeof(node_details_header_t);
+        node_details_header_t* node_details_header = PACKET_ENTRY(*packet, node_details_header, request);
+        assert(node_details_header != NULL);
 
         node_details_header->signing_key = session->device_root_key.public_key;
     }
 
     //association_header_t
     if(network_header->associate) {
-        SN_InfoPrintf("generating association header\n");
+        SN_InfoPrintf("generating association header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(association_header_t) > aMaxMACPayloadSize) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        association_header_t* association_header =
-                                        (association_header_t*)(packet->packet_data.MCPS_DATA_request.msdu +
-                                                                        PACKET_SIZE(*packet, request)
-                                        );
-        PACKET_HEADER(*packet, association, request) = association_header;
-        PACKET_SIZE(*packet, request) += sizeof(association_header_t);
 
-        packet->packet_layout.crypto_margin += sizeof(association_header_t);
+        packet->layout.association_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.association_header = 1;
+        PACKET_SIZE(*packet, request) += sizeof(association_header_t);
+        association_header_t* association_header = PACKET_ENTRY(*packet, association_header, request);
+        assert(association_header != NULL);
 
         association_header->flags             = 0;
         association_header->key_agreement_key = table_entry->local_key_agreement_keypair.public_key;
@@ -164,18 +160,16 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 
     //key_confirmation_header_t
     if(network_header->key_confirm) {
-        SN_InfoPrintf("generating key confirmation header (challenge%d)\n", network_header->associate ? 1 : 2);
+        SN_InfoPrintf("generating key confirmation header (challenge%d) at %d\n", network_header->associate ? 1 : 2, PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(key_confirmation_header_t) > aMaxMACPayloadSize) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        key_confirmation_header_t* key_confirmation_header =
-                                     (key_confirmation_header_t*)(packet->packet_data.MCPS_DATA_request.msdu +
-                                                                  PACKET_SIZE(*packet, request)
-                                     );
-        PACKET_HEADER(*packet, key_confirmation, request) = key_confirmation_header;
+        packet->layout.key_confirmation_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.key_confirmation_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(key_confirmation_header_t);
-        packet->packet_layout.crypto_margin += sizeof(key_confirmation_header_t);
+        key_confirmation_header_t* key_confirmation_header = PACKET_ENTRY(*packet, key_confirmation_header, request);
+        assert(key_confirmation_header != NULL);
 
         if(network_header->associate) {
             //this is a reply; do challenge1 (double-hash)
@@ -200,39 +194,36 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
     //TODO: {encrypted,signed}_ack_header_t
 
     if(network_header->encrypt) {
-        SN_InfoPrintf("generating encryption header\n");
+        SN_InfoPrintf("generating encryption header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(encryption_header_t) > aMaxMACPayloadSize) {
             SN_ErrPrintf("adding encryption header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        encryption_header_t* encryption_header =
-                               (encryption_header_t*)(packet->packet_data.MCPS_DATA_request.msdu +
-                                                      PACKET_SIZE(*packet, request)
-                               );
-        PACKET_HEADER(*packet, encryption, request) = encryption_header;
+        packet->layout.encryption_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.encryption_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(encryption_header_t);
+        encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, request);
+        assert(encryption_header != NULL);
 
         encryption_header->counter = table_entry->packet_tx_count++;
     } else {
-        SN_InfoPrintf("generating signature header\n");
+        SN_InfoPrintf("generating signature header at %d\n", PACKET_SIZE(*packet, request));
 
         if(PACKET_SIZE(*packet, request) + sizeof(signature_header_t) > aMaxMACPayloadSize) {
             SN_ErrPrintf("adding encryption header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        signature_header_t* signature_header =
-                              (signature_header_t*)(packet->packet_data.MCPS_DATA_request.msdu +
-                                                    PACKET_SIZE(*packet, request)
-                              );
-        PACKET_HEADER(*packet, signature, request) = signature_header;
+        packet->layout.signature_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.signature_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(signature_header_t);
+        signature_header_t* signature_header = PACKET_ENTRY(*packet, signature_header, request);
+        assert(signature_header != NULL);
 
-        /*XXX: warning, assumes signature header is at the end of the header block
-         */
+        //signs everything before the signature header occurs
         if(SN_Crypto_sign(
             &session->device_root_key.private_key,
-            packet->packet_data.MCPS_DATA_request.msdu,
-            PACKET_SIZE(*packet, request) - sizeof(signature_header_t),
+            packet->contents.MCPS_DATA_request.msdu,
+            packet->layout.signature_header,
             &signature_header->signature) != SN_OK) {
             SN_ErrPrintf("could not sign packet\n");
             return -SN_ERR_SIGNATURE;
@@ -246,19 +237,16 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 static int generate_payload(SN_Message_t* message, packet_t* packet) {
     assert(message != NULL);
 
-    uint8_t* packet_data = packet->packet_data.MCPS_DATA_request.msdu + PACKET_SIZE(*packet, request);
     uint8_t* payload = NULL;
     uint8_t payload_length = 0;
 
     switch(message->type) {
         case SN_Data_message:
-            SN_InfoPrintf("generating data payload\n");
             payload = message->data_message.payload;
             payload_length = message->data_message.payload_length;
             break;
 
         case SN_Evidence_message:
-            SN_InfoPrintf("generating evidence payload\n");
             payload = (uint8_t*)&message->evidence_message.evidence;
             payload_length = sizeof(SN_Certificate_t);
             break;
@@ -268,6 +256,8 @@ static int generate_payload(SN_Message_t* message, packet_t* packet) {
             return -SN_ERR_INVALID;
     }
 
+    SN_InfoPrintf("generating %s payload at %d (%d bytes)\n", message->type == SN_Data_message ? "data" : "evidence", PACKET_SIZE(*packet, request), payload_length);
+
     if(PACKET_SIZE(*packet, request) + payload_length > aMaxMACPayloadSize) {
         SN_ErrPrintf("packet is too large, at %d bytes (maximum length is %d bytes)\n",
             PACKET_SIZE(*packet, request) + payload_length, aMaxMACPayloadSize);
@@ -276,10 +266,15 @@ static int generate_payload(SN_Message_t* message, packet_t* packet) {
 
     assert(payload != NULL);
 
-    packet->packet_layout.payload_length = payload_length;
+    packet->layout.payload_length = payload_length;
     if(payload_length > 0) {
-        PACKET_DATA(*packet, request) = packet->packet_data.MCPS_DATA_request.msdu + PACKET_SIZE(*packet, request);
+        packet->layout.payload_data = PACKET_SIZE(*packet, request);
+        packet->layout.present.payload_data = 1;
         PACKET_SIZE(*packet, request) += payload_length;
+
+        uint8_t* packet_data = PACKET_ENTRY(*packet, payload_data, request);
+        assert(packet_data != NULL);
+
         memcpy(packet_data, payload, payload_length);
     } else {
         SN_WarnPrintf("no payload to generate\n");
@@ -321,12 +316,13 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
 
     //actual packet buffer
     packet_t packet;
-    memset(&packet.packet_layout, 0, sizeof(packet.packet_layout));
+    memset(&packet.layout, 0, sizeof(packet.layout));
 
     //network header
     SN_InfoPrintf("generating network header...\n");
-    packet.packet_layout.network_header    = (network_header_t*)packet.packet_data.MCPS_DATA_request.msdu;
-    network_header_t* header               = PACKET_HEADER(packet, network, request);
+    packet.layout.network_header    = 0; //redundant, but useful to demonstrate the point
+    packet.layout.present.network_header   = 1;
+    network_header_t* header               = PACKET_ENTRY(packet, network_header, request);
     header->protocol_id                    = STARFISHNET_PROTOCOL_ID;
     header->protocol_ver                   = STARFISHNET_PROTOCOL_VERSION;
     //TODO: routing/addressing
@@ -369,7 +365,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     }
 
     SN_InfoPrintf("beginning packet crypto...\n");
-    ret = encrypt_authenticate_packet(&table_entry, packet.packet_layout.crypto_margin, &packet.packet_data);
+    ret = encrypt_authenticate_packet(&table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("packet crypto failed with %d\n", -ret);
         return ret;
@@ -432,12 +428,13 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
 
     //actual packet buffer
     packet_t packet;
-    memset(&packet.packet_layout, 0, sizeof(packet.packet_layout));
+    memset(&packet.layout, 0, sizeof(packet.layout));
 
     //network header
     SN_InfoPrintf("generating network header...\n");
-    packet.packet_layout.network_header    = (network_header_t*)packet.packet_data.MCPS_DATA_request.msdu;
-    network_header_t* header               = PACKET_HEADER(packet, network, request);
+    packet.layout.network_header    = 0;
+    packet.layout.present.network_header   = 1;
+    network_header_t* header               = PACKET_ENTRY(packet, network_header, request);
     header->protocol_id                    = STARFISHNET_PROTOCOL_ID;
     header->protocol_ver                   = STARFISHNET_PROTOCOL_VERSION;
     //TODO: routing/addressing
@@ -532,7 +529,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
 
     if(header->encrypt) {
         SN_InfoPrintf("encrypting packet...\n");
-        ret = encrypt_authenticate_packet(&table_entry, packet.packet_layout.crypto_margin, &packet.packet_data);
+        ret = encrypt_authenticate_packet(&table_entry, &packet);
         if(ret != SN_OK) {
             SN_ErrPrintf("packet crypto failed with %d\n", -ret);
             return ret;

@@ -6,6 +6,7 @@
 #include <sn_crypto.h>
 #include <sn_status.h>
 #include <sn_table.h>
+#include <inttypes.h>
 
 int main(int argc, char* argv[]) {
     const int          channel = 0xb;
@@ -40,7 +41,7 @@ int main(int argc, char* argv[]) {
 
     printf("Init complete. Printing MAC address:\n");
 
-    printf("MAC address is %#018llx\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
+    printf("MAC address is %#018"PRIx64"\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
 
     printf("Starting network on channel %d with ID %x...\n", channel, panid);
 
