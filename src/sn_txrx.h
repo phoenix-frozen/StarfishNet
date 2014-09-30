@@ -28,7 +28,8 @@ typedef struct __attribute__((packed)) network_header {
             uint8_t associate    :1; //flags the presence of an association request header
             uint8_t key_confirm  :1; //flags the presence of a key confirmation header
             uint8_t evidence     :1; //indicates that the payload is a certificate, not plain data
-            uint8_t mbz          :2;
+            uint8_t ack          :1; //indicates the presence of a data acknowledgement header
+            uint8_t mbz          :1;
         };
         uint8_t attributes;
     };
@@ -39,7 +40,7 @@ typedef struct __attribute__((packed)) node_details_header {
     SN_Public_key_t signing_key;
 } node_details_header_t;
 
-typedef struct __attribute__((packed)) association_request_header {
+typedef struct __attribute__((packed)) association_header {
     //key agreement information
     SN_Public_key_t key_agreement_key;
 
@@ -65,7 +66,7 @@ typedef struct __attribute__((packed)) association_request_header {
         };
         uint8_t flags;
     };
-} association_request_header_t;
+} association_header_t;
 
 typedef struct __attribute__((packed)) key_confirmation_header {
     SN_Hash_t challenge;
@@ -88,5 +89,42 @@ typedef struct __attribute__((packed)) encryption_header {
 typedef struct __attribute__((packed)) signature_header {
     SN_Signature_t signature;
 } signature_header_t;
+
+typedef struct __attribute__((packed)) encrypted_ack_header {
+    uint16_t counter;
+    uint8_t  range; //we can use this to acknowledge several messages at once
+} encrypted_ack_header_t;
+
+typedef struct __attribute__((packed)) signed_ack_header {
+    SN_Signature_t signature; //the signature of the packet we're acknowledging
+} signed_ack_header_t;
+
+typedef struct packet {
+    struct packet_layout {
+        network_header_t                 * network_header;
+        node_details_header_t            * node_details_header;
+        association_header_t             * association_header;
+        encryption_header_t              * encryption_header;
+        key_confirmation_header_t        * key_confirmation_header;
+        address_allocation_header_t      * address_allocation_header;
+        address_block_allocation_header_t* address_block_allocation_header;
+        signature_header_t               * signature_header;
+        encrypted_ack_header_t           * encrypted_ack_header;
+        signed_ack_header_t              * signed_ack_header;
+
+        uint8_t                          * payload_data;
+
+        uint8_t payload_length;
+        uint8_t crypto_margin;
+    } packet_layout;
+
+    mac_primitive_t packet_data;
+} packet_t;
+
+//#define PACKET_HEADER(packet, header, req_type) (header##_header_t*)((packet).packet_data.MCPS_DATA_##req_type.msdu + (packet).packet_layout.##header##_header)
+//#define PACKET_DATA(packet, req_type) ((packet).packet_data.MCPS_DATA_##req_type.msdu + (packet).packet_layout.payload_data)
+#define PACKET_HEADER(packet, header, req_type) ((packet).packet_layout.header##_header)
+#define PACKET_DATA(packet, req_type) ((packet).packet_layout.payload_data)
+#define PACKET_SIZE(packet, req_type) ((packet).packet_data.MCPS_DATA_##req_type.msduLength)
 
 #endif /* __SN_TXRX_H__ */
