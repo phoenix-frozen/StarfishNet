@@ -124,6 +124,20 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
     return SN_OK;
 }
 
+int SN_Crypto_rekey(SN_Kex_result_t* shared_secret) {
+    SN_InfoPrintf("enter\n");
+
+    if(shared_secret == NULL) {
+        SN_ErrPrintf("shared_secret must be non-NULL\n");
+        return -SN_ERR_NULL;
+    }
+
+    //rekeying just means hashing the shared secret into a new one
+    sha1(shared_secret->raw.data, sizeof(shared_secret->raw.data), shared_secret->raw.data);
+
+    SN_InfoPrintf("exit\n");
+    return SN_OK;}
+
 
 int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
     SN_InfoPrintf("enter\n");

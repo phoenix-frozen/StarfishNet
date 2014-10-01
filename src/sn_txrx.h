@@ -92,7 +92,6 @@ typedef struct __attribute__((packed)) signature_header {
 
 typedef struct __attribute__((packed)) encrypted_ack_header {
     uint16_t counter;
-    uint8_t  range; //we can use this to acknowledge several messages at once
 } encrypted_ack_header_t;
 
 typedef struct __attribute__((packed)) signed_ack_header {

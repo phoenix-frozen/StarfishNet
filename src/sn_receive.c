@@ -14,6 +14,7 @@
 #include "mac_util.h"
 #include "sn_constants.h"
 #include "sn_txrx.h"
+#include "sn_delayed_tx.h"
 
 //some templates for mac_receive_primitive
 static MAC_SET_CONFIRM(macShortAddress);
@@ -31,6 +32,7 @@ static int detect_packet_layout(packet_t* packet) {
     uint8_t current_position = 0;
     memset(&packet->layout, 0, sizeof(packet->layout));
 
+    //network_header_t is always present
     packet->layout.network_header = 0;
     packet->layout.present.network_header = 1;
     network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
@@ -47,6 +49,7 @@ static int detect_packet_layout(packet_t* packet) {
     }
     current_position += sizeof(network_header_t);
 
+    //node_details_header_t
     if(network_header->details) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(node_details_header_t)) {
             SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
@@ -58,17 +61,19 @@ static int detect_packet_layout(packet_t* packet) {
         current_position += sizeof(node_details_header_t);
     }
 
+    //association_header_t
     if(network_header->associate) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(association_header_t)) {
-            SN_ErrPrintf("packet indicates an association request header, but is too small. aborting\n");
+            SN_ErrPrintf("packet indicates an association header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
-        SN_InfoPrintf("found association request header at %d\n", current_position);
+        SN_InfoPrintf("found association header at %d\n", current_position);
         packet->layout.association_header = current_position;
         packet->layout.present.association_header = 1;
         current_position += sizeof(association_header_t);
     }
 
+    //key_confirmation_header_t
     if(network_header->key_confirm) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(key_confirmation_header_t)) {
             SN_ErrPrintf("packet indicates a key confirmation header, but is too small. aborting\n");
@@ -80,7 +85,7 @@ static int detect_packet_layout(packet_t* packet) {
         current_position += sizeof(key_confirmation_header_t);
     }
 
-    //address_allocation_header_t / address_block_allocation_header_t (only found in associate_reply packets
+    //address_allocation_header_t / address_block_allocation_header_t (only found in associate_reply packets)
     if(network_header->associate && network_header->key_confirm &&
        PACKET_ENTRY(*packet, association_header, indication)->child) {
         if(PACKET_ENTRY(*packet, association_header, indication)->router) {
@@ -106,7 +111,34 @@ static int detect_packet_layout(packet_t* packet) {
         }
     }
 
+    //encrypted_ack_header_t / signed_ack_header_t
+    if(network_header->ack && !network_header->associate) {
+        if(network_header->encrypt) {
+            //encrypted ack
+            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encrypted_ack_header_t)) {
+                SN_ErrPrintf("packet indicates an acknowledgement (encrypted) header, but is too small. aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            SN_InfoPrintf("found acknowledgement (encrypted) header at %d\n", current_position);
+            packet->layout.encrypted_ack_header = current_position;
+            packet->layout.present.encrypted_ack_header = 1;
+            current_position += sizeof(encrypted_ack_header_t);
+        } else {
+            //signed ack
+            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(signed_ack_header_t)) {
+                SN_ErrPrintf("packet indicates an acknowledgement (signed) header, but is too small. aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            SN_InfoPrintf("found acknowledgement (signed) header at %d\n", current_position);
+            packet->layout.signed_ack_header = current_position;
+            packet->layout.present.signed_ack_header = 1;
+            current_position += sizeof(signed_ack_header_t);
+        }
+    }
+
+    //encryption_header_t / signature_header_t
     if(network_header->encrypt) {
+        //encrypted packet
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encryption_header_t)) {
             SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -116,6 +148,7 @@ static int detect_packet_layout(packet_t* packet) {
         packet->layout.present.encryption_header = 1;
         current_position += sizeof(encryption_header_t);
     } else {
+        //signed packet
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(signature_header_t)) {
             SN_ErrPrintf("packet indicates a signature header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -126,6 +159,7 @@ static int detect_packet_layout(packet_t* packet) {
         current_position += sizeof(signature_header_t);
     }
 
+    //payload
     packet->layout.payload_length = PACKET_SIZE(*packet, indication) - current_position;
     if(packet->layout.payload_length > 0) {
         SN_InfoPrintf("found payload at %d (%d bytes)\n", current_position, packet->layout.payload_length);
@@ -280,6 +314,10 @@ static int do_public_key_operations(SN_Table_entry_t* table_entry, packet_t* pac
             SN_ErrPrintf("key agreement failed with %d.\n", -ret);
             return ret;
         }
+
+        //reset both packet counters to zero for a new session key
+        table_entry->packet_rx_count = 0;
+        table_entry->packet_tx_count = 0;
     }
 
     return SN_OK;
@@ -381,12 +419,22 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
             //advance the relationship's state
             table_entry->state = SN_Associated;
         }
+
+        SN_Delayed_acknowledge_special(table_entry, packet);
     }
 
     //TODO: address_allocation_header
     //TODO: address_block_allocation_header
 
-    //TODO: {encrypted,signed}_ack_header
+    //encrypted_ack_header
+    if(PACKET_ENTRY(*packet, encrypted_ack_header, indication) != NULL) {
+        SN_Delayed_acknowledge_encrypted(table_entry, PACKET_ENTRY(*packet, encrypted_ack_header, indication)->counter);
+    }
+
+    //signed_ack_header
+    if(PACKET_ENTRY(*packet, signed_ack_header, indication) != NULL) {
+        SN_Delayed_acknowledge_signed(table_entry, &PACKET_ENTRY(*packet, signed_ack_header, indication)->signature);
+    }
 
     return SN_OK;
 }
@@ -406,12 +454,16 @@ static int decrypt_verify_packet(SN_Table_entry_t* table_entry, packet_t* packet
     encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, indication);
     assert(encryption_header != NULL);
     const size_t skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
+    SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header, encryption_header->counter);
     if(PACKET_SIZE(*packet, indication) < skip_size) {
-        SN_ErrPrintf("cannot decrypt packet of length %d with an encryption header at %d\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header);
+        SN_ErrPrintf("packet is too small\n");
         return -SN_ERR_END_OF_DATA;
     }
-
-    SN_InfoPrintf("decrypting packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header, encryption_header->counter);
+    if(encryption_header->counter != table_entry->packet_rx_count) {
+        SN_ErrPrintf("replay protection forbids the processing of this packet\n");
+        return -SN_ERR_SECURITY;
+    }
+    table_entry->packet_rx_count++;
 
     int ret = SN_Crypto_decrypt(&table_entry->link_key.key, &table_entry->link_key.key_id, encryption_header->counter,
         packet->contents.MCPS_DATA_indication.msdu, packet->layout.encryption_header,
@@ -585,6 +637,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     SN_InfoPrintf("processing packet...\n");
     uint8_t* payload_data = PACKET_ENTRY(packet, payload_data, indication);
     if(payload_data != NULL) {
+        table_entry.ack = (uint8_t)(PACKET_ENTRY(packet, encryption_header, indication) != NULL);
         if(PACKET_ENTRY(packet, network_header, indication)->evidence) {
             //evidence packet
             if(packet.layout.payload_length != sizeof(SN_Certificate_t)) {

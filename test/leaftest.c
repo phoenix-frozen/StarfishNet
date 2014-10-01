@@ -132,8 +132,17 @@ int main(int argc, char* argv[]) {
 
     if(ret != SN_OK) {
         printf("Packet transmission failed: %d\n", -ret);
+        goto main_exit;
     } else {
         printf("Packet transmission succeeded.\n");
+    }
+
+    ret = SN_Receive(&network_session, &remote_address, &association_message, sizeof(association_message));
+
+    if(ret != SN_OK) {
+        printf("Acknowledgement receive failed: %d\n", -ret);
+    } else {
+        printf("Acknowledgement receive succeeded.\n");
     }
 
     printf("Test complete. Type \"die\" to clean up and exit.\n");

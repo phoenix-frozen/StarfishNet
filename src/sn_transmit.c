@@ -191,8 +191,41 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
     }
 
     //TODO: address_allocation[_block]_header_t
-    //TODO: {encrypted,signed}_ack_header_t
 
+    //{encrypted,signed}_ack_header_t
+    if(network_header->ack) {
+        if(network_header->encrypt) {
+            SN_InfoPrintf("generating encrypted-ack header at %d\n", PACKET_SIZE(*packet, request));
+            if(PACKET_SIZE(*packet, request) + sizeof(encrypted_ack_header_t) > aMaxMACPayloadSize) {
+                SN_ErrPrintf("adding encrypted_ack header would make packet too large, aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            packet->layout.encrypted_ack_header = PACKET_SIZE(*packet, request);
+            packet->layout.present.encrypted_ack_header = 1;
+            PACKET_SIZE(*packet, request) += sizeof(encrypted_ack_header_t);
+            encrypted_ack_header_t* encrypted_ack_header = PACKET_ENTRY(*packet, encrypted_ack_header, request);
+            assert(encrypted_ack_header != NULL);
+
+            encrypted_ack_header->counter = table_entry->packet_rx_count - (uint16_t)1;
+        } else {
+            SN_InfoPrintf("generating signed-ack header at %d\n", PACKET_SIZE(*packet, request));
+            if(PACKET_SIZE(*packet, request) + sizeof(signed_ack_header_t) > aMaxMACPayloadSize) {
+                SN_ErrPrintf("adding signed_ack header would make packet too large, aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            packet->layout.signed_ack_header = PACKET_SIZE(*packet, request);
+            packet->layout.present.signed_ack_header = 1;
+            PACKET_SIZE(*packet, request) += sizeof(signed_ack_header_t);
+            signed_ack_header_t* signed_ack_header = PACKET_ENTRY(*packet, signed_ack_header, request);
+            assert(signed_ack_header != NULL);
+
+            //TODO: signed_ack_header_t
+            SN_ErrPrintf("signed_ack headers not implemented yet\n");
+            return -SN_ERR_UNIMPLEMENTED;
+        }
+    }
+
+    //{encryption,signature}_header_t
     if(network_header->encrypt) {
         SN_InfoPrintf("generating encryption header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(encryption_header_t) > aMaxMACPayloadSize) {
@@ -325,9 +358,8 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     network_header_t* header               = PACKET_ENTRY(packet, network_header, request);
     header->protocol_id                    = STARFISHNET_PROTOCOL_ID;
     header->protocol_ver                   = STARFISHNET_PROTOCOL_VERSION;
-    //TODO: routing/addressing
-    header->src_addr                       = SN_NO_SHORT_ADDRESS;
-    header->dst_addr                       = SN_NO_SHORT_ADDRESS;
+    header->src_addr                       = session->mib.macShortAddress;
+    header->dst_addr                       = table_entry.short_address;
     //attributes
     header->attributes                     = 0;
     header->encrypt                        = 1;
@@ -335,6 +367,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     header->details                        = (uint8_t)!table_entry.knows_details;
     header->key_confirm                    = (uint8_t)(table_entry.state == SN_Send_finalise);
     header->evidence                       = (uint8_t)(message != NULL && message->type == SN_Evidence_message);
+    header->ack                            = (uint8_t)(table_entry.ack && header->encrypt);
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
 
@@ -344,6 +377,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     if(header->details) {
         table_entry.knows_details = 1;
     }
+    table_entry.ack = 0;
 
     SN_InfoPrintf("generating subheaders...\n");
     ret = generate_packet_headers(session, &table_entry, &packet);
@@ -409,7 +443,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
         .session       = session,
         .short_address = SN_NO_SHORT_ADDRESS,
     };
-    int              ret         = SN_Table_lookup_by_address(dst_addr, &table_entry, NULL);
+    int ret = SN_Table_lookup_by_address(dst_addr, &table_entry, NULL);
     if(ret != SN_OK) {
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
@@ -437,9 +471,8 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     network_header_t* header               = PACKET_ENTRY(packet, network_header, request);
     header->protocol_id                    = STARFISHNET_PROTOCOL_ID;
     header->protocol_ver                   = STARFISHNET_PROTOCOL_VERSION;
-    //TODO: routing/addressing
-    header->src_addr                       = SN_NO_SHORT_ADDRESS;
-    header->dst_addr                       = SN_NO_SHORT_ADDRESS;
+    header->src_addr                       = session->mib.macShortAddress;
+    header->dst_addr                       = table_entry.short_address;
     //attributes
     header->attributes                     = 0;
     header->req_details                    = (uint8_t)!table_entry.details_known;
@@ -447,7 +480,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     header->associate                      = 1;
     header->key_confirm                    = (uint8_t)(table_entry.state == SN_Associate_received);
     header->encrypt                        = 0;
-    header->evidence                       = 1;
+    header->evidence                       = 1; //association packets are unencrypted. so if there's a payload, it must be evidence
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
 
@@ -489,6 +522,10 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
                 SN_ErrPrintf("error during key agreement, aborting send\n");
                 return -SN_ERR_KEYGEN;
             }
+
+            //reset both packet counters to zero for a new session key
+            table_entry.packet_rx_count = 0;
+            table_entry.packet_tx_count = 0;
 
             //advance state
             table_entry.state = SN_Awaiting_finalise;

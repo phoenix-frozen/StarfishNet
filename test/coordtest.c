@@ -112,8 +112,19 @@ int main(int argc, char* argv[]) {
 
     if(ret != SN_OK) {
         printf("Packet receive failed: %d\n", -ret);
+        goto main_exit;
+    }
+
+    printf("Packet received: \"%s\"\n", recvbuf->data_message.payload);
+
+    printf("Sending acknowledgement...\n");
+
+    ret = SN_Send(&network_session, &remote_address, NULL);
+
+    if(ret != SN_OK) {
+        printf("Acknowledgement transmission failed: %d\n", -ret);
     } else {
-        printf("Packet received: \"%s\"\n", recvbuf->data_message.payload);
+        printf("Acknowledgement transmission succeeded.\n");
     }
 
     printf("Test complete. Type \"die\" to clean up and exit.\n");
