@@ -53,7 +53,6 @@
 
 #include <string.h>
 
-#include <polarssl/sha1.h>
 #include <assert.h>
 
 #include "mac_util.h"
@@ -65,11 +64,11 @@
 static MAC_SET_CONFIRM(macShortAddress);
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
-static int encrypt_authenticate_packet(SN_Table_entry_t* table_entry, packet_t* packet) {
+static int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet) {
     SN_DebugPrintf("enter\n");
 
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
+    if(link_key == NULL || key_agreement_key == NULL || packet == NULL) {
+        SN_ErrPrintf("link_key, key_agreement_key, and packet must all be valid\n");
         return -SN_ERR_NULL;
     }
 
@@ -81,9 +80,10 @@ static int encrypt_authenticate_packet(SN_Table_entry_t* table_entry, packet_t* 
         return -SN_ERR_END_OF_DATA;
     }
 
-    SN_InfoPrintf("encrypting packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, request), packet->layout.encryption_header, encryption_header->counter);
+    SN_InfoPrintf("encrypting packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, request), packet->layout.encryption_header, encryption_counter);
 
-    int ret = SN_Crypto_encrypt(&table_entry->link_key.key, &table_entry->link_key.key_id, encryption_header->counter,
+    int ret = SN_Crypto_encrypt(link_key, key_agreement_key,
+        encryption_counter,
         packet->contents.MCPS_DATA_request.msdu, packet->layout.encryption_header,
         packet->contents.MCPS_DATA_request.msdu + skip_size,
         packet->contents.MCPS_DATA_request.msduLength - skip_size,
@@ -95,13 +95,11 @@ static int encrypt_authenticate_packet(SN_Table_entry_t* table_entry, packet_t* 
 
     SN_InfoPrintf("payload encryption complete\n");
 
-    //TODO: rekeying
-
     SN_DebugPrintf("exit\n");
     return SN_OK;
 }
 
-static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet) {
+static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* table_entry, bool dissociate, packet_t* packet) {
     SN_DebugPrintf("enter\n");
 
     if(session == NULL || table_entry == NULL || packet == NULL) {
@@ -147,7 +145,7 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         assert(association_header != NULL);
 
         association_header->flags             = 0;
-        association_header->key_agreement_key = table_entry->local_key_agreement_keypair.public_key;
+        association_header->dissociate        = (uint8_t)(dissociate ? 1 : 0);
         association_header->router            = session->nib.enable_routing;
         association_header->child =
             memcmp(
@@ -156,6 +154,16 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
                 sizeof(session->nib.parent_public_key.data)
             ) == 0 ? (uint8_t)1 : (uint8_t)0;
 
+        //key_agreement_header_t
+        if(!association_header->dissociate) {
+            packet->layout.key_agreement_header = PACKET_SIZE(*packet, request);
+            packet->layout.present.key_agreement_header = 1;
+            PACKET_SIZE(*packet, request) += sizeof(key_agreement_header_t);
+            key_agreement_header_t* key_agreement_header = PACKET_ENTRY(*packet, key_agreement_header, request);
+            assert(key_agreement_header != NULL);
+
+            key_agreement_header->key_agreement_key = table_entry->local_key_agreement_keypair.public_key;
+        }
     }
 
     //key_confirmation_header_t
@@ -173,16 +181,14 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 
         if(network_header->associate) {
             //this is a reply; do challenge1 (double-hash)
-            SN_Hash_t hashbuf;
-            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
-            sha1(hashbuf.data, sizeof(hashbuf.data), key_confirmation_header->challenge.data);
+            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 1);
             SN_DebugPrintf("challenge1 = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
                 *(uint64_t*)key_confirmation_header->challenge.data,
                 *((uint64_t*)key_confirmation_header->challenge.data + 1),
                 *((uint32_t*)key_confirmation_header->challenge.data + 4));
         } else {
             //this is a finalise; do challenge2 (single-hash)
-            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), key_confirmation_header->challenge.data);
+            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 0);
             SN_DebugPrintf("challenge2 = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
                 *(uint64_t*)key_confirmation_header->challenge.data,
                 *((uint64_t*)key_confirmation_header->challenge.data + 1),
@@ -206,7 +212,7 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
             encrypted_ack_header_t* encrypted_ack_header = PACKET_ENTRY(*packet, encrypted_ack_header, request);
             assert(encrypted_ack_header != NULL);
 
-            encrypted_ack_header->counter = table_entry->packet_rx_count - (uint16_t)1;
+            encrypted_ack_header->counter = table_entry->packet_rx_counter - 1;
         } else {
             SN_InfoPrintf("generating signed-ack header at %d\n", PACKET_SIZE(*packet, request));
             if(PACKET_SIZE(*packet, request) + sizeof(signed_ack_header_t) > aMaxMACPayloadSize) {
@@ -237,8 +243,6 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         PACKET_SIZE(*packet, request) += sizeof(encryption_header_t);
         encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, request);
         assert(encryption_header != NULL);
-
-        encryption_header->counter = table_entry->packet_tx_count++;
     } else {
         SN_InfoPrintf("generating signature header at %d\n", PACKET_SIZE(*packet, request));
 
@@ -380,7 +384,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     table_entry.ack = 0;
 
     SN_InfoPrintf("generating subheaders...\n");
-    ret = generate_packet_headers(session, &table_entry, &packet);
+    ret = generate_packet_headers(session, &table_entry, 0, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("header generation failed with %d\n", -ret);
         return ret;
@@ -399,14 +403,15 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     }
 
     SN_InfoPrintf("beginning packet crypto...\n");
-    ret = encrypt_authenticate_packet(&table_entry, &packet);
+    uint32_t encryption_counter = table_entry.packet_tx_counter++;
+    ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("packet crypto failed with %d\n", -ret);
         return ret;
     }
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Delayed_transmit(session, &table_entry, &packet);
+    ret = SN_Delayed_transmit(session, &table_entry, &packet, encryption_counter);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
@@ -514,18 +519,17 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
             }
 
             //do ECDH math
+            SN_Kex_result_t kex_result;
             if(SN_Crypto_key_agreement(
                 &table_entry.remote_key_agreement_key,
                 &table_entry.local_key_agreement_keypair.private_key,
-                &table_entry.link_key
+                &kex_result
             ) != SN_OK) {
                 SN_ErrPrintf("error during key agreement, aborting send\n");
                 return -SN_ERR_KEYGEN;
             }
-
-            //reset both packet counters to zero for a new session key
-            table_entry.packet_rx_count = 0;
-            table_entry.packet_tx_count = 0;
+            table_entry.link_key = kex_result.key;
+            table_entry.packet_rx_counter = table_entry.packet_tx_counter = 0;
 
             //advance state
             table_entry.state = SN_Awaiting_finalise;
@@ -538,7 +542,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
 
     //generate subheaders
     SN_InfoPrintf("generating subheaders...\n");
-    ret = generate_packet_headers(session, &table_entry, &packet);
+    ret = generate_packet_headers(session, &table_entry, 0, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in header generation\n", -ret);
         return ret;
@@ -564,9 +568,12 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
         SN_InfoPrintf("no data to staple\n");
     }
 
+    uint32_t encryption_counter = 0;
+
     if(header->encrypt) {
         SN_InfoPrintf("encrypting packet...\n");
-        ret = encrypt_authenticate_packet(&table_entry, &packet);
+        encryption_counter = table_entry.packet_tx_counter++;
+        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet);
         if(ret != SN_OK) {
             SN_ErrPrintf("packet crypto failed with %d\n", -ret);
             return ret;
@@ -574,7 +581,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     }
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Delayed_transmit(session, &table_entry, &packet);
+    ret = SN_Delayed_transmit(session, &table_entry, &packet, encryption_counter);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;

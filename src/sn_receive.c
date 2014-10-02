@@ -9,8 +9,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include <polarssl/sha1.h>
-
 #include "mac_util.h"
 #include "sn_constants.h"
 #include "sn_txrx.h"
@@ -71,6 +69,18 @@ static int detect_packet_layout(packet_t* packet) {
         packet->layout.association_header = current_position;
         packet->layout.present.association_header = 1;
         current_position += sizeof(association_header_t);
+
+        //key_agreement_header_t
+        if(!PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
+            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(key_agreement_header_t)) {
+                SN_ErrPrintf("packet indicates a key agreement header, but is too small. aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            SN_InfoPrintf("found key agreement header at %d\n", current_position);
+            packet->layout.key_agreement_header = current_position;
+            packet->layout.present.key_agreement_header = 1;
+            current_position += sizeof(key_agreement_header_t);
+        }
     }
 
     //key_confirmation_header_t
@@ -303,21 +313,21 @@ static int do_public_key_operations(SN_Table_entry_t* table_entry, packet_t* pac
        PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
         //associate_reply
         assert(table_entry->state == SN_Awaiting_reply);
+        assert(PACKET_ENTRY(*packet, key_agreement_header, indication) != NULL);
 
         //finish the key agreement
+        SN_Kex_result_t kex_result;
         ret = SN_Crypto_key_agreement(
-            &PACKET_ENTRY(*packet, association_header, indication)->key_agreement_key,
+            &PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key,
             &table_entry->local_key_agreement_keypair.private_key,
-            &table_entry->link_key
+            &kex_result
         );
         if(ret != SN_OK) {
             SN_ErrPrintf("key agreement failed with %d.\n", -ret);
             return ret;
         }
-
-        //reset both packet counters to zero for a new session key
-        table_entry->packet_rx_count = 0;
-        table_entry->packet_tx_count = 0;
+        table_entry->link_key = kex_result.key;
+        table_entry->packet_rx_counter = table_entry->packet_tx_counter = 0;
     }
 
     return SN_OK;
@@ -349,7 +359,8 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
         //signature is checked in do_public_key_operations
         if(!PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
             //association processing
-            table_entry->remote_key_agreement_key = PACKET_ENTRY(*packet, association_header, indication)->key_agreement_key;
+            assert(PACKET_ENTRY(*packet, key_agreement_header, indication) != NULL);
+            table_entry->remote_key_agreement_key = PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key;
 
             if(PACKET_ENTRY(*packet, key_confirmation_header, indication) == NULL) {
                 //associate_request
@@ -379,8 +390,7 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
 
             //do the challenge1 check (double-hash)
             SN_Hash_t hashbuf;
-            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
-            sha1(hashbuf.data, sizeof(hashbuf.data), hashbuf.data);
+            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf, 1);
             SN_DebugPrintf("challenge1 (received)   = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
                 *(uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data,
                 *((uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 1),
@@ -402,7 +412,7 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
 
             //do challenge2 check (single-hash)
             SN_Hash_t hashbuf;
-            sha1(table_entry->link_key.key_id.data, sizeof(table_entry->link_key.key_id.data), hashbuf.data);
+            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf, 0);
             SN_DebugPrintf("challenge2 (received)   = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
                 *(uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data,
                 *((uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 1),
@@ -443,29 +453,25 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
  * margin: how much data to skip (after the network header, before the payload) for encryption
  * safe  : if true, arrange so that the original data is untouched on a decryption failure
  */
-static int decrypt_verify_packet(SN_Table_entry_t* table_entry, packet_t* packet) {
+static int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet) {
     SN_DebugPrintf("enter\n");
 
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
+    if(link_key == NULL || key_agreement_key == NULL || packet == NULL) {
+        SN_ErrPrintf("link_key, key_agreement_key, and packet must all be valid\n");
         return -SN_ERR_NULL;
     }
 
     encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, indication);
     assert(encryption_header != NULL);
     const size_t skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
-    SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header, encryption_header->counter);
+    SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header, encryption_counter);
     if(PACKET_SIZE(*packet, indication) < skip_size) {
         SN_ErrPrintf("packet is too small\n");
         return -SN_ERR_END_OF_DATA;
     }
-    if(encryption_header->counter != table_entry->packet_rx_count) {
-        SN_ErrPrintf("replay protection forbids the processing of this packet\n");
-        return -SN_ERR_SECURITY;
-    }
-    table_entry->packet_rx_count++;
 
-    int ret = SN_Crypto_decrypt(&table_entry->link_key.key, &table_entry->link_key.key_id, encryption_header->counter,
+    int ret = SN_Crypto_decrypt(link_key, key_agreement_key,
+        encryption_counter,
         packet->contents.MCPS_DATA_indication.msdu, packet->layout.encryption_header,
         packet->contents.MCPS_DATA_indication.msdu + skip_size,
         packet->contents.MCPS_DATA_indication.msduLength - skip_size,
@@ -593,7 +599,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     if(PACKET_ENTRY(packet, network_header, indication)->encrypt) {
         SN_InfoPrintf("doing decryption and integrity checking...\n");
-        ret = decrypt_verify_packet(&table_entry, &packet);
+        ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, table_entry.packet_rx_counter++, &packet);
         if(ret != SN_OK) {
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
             return ret;

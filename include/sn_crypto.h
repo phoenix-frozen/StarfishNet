@@ -41,14 +41,10 @@ int SN_Crypto_key_agreement ( //do a key agreement into shared_secret
     SN_Kex_result_t*  shared_secret
 );
 
-int SN_Crypto_rekey ( //given a shared secret, generate a new one
-    SN_Kex_result_t* shared_secret
-);
-
 int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     SN_AES_key_t*    key,
-    SN_AES_key_id_t* key_id,
-    uint16_t         counter,
+    SN_Public_key_t* key_agreement_key,
+    uint32_t         counter,
     uint8_t*         ad,
     size_t           ad_len,
     uint8_t*         data,
@@ -58,8 +54,8 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
 
 int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     SN_AES_key_t*    key,
-    SN_AES_key_id_t* key_id,
-    uint16_t         counter,
+    SN_Public_key_t* key_agreement_key,
+    uint32_t         counter,
     uint8_t*         ad,
     size_t           ad_len,
     uint8_t*         data,
@@ -67,18 +63,25 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     uint8_t*         tag
 );
 
-int SN_Crypto_add_certificate( //add a certificate to a storage repository. implicitly calls SN_Crypto_check_certificate on it first
+int SN_Crypto_add_certificate ( //add a certificate to a storage repository. implicitly calls SN_Crypto_check_certificate on it first
     SN_Certificate_storage_t* storage,
     SN_Certificate_t*         certificate
 );
 
-int SN_Crypto_remove_certificate( //remove a certificate from a storage repository
+int SN_Crypto_remove_certificate ( //remove a certificate from a storage repository
     SN_Certificate_storage_t* storage,
     SN_Certificate_t*         certificate
 );
 
-int SN_Crypto_check_certificate( //check the signature on a certificate
+int SN_Crypto_check_certificate ( //check the signature on a certificate
     SN_Certificate_t*         certificate
+);
+
+void SN_Crypto_hash (
+    uint8_t*   data,
+    size_t     data_len,
+    SN_Hash_t* hash,
+    size_t     repeat_count
 );
 
 //TODO: certificate chain validation

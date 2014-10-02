@@ -41,13 +41,10 @@ typedef struct __attribute__((packed)) node_details_header {
 } node_details_header_t;
 
 typedef struct __attribute__((packed)) association_header {
-    //key agreement information
-    SN_Public_key_t key_agreement_key;
-
     //flags
     union {
         struct {
-            uint8_t dissociate :1; //this is a dissociation message
+            uint8_t dissociate :1; //this is a dissociation message (if 0, a key-agreement header follows)
             uint8_t child      :1;
             //in a request   : request an address as well (implying you're my neighbor)
             //in a reply     : flags the presence of an address allocation header
@@ -68,6 +65,10 @@ typedef struct __attribute__((packed)) association_header {
     };
 } association_header_t;
 
+typedef struct __attribute__((packed)) key_agreement_header {
+    SN_Public_key_t key_agreement_key;
+} key_agreement_header_t;
+
 typedef struct __attribute__((packed)) key_confirmation_header {
     SN_Hash_t challenge;
 } key_confirmation_header_t;
@@ -82,7 +83,6 @@ typedef struct __attribute__((packed)) address_block_allocation_header {
 } address_block_allocation_header_t;
 
 typedef struct __attribute__((packed)) encryption_header {
-    uint16_t counter;
     uint8_t  tag[SN_Tag_size];
 } encryption_header_t;
 
@@ -91,7 +91,7 @@ typedef struct __attribute__((packed)) signature_header {
 } signature_header_t;
 
 typedef struct __attribute__((packed)) encrypted_ack_header {
-    uint16_t counter;
+    uint32_t counter;
 } encrypted_ack_header_t;
 
 typedef struct __attribute__((packed)) signed_ack_header {
@@ -120,6 +120,7 @@ typedef struct packet {
                 uint16_t network_header                  :1;
                 uint16_t node_details_header             :1;
                 uint16_t association_header              :1;
+                uint16_t key_agreement_header            :1;
                 uint16_t encryption_header               :1;
                 uint16_t key_confirmation_header         :1;
                 uint16_t address_allocation_header       :1;
@@ -130,7 +131,7 @@ typedef struct packet {
 
                 uint16_t payload_data                    :1;
 
-                uint16_t mbz                             :5;
+                uint16_t mbz                             :4;
             };
 
             uint16_t raw;
@@ -139,6 +140,7 @@ typedef struct packet {
         uint8_t network_header;
         uint8_t node_details_header;
         uint8_t association_header;
+        uint8_t key_agreement_header;
         uint8_t encryption_header;
         uint8_t key_confirmation_header;
         uint8_t address_allocation_header;

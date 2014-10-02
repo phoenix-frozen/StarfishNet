@@ -7,10 +7,10 @@
 #include "sn_txrx.h"
 
 //send a packet and then wait for acknowledgement
-int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet);
+int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter);
 
 //notify the retransmission system that an encrypted packet has been acknowledged
-int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint16_t counter);
+int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t counter);
 
 //notify the retransmission system that a signed packet has been acknowledged
 int SN_Delayed_acknowledge_signed(SN_Table_entry_t* table_entry, SN_Signature_t* signature);

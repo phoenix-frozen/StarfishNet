@@ -37,11 +37,11 @@ typedef struct SN_Table_entry {
     //cryptographic data
     SN_Keypair_t    local_key_agreement_keypair; //our ephemeral keypair
     SN_Public_key_t remote_key_agreement_key;    //remote party's ephemeral public key
-    SN_Kex_result_t link_key;                    //result of ECDH transaction
-    uint16_t        packet_tx_count;             //packet transmission count
+    SN_AES_key_t    link_key;                    //shared secret for packet encryption
+    uint32_t        packet_tx_counter;           //packet transmission count
 
     //packet reordering/retransmission information
-    uint16_t        packet_rx_count;             //packet transmission count
+    uint32_t        packet_rx_counter;           //packet transmission count
 } SN_Table_entry_t;
 
 //insert an entry into the table. entire data structure must be valid

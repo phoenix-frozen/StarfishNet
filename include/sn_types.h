@@ -38,22 +38,15 @@ typedef struct __attribute__((packed)) SN_AES_key {
     uint8_t data[SN_AES_key_size];
 } SN_AES_key_t;
 
-typedef struct __attribute__((packed)) SN_AES_key_id {
-    uint8_t data[SN_Hash_size - SN_AES_key_size];
-} SN_AES_key_id_t;
-
 typedef struct __attribute__((packed)) SN_Hash {
     uint8_t data[SN_Hash_size];
 } SN_Hash_t;
 
 typedef struct __attribute__((packed)) SN_Kex_result {
     union {
-        SN_Hash_t raw;
+        SN_Hash_t    raw;
 
-        struct __attribute__((packed)) {
-            SN_AES_key_t    key;
-            SN_AES_key_id_t key_id;
-        };
+        SN_AES_key_t key;
     };
 } SN_Kex_result_t;
 

@@ -31,6 +31,8 @@ typedef struct transmission_slot {
 
     SN_Public_key_t destination;
 
+    uint32_t counter;
+
     packet_t packet;
 } transmission_slot_t;
 
@@ -177,7 +179,7 @@ int allocate_slot() {
     return slot;
 }
 
-int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet) {
+int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter) {
     if(session == NULL || table_entry == NULL || packet == NULL) {
         SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
         return -SN_ERR_NULL;
@@ -194,10 +196,11 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
 
     assert(slot_data->allocated);
 
-    slot_data->session            = session;
-    slot_data->destination        = table_entry->public_key;
-    slot_data->packet             = *packet;
-    slot_data->valid              = 1;
+    slot_data->session     = session;
+    slot_data->destination = table_entry->public_key;
+    slot_data->packet      = *packet;
+    slot_data->valid       = 1;
+    slot_data->counter     = counter;
 
     int ret = do_packet_transmission(slot);
 
@@ -207,16 +210,16 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
         return ret;
     }
 
-    if(PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
+    if((PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL || PACKET_ENTRY(*packet, signed_ack_header, request) != NULL) && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
         //this is a pure acknowledgement packet
-        SN_InfoPrintf("just sent pure acknowledgement packet; not performing retransmissions");
+        SN_InfoPrintf("just sent pure acknowledgement packet; not performing retransmissions\n");
         slot_data->allocated = 0;
     }
 
     return SN_OK;
 }
 
-int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint16_t counter) {
+int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t counter) {
     SN_InfoPrintf("enter\n");
 
     if(table_entry == NULL) {
@@ -238,7 +241,7 @@ int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint16_t cou
 
                 //... and it's encrypted...
                 if(PACKET_ENTRY(slot->packet, encryption_header, request) != NULL &&
-                   PACKET_ENTRY(slot->packet, encryption_header, request)->counter <= counter) {
+                   slot->counter <= counter) {
 
                     //... acknowledge it.
                     slot->allocated = 0;

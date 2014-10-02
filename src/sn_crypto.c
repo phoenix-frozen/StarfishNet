@@ -124,26 +124,21 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
     return SN_OK;
 }
 
-int SN_Crypto_rekey(SN_Kex_result_t* shared_secret) {
-    SN_InfoPrintf("enter\n");
+void SN_Crypto_hash(uint8_t* data, size_t data_len, SN_Hash_t* hash, size_t repeat_count) {
+    sha1(data, data_len, hash->data);
 
-    if(shared_secret == NULL) {
-        SN_ErrPrintf("shared_secret must be non-NULL\n");
-        return -SN_ERR_NULL;
+    while(repeat_count-- > 0) {
+        sha1(hash->data, sizeof(hash->data), hash->data);
     }
+}
 
-    //rekeying just means hashing the shared secret into a new one
-    sha1(shared_secret->raw.data, sizeof(shared_secret->raw.data), shared_secret->raw.data);
+#define CCM_MAX_IV_LENGTH 12
 
-    SN_InfoPrintf("exit\n");
-    return SN_OK;}
-
-
-int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
+int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
     SN_InfoPrintf("enter\n");
 
-    if(key == NULL || key_id == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
-        SN_ErrPrintf("key, key_id, ad, data, and tag must all be non-NULL\n");
+    if(key == NULL || key_agreement_key == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
+        SN_ErrPrintf("key, key_agreement_key, ad, data, and tag must all be non-NULL\n");
         return -SN_ERR_NULL;
     }
 
@@ -155,12 +150,17 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
         return -SN_ERR_SECURITY;
     }
 
-    uint8_t iv[sizeof(key_id->data) + sizeof(counter) + 1]; //CCM IV must be greater than 7
-    memset(iv, 0, sizeof(iv));
-    memcpy(iv, key_id->data, sizeof(key_id->data));
-    memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
+    SN_Hash_t iv;
+    sha1_context iv_ctx;
+    sha1_init( &iv_ctx );
+    sha1_starts( &iv_ctx );
+    sha1_update( &iv_ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
+    sha1_update( &iv_ctx, (uint8_t*)&counter, sizeof(counter));
+    sha1_finish( &iv_ctx, iv.data );
+    sha1_free( &iv_ctx );
 
-    ret = aes_ccm_encrypt_and_tag(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
+    //XXX assumption: CCM_MAX_IV_LENGTH < sizeof(SN_Hash_t)
+    ret = aes_ccm_encrypt_and_tag(&ctx, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, data, data, tag, SN_Tag_size);
 
     aes_ccm_free(&ctx);
 
@@ -173,11 +173,11 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
     return SN_OK;
 }
 
-int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
+int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
     SN_InfoPrintf("enter\n");
 
-    if(key == NULL || key_id == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
-        SN_ErrPrintf("key, key_id, ad, data, and tag must all be non-NULL\n");
+    if(key == NULL || key_agreement_key == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
+        SN_ErrPrintf("key, key_agreement_key, ad, data, and tag must all be non-NULL\n");
         return -SN_ERR_NULL;
     }
 
@@ -189,12 +189,17 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_AES_key_id_t* key_id, uint16_t count
         return -SN_ERR_SECURITY;
     }
 
-    uint8_t iv[sizeof(key_id->data) + sizeof(counter) + 1]; //CCM IV must be greater than 7
-    memset(iv, 0, sizeof(iv));
-    memcpy(iv, key_id->data, sizeof(key_id->data));
-    memcpy(iv + sizeof(key_id->data), &counter, sizeof(counter));
+    SN_Hash_t iv;
+    sha1_context iv_ctx;
+    sha1_init( &iv_ctx );
+    sha1_starts( &iv_ctx );
+    sha1_update( &iv_ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
+    sha1_update( &iv_ctx, (uint8_t*)&counter, sizeof(counter));
+    sha1_finish( &iv_ctx, iv.data );
+    sha1_free( &iv_ctx );
 
-    ret = aes_ccm_auth_decrypt(&ctx, data_len, iv, sizeof(iv), ad, ad_len, data, data, tag, SN_Tag_size);
+    //XXX assumption: CCM_MAX_IV_LENGTH < sizeof(SN_Hash_t)
+    ret = aes_ccm_auth_decrypt(&ctx, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, data, data, tag, SN_Tag_size);
 
     aes_ccm_free(&ctx);
 
