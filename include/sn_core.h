@@ -156,4 +156,7 @@ void SN_Destroy ( //bring down this session, resetting the radio in the process
     SN_Session_t* session
 );
 
+//inform the network stack that a time tick has occurred
+void SN_Tick();
+
 #endif /* __SN_CORE_H__ */

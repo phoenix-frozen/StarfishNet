@@ -361,3 +361,43 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
     SN_ErrPrintf("acknowledgement entry not found\n");
     return -SN_ERR_UNKNOWN;
 }
+
+void SN_Delayed_tick() {
+    for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
+        transmission_slot_t* slot = &transmission_queue[i];
+
+        if(slot->allocated && slot->valid) {
+            SN_InfoPrintf("doing retransmission processing for slot %d\n", i);
+
+            slot->ticks_remaining--;
+            slot->retries++;
+            if(slot->ticks_remaining == 0) {
+                SN_InfoPrintf("doing retransmission %d\n", slot->retries);
+                do_packet_transmission(i);
+            }
+            slot->ticks_remaining = slot->session->nib.tx_retry_timeout;
+            if(slot->retries >= slot->session->nib.tx_retry_limit) {
+                //TODO: how do I fail, here?
+            }
+
+            SN_InfoPrintf("retransmission processing for slot %d done\n", i);
+        }
+    }
+}
+
+void SN_Delayed_clear(SN_Session_t* session) {
+    if(session == NULL) {
+        SN_ErrPrintf("session must be valid\n");
+        return;
+    }
+
+    for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
+        transmission_slot_t* slot = &transmission_queue[i];
+
+        if(slot->allocated && slot->valid) {
+            if(slot->session == session) {
+                slot->allocated = 0;
+            }
+        }
+    }
+}

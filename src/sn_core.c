@@ -5,9 +5,14 @@
 #include <mac802154.h>
 
 #include "mac_util.h"
+#include "sn_delayed_tx.h"
 
 #include <assert.h>
 #include <string.h>
+
+//network configuration defaults
+#define DEFAULT_TX_RETRY_LIMIT 3
+#define DEFAULT_TX_RETRY_TIMEOUT 2500
 
 //copies the configuration out of session into the space provided. anything but session can be NULL
 int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, mac_pib_t* pib) {
@@ -60,10 +65,8 @@ int SN_Set_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
 int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
     SN_InfoPrintf("enter\n");
 
-    assert(session != NULL);
-
-    if(session == NULL) {
-        SN_ErrPrintf("session may not be NULL\n");
+    if(session == NULL || master_keypair == NULL) {
+        SN_ErrPrintf("session and master_keypair must be valid\n");
         return -SN_ERR_NULL;
     }
 
@@ -92,6 +95,10 @@ int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
     //fill in the master keypair
     protosession.device_root_key = *master_keypair;
 
+    //fill in some settings
+    protosession.nib.tx_retry_limit      = DEFAULT_TX_RETRY_LIMIT;
+    protosession.nib.tx_retry_timeout    = DEFAULT_TX_RETRY_TIMEOUT;
+
     //return results
     *session = protosession;
 
@@ -100,14 +107,20 @@ int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
 }
 
 void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting the radio in the process
-    mac_primitive_t packet;
     SN_InfoPrintf("enter\n");
 
-    /*TODO: (operations on disconnect)
-     * revoke all children's short-address allocations
-     * release my short-address allocation(s)
-     * terminate all SAs
-     */
+    if(session == NULL) {
+        SN_ErrPrintf("session must be valid\n");
+        return;
+    }
+
+    mac_primitive_t packet;
+
+    //TODO (destroy): terminate all SAs
+
+    //clear all retransmission entries
+    SN_InfoPrintf("clearing transmission slots...\n");
+    SN_Delayed_clear(session);
 
     //clean out the node table
     SN_InfoPrintf("clearing node table...\n");
@@ -126,8 +139,11 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     SN_InfoPrintf("exit\n");
 }
 
-static void struct_checks() __attribute__((unused));
+void SN_Tick() { //inform the network stack that a time tick has occurred
+    return SN_Delayed_tick();
+}
 
+static void struct_checks() __attribute__((unused));
 static void struct_checks() {
     SN_Message_t message;
 

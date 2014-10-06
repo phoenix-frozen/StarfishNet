@@ -32,10 +32,6 @@ static MAC_SET_CONFIRM(macCoordExtendedAddress);
 
 static MAC_SET_CONFIRM(macPromiscuousMode);
 
-//network configuration defaults
-#define DEFAULT_TX_RETRY_LIMIT 3
-#define DEFAULT_TX_RETRY_TIMEOUT 2500
-
 #define FIXED_COORDINATOR_ADDRESS 0x0000
 
 typedef struct __attribute__((packed)) beacon_payload {
@@ -139,8 +135,6 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     SN_InfoPrintf("filling NIB...\n");
     session->nib.tree_depth          = network->routing_tree_depth;
     session->nib.tree_position       = 0;
-    session->nib.tx_retry_limit      = DEFAULT_TX_RETRY_LIMIT;
-    session->nib.tx_retry_timeout    = DEFAULT_TX_RETRY_TIMEOUT;
     session->nib.parent_address.type = mac_no_address;
 
     //update the MIB and PIB
@@ -336,8 +330,6 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
     session->nib.tree_depth       = network->routing_tree_depth;
     session->nib.tree_position    = network->routing_tree_position;
     //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
-    session->nib.tx_retry_limit   = DEFAULT_TX_RETRY_LIMIT;
-    session->nib.tx_retry_timeout = DEFAULT_TX_RETRY_TIMEOUT;
     session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
     if(network->nearest_neighbor_short_address != SN_NO_SHORT_ADDRESS) {
         session->nib.parent_address.type                 = mac_short_address;
