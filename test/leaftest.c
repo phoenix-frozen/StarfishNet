@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
         goto main_exit;
     }
 
-    printf("Network discovery complete. Joining network ID %x on channel %d.\n", network.pan_id, network.radio_channel);
+    printf("Network discovery complete. Joining network ID %#04x on channel %d.\n", network.pan_id, network.radio_channel);
 
     ret = SN_Join(&network_session, &network, 1);
 
@@ -77,46 +77,10 @@ int main(int argc, char* argv[]) {
 
     sleep(2);
 
-    printf("Attempting association.\n");
-
     SN_Address_t address = {
         .type = mac_short_address,
         .address.ShortAddress = network.router_address,
     };
-
-    ret = SN_Associate(&network_session, &address, NULL);
-
-    if(ret != SN_OK) {
-        printf("Associate transmission failed: %d\n", -ret);
-        goto main_exit;
-    }
-
-    printf("Associate transmission succeeded. Waiting for reply...\n");
-
-    SN_Address_t remote_address;
-    SN_Message_t association_message;
-
-    do {
-        SN_Tick();
-
-        ret = SN_Receive(&network_session, &remote_address, &association_message, sizeof(association_message));
-    } while(ret != -SN_ERR_RADIO && ret != SN_OK);
-
-    if(ret != SN_OK) {
-        printf("Failed to receive reply: %d\n", -ret);
-        goto main_exit;
-    }
-
-    printf("Received reply...\n");
-
-    if(association_message.type != SN_Association_request) {
-        printf("Received message of type %d instead of association reply...\n", association_message.type);
-        goto main_exit;
-    }
-
-    if(memcmp(&remote_address, &address, sizeof(address))) {
-        printf("Received message from %#018"PRIx64" instead of %#018"PRIx64"\n", *(uint64_t*)remote_address.address.ExtendedAddress, *(uint64_t*)address.address.ExtendedAddress);
-    }
 
     SN_Table_entry_t table_entry = {
         .session = &network_session,
@@ -143,7 +107,9 @@ int main(int argc, char* argv[]) {
         printf("Packet transmission succeeded.\n");
     }
 
-    ret = SN_Receive(&network_session, &remote_address, &association_message, sizeof(association_message));
+    printf("Attempting to receive acknowledgement...\n");
+
+    ret = SN_Receive(&network_session, &address, test_message, sizeof(SN_Message_t) + 5);
 
     if(ret != SN_OK) {
         printf("Acknowledgement receive failed: %d\n", -ret);

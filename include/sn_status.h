@@ -40,9 +40,8 @@ typedef enum {
     SN_ERR_SECURITY     , /**< Authentication or decryption failed */
     SN_ERR_SIGNATURE    , /**< Signature verification failed */
     SN_ERR_KEYGEN       , /**< Key generation failed */
-    SN_ERR_DISALLOWED   , /**< An operation was not allowed */
     SN_ERR_OLD_VERSION  , /**< Router you connected to is old and unsupported */
-    SN_ERR_BUSY         , /**< An operation failed and should be retried later */
+    SN_ERR_DISCONNECTED , /**< Contact was lost with the remote node */
 
     SN_ERR_ERROR_END      /**< The last error status code + 1*/
 } SN_Status;

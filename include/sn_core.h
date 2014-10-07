@@ -89,6 +89,8 @@ typedef union SN_Message {
         union SN_Message* stapled_data;
     } association_message;
 } SN_Message_t;
+#define SN_MAX_DATA_MESSAGE_LENGTH 127
+//TODO: make SN_MAX_DATA_MESSAGE_LENGTH right
 
 int SN_Send ( //transmit packet, containing one or more messages
     SN_Session_t* session,

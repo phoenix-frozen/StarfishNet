@@ -62,7 +62,7 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer,
     //routing tree metadata
     buffer->tree_depth      = session->nib.tree_depth;
     buffer->tree_position   = session->nib.tree_position;
-    buffer->router_capacity = 0;
+    buffer->router_capacity = 127;
 
     //public key
     buffer->public_key = session->device_root_key.public_key;
@@ -201,7 +201,7 @@ static inline uint8_t log2i(uint32_t n) {
  */
 int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, SN_Discovery_callback_t* callback, void* extradata) {
     SN_InfoPrintf("enter\n");
-    SN_InfoPrintf("performing discovery over %x, in %d ms\n", channel_mask, timeout);
+    SN_InfoPrintf("performing discovery over %#010"PRIx32", in %d ms\n", channel_mask, timeout);
 
     if(session == NULL || callback == NULL) {
         SN_ErrPrintf("session and callback must both be valid\n");
@@ -210,7 +210,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
     channel_mask &= 0x07FFF800; //top 5 bits don't exist, bottom 11 bits aren't 2.4GHz
 
-    SN_InfoPrintf("adjusted channel mask is %x\n", channel_mask);
+    SN_InfoPrintf("adjusted channel mask is %#010"PRIx32"\n", channel_mask);
     if(channel_mask == 0) {
         SN_WarnPrintf("no channels to scan, aborting...\n");
         return SN_OK;
@@ -260,7 +260,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         //during a scan, the radio's only supposed to generate MLME-BEACON-NOTIFY.indication or MLME-SCAN.confirm
         assert(packet.type == mac_mlme_beacon_notify_indication);
 
-        SN_InfoPrintf("found network. channel=0x%x, PANId=0x%x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
+        SN_InfoPrintf("found network. channel=0x%x, PANId=0x%#04x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
 
         //if we get to here, we're looking at an MLME-BEACON-NOTIFY.indication
 
@@ -271,33 +271,39 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
 
         //set up some pointers, and then do a hash check
         beacon_payload_t* beacon_payload  = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
-        SN_Hash_t* beacon_hash = (SN_Hash_t*)(packet.MLME_BEACON_NOTIFY_indication.sdu + sizeof(beacon_payload_t));
-        SN_Hash_t protohash;
-        SN_Crypto_hash((uint8_t*)beacon_payload, sizeof(*beacon_payload), &protohash, 0);
-        if(memcmp(beacon_hash, &protohash, BEACON_HASH_LENGTH) != 0) {
-            SN_InfoPrintf("Beacon hash check failed.\n");
+        if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode != mac_short_address) {
+            SN_InfoPrintf("Router is using its long address; a StarfishNet node should be using its short address.\n");
             continue;
-        }
-
-        SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
-        if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
-            //XXX: this is the most disgusting way to print a MAC address ever invented by man
-            SN_InfoPrintf("    CoordAddress=%#018"PRIx64"\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
         } else {
             SN_InfoPrintf("    CoordAddress=%#06x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress);
             if(beacon_payload->address != packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress) {
-                SN_ErrPrintf("    Address mismatch! %#06x\n", beacon_payload->address);
+                SN_WarnPrintf("    Address mismatch! Using %#06x\n", beacon_payload->address);
             }
         }
+
+        //check that this is a network of the kind we care about
+        SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
+        if(beacon_payload->protocol_id != STARFISHNET_PROTOCOL_ID || beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
+            SN_InfoPrintf("Beacon is for wrong kind of network.\n");
+            continue;
+        }
+
         //XXX: this is the most disgusting way to print a key ever invented by man
         SN_InfoPrintf("    key=%#018"PRIx64"%016"PRIx64"%08"PRIx32"\n",
             *(uint64_t*)beacon_payload->public_key.data,
             *(((uint64_t*)beacon_payload->public_key.data) + 1),
             *(((uint32_t*)beacon_payload->public_key.data) + 4));
 
-        //check that this is a network of the kind we care about
-        if(beacon_payload->protocol_id != STARFISHNET_PROTOCOL_ID || beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
-            SN_InfoPrintf("Beacon is for wrong kind of network.\n");
+        SN_Hash_t* beacon_hash = (SN_Hash_t*)(packet.MLME_BEACON_NOTIFY_indication.sdu + sizeof(beacon_payload_t));
+        SN_Hash_t protohash;
+        SN_Crypto_hash((uint8_t*)beacon_payload, sizeof(*beacon_payload), &protohash, 0);
+        if(memcmp(beacon_hash, &protohash, BEACON_HASH_LENGTH) != 0) {
+            SN_WarnPrintf("Beacon hash check failed.\n");
+            continue;
+        }
+
+        if(beacon_payload->router_capacity == 0) {
+            SN_WarnPrintf("Router is full.\n");
             continue;
         }
 
@@ -311,6 +317,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         callback(session, &ndesc, extradata);
     }
 
+    SN_InfoPrintf("enter\n");
     return SN_OK;
 }
 
@@ -322,7 +329,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
  *
  * Note that if routing is disabled, we don't transmit beacons.
  */
-int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
+int mac_join(SN_Session_t* session, SN_Network_descriptor_t* network) {
     SN_DebugPrintf("enter\n");
 
     if(session == NULL || network == NULL) {
@@ -335,14 +342,6 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
     //reinit node table
     SN_InfoPrintf("clearing node table\n");
     SN_Table_clear(session);
-
-    //Fill NIB
-    SN_InfoPrintf("filling NIB...\n");
-    session->nib.tree_depth       = network->routing_tree_depth;
-    session->nib.tree_position    = network->routing_tree_position;
-    //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
-    session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
-    session->nib.parent_address   = network->router_address;
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
@@ -384,7 +383,7 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
 
     //Then, do some final configuration.
 
-    //Set our short address
+    //Set our short address to the no-short-address marker address, enabling transmission
     SN_InfoPrintf("setting our short address...\n");
     packet.type                              = mac_mlme_set_request;
     packet.MLME_SET_request.PIBAttribute     = macShortAddress;
@@ -403,33 +402,9 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macRxOnWhenIdle_set_confirm);
     session->mib.macRxOnWhenIdle = 1;
 
-    int ret = SN_OK;
-    if(session->nib.enable_routing) {
-        SN_InfoPrintf("setting up beacon transmission...\n");
-        ret = do_network_start(session, &packet, 0);
-    }
-
-    //add parent to node table
-    SN_Table_entry_t parent_table_entry = {
-        .session       = session,
-        .short_address = network->router_address,
-        .neighbor      = 1,
-        .public_key    = network->router_public_key,
-        .details_known = 1,
-    };
-    if(ret == SN_OK) {
-        SN_InfoPrintf("adding parent to node table...\n");
-        ret = SN_Table_insert(&parent_table_entry);
-    }
-
     //And we're done
-    if(ret != SN_OK) {
-        SN_ErrPrintf("an error occurred; resetting radio and clearing node table...\n");
-        SN_Table_clear(session);
-        mac_reset_radio(session, &packet);
-    }
     SN_DebugPrintf("exit\n");
-    return ret;
+    return SN_OK;
 }
 
 /* Tune the radio to a StarfishNet network and listen for packets with its PAN ID.
@@ -437,13 +412,101 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
  *
  * Note that if routing is disabled, we don't transmit beacons.
  */
+static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
+    SN_Table_entry_t parent_table_entry = {
+        .session       = session,
+        .short_address = network->router_address,
+        .neighbor      = 1,
+        .public_key    = network->router_public_key,
+        .details_known = 1,
+    };
+    SN_InfoPrintf("adding neighbor to node table...\n");
+    SN_Table_insert(&parent_table_entry);
+
+    (void)extradata;
+};
 int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
-    //TODO: perform extra discovery step to fill in node table
+    SN_InfoPrintf("enter\n");
+    int ret;
+
+    //perform extra discovery step to fill in node table
+    ret = SN_Discover(session, 1u << network->radio_channel, 2000, &fill_node_table, NULL);
+
+    //Fill NIB (and set parent)
+    if(ret == SN_OK) {
+        SN_InfoPrintf("filling NIB...\n");
+        session->nib.tree_depth     = network->routing_tree_depth;
+        session->nib.tree_position  = network->routing_tree_position;
+        //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
+        session->nib.enable_routing = (uint8_t)(disable_routing ? 0 : 1);
+        session->nib.parent_address = network->router_address;
+    }
 
     //tune radio
-    return do_radio_join(session, network, disable_routing);
+    if(ret == SN_OK) {
+        ret = mac_join(session, network);
+    }
 
-    //TODO: set parent
+    //add parent to node table
+    if(ret == SN_OK) {
+        SN_Table_entry_t parent_table_entry = {
+            .session       = session,
+            .short_address = network->router_address,
+            .neighbor      = 1,
+            .public_key    = network->router_public_key,
+            .details_known = 1,
+        };
+        SN_InfoPrintf("adding parent to node table...\n");
+        ret = SN_Table_insert(&parent_table_entry);
+        if(ret == -SN_ERR_UNEXPECTED) {
+            //it's ok if the entry already exists, since the earlier rediscovery should have added it
+            ret = SN_OK;
+        }
+    }
 
-    //TODO: perform security association (implicitly requesting an address)
+    //start security association (implicitly requesting an address)
+    if(ret == SN_OK) {
+        SN_Address_t parent_address = {
+            .type = mac_short_address,
+            .address = { .ShortAddress = network->router_address },
+        };
+        SN_InfoPrintf("sending association message...\n");
+        ret = SN_Associate(session, &parent_address, NULL);
+    }
+
+    //make sure the association completes
+    if(ret == SN_OK) {
+        SN_Address_t address;
+        SN_Message_t* message;
+        uint8_t message_data[sizeof(message->data_message) + SN_MAX_DATA_MESSAGE_LENGTH];
+        message = (SN_Message_t*)message_data;
+
+        SN_InfoPrintf("waiting for association reply...\n");
+        do {
+            //wait for data...
+            SN_Tick();
+            ret = SN_Receive(session, &address, message, sizeof(message_data));
+        } while (ret != -SN_ERR_RADIO && !(address.type == mac_short_address && address.address.ShortAddress == network->router_address)); //... from our parent
+
+        if(ret == SN_OK) {
+            //received a message from our parent
+            if(message->type != SN_Association_request) {
+                //received something not an association request; we probably need to abort
+                ret = -SN_ERR_DISCONNECTED;
+                SN_ErrPrintf("reply from parent was not an association message\n");
+
+                //XXX: this code precludes stapled data in an associate_reply
+            }
+        }
+    }
+
+    //And we're done
+    if(ret != SN_OK) {
+        SN_ErrPrintf("an error occurred; resetting radio and clearing node table...\n");
+        mac_primitive_t packet;
+        SN_Table_clear(session);
+        mac_reset_radio(session, &packet);
+    }
+    SN_InfoPrintf("exit\n");
+    return ret;
 }
