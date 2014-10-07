@@ -2,7 +2,7 @@
 #include <sn_status.h>
 #include <sn_table.h>
 #include <sn_logging.h>
-#include <mac802154.h>
+#include "mac802154.h"
 
 #include "mac_util.h"
 #include "sn_delayed_tx.h"

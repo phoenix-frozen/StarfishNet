@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <string.h>
 #include <inttypes.h>
+#include <sn_crypto.h>
 
 #include "sn_constants.h"
 #include "mac_util.h"
@@ -32,7 +33,7 @@ static MAC_SET_CONFIRM(macCoordExtendedAddress);
 
 static MAC_SET_CONFIRM(macPromiscuousMode);
 
-#define FIXED_COORDINATOR_ADDRESS 0x0000
+#define BEACON_HASH_LENGTH        sizeof(SN_Hash_t)
 
 typedef struct __attribute__((packed)) beacon_payload {
     //protocol ID information
@@ -44,13 +45,14 @@ typedef struct __attribute__((packed)) beacon_payload {
     uint8_t tree_position; //depth in the tree of this router
     int8_t  router_capacity; //remaining child slots. negative if children can only be leaves
 
-    mac_address_t address; //64-bit mode. in case I'm broadcasting with my short address
+    //mac_address_t address; //64-bit mode. in case I'm broadcasting with my short address
+    uint16_t address;
 
     SN_Public_key_t public_key;
 } beacon_payload_t;
 
-static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer) {
-    if(session == NULL || buffer == NULL) {
+static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer, SN_Hash_t* hash) {
+    if(session == NULL || buffer == NULL || hash == NULL) {
         return -SN_ERR_NULL;
     }
 
@@ -65,8 +67,12 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer)
     //public key
     buffer->public_key = session->device_root_key.public_key;
 
-    //MAC address
-    buffer->address = session->mib.macIEEEAddress;
+    //address
+    //buffer->address = session->mib.macIEEEAddress;
+    buffer->address = session->mib.macShortAddress;
+
+    //hash
+    SN_Crypto_hash((uint8_t*)buffer, sizeof(*buffer), hash, 0);
 
     return SN_OK;
 }
@@ -80,8 +86,11 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
 
     //build beacon payload
     beacon_payload_t* proto_beacon = (beacon_payload_t*)session->mib.macBeaconPayload;
-    build_beacon_payload(session, proto_beacon); //no need to check error code, it only checks for nulls
-    session->mib.macBeaconPayloadLength = sizeof(beacon_payload_t);
+    SN_Hash_t beacon_hash;
+    build_beacon_payload(session, proto_beacon, &beacon_hash); //no need to check error code, it only checks for nulls
+    _Static_assert(sizeof(beacon_payload_t) + BEACON_HASH_LENGTH < aMaxBeaconPayloadSize, "beacon payloads are too big!");
+    memcpy(session->mib.macBeaconPayload + sizeof(beacon_payload_t), &beacon_hash, BEACON_HASH_LENGTH);
+    session->mib.macBeaconPayloadLength = sizeof(beacon_payload_t) + BEACON_HASH_LENGTH;
 
     //set beacon payload length
     packet->type                              = mac_mlme_set_request;
@@ -135,16 +144,16 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     SN_InfoPrintf("filling NIB...\n");
     session->nib.tree_depth          = network->routing_tree_depth;
     session->nib.tree_position       = 0;
-    session->nib.parent_address.type = mac_no_address;
+    session->nib.parent_address      = SN_COORDINATOR_ADDRESS;
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
     session->pib.phyCurrentChannel    = network->radio_channel;
     session->mib.macPANId             = network->pan_id;
     session->mib.macCoordAddrMode     = mac_extended_address;
-    session->mib.macCoordShortAddress = FIXED_COORDINATOR_ADDRESS;
+    session->mib.macCoordShortAddress = SN_COORDINATOR_ADDRESS;
     memcpy(session->mib.macCoordExtendedAddress.ExtendedAddress, session->mib.macIEEEAddress.ExtendedAddress, 8);
-    session->mib.macShortAddress = FIXED_COORDINATOR_ADDRESS;
+    session->mib.macShortAddress = SN_COORDINATOR_ADDRESS;
 
     //Set our short address
     SN_InfoPrintf("setting our short address...\n");
@@ -254,21 +263,31 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         SN_InfoPrintf("found network. channel=0x%x, PANId=0x%x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel, packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId);
 
         //if we get to here, we're looking at an MLME-BEACON-NOTIFY.indication
+
+        //check beacon payload is of the correct length and router is broadcasting with a short address
+        if(packet.MLME_BEACON_NOTIFY_indication.sduLength != sizeof(beacon_payload_t) + BEACON_HASH_LENGTH) {
+            continue;
+        }
+
+        //set up some pointers, and then do a hash check
         beacon_payload_t* beacon_payload  = (beacon_payload_t*)packet.MLME_BEACON_NOTIFY_indication.sdu;
+        SN_Hash_t* beacon_hash = (SN_Hash_t*)(packet.MLME_BEACON_NOTIFY_indication.sdu + sizeof(beacon_payload_t));
+        SN_Hash_t protohash;
+        SN_Crypto_hash((uint8_t*)beacon_payload, sizeof(*beacon_payload), &protohash, 0);
+        if(memcmp(beacon_hash, &protohash, BEACON_HASH_LENGTH) != 0) {
+            SN_InfoPrintf("Beacon hash check failed.\n");
+            continue;
+        }
 
         SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
         if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
             //XXX: this is the most disgusting way to print a MAC address ever invented by man
             SN_InfoPrintf("    CoordAddress=%#018"PRIx64"\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
-            if(memcmp(
-                beacon_payload->address.ExtendedAddress,
-                packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress,
-                8) != 0) {
-                SN_ErrPrintf("    Address mismatch! %#018"PRIx64"\n", *(uint64_t*)packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ExtendedAddress);
-            }
         } else {
             SN_InfoPrintf("    CoordAddress=%#06x\n", packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress);
-            SN_InfoPrintf("    CoordAddress=%#018"PRIx64"\n", *(uint64_t*)beacon_payload->address.ExtendedAddress);
+            if(beacon_payload->address != packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress) {
+                SN_ErrPrintf("    Address mismatch! %#06x\n", beacon_payload->address);
+            }
         }
         //XXX: this is the most disgusting way to print a key ever invented by man
         SN_InfoPrintf("    key=%#018"PRIx64"%016"PRIx64"%08"PRIx32"\n",
@@ -277,25 +296,17 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
             *(((uint32_t*)beacon_payload->public_key.data) + 4));
 
         //check that this is a network of the kind we care about
-        if(beacon_payload->protocol_id != STARFISHNET_PROTOCOL_ID) {
-            continue;
-        }
-        if(beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
+        if(beacon_payload->protocol_id != STARFISHNET_PROTOCOL_ID || beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
+            SN_InfoPrintf("Beacon is for wrong kind of network.\n");
             continue;
         }
 
-        if(packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddrMode == mac_extended_address) {
-            ndesc.nearest_neighbor_long_address  = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress;
-            ndesc.nearest_neighbor_short_address = SN_NO_SHORT_ADDRESS;
-        } else {
-            ndesc.nearest_neighbor_long_address  = beacon_payload->address;
-            ndesc.nearest_neighbor_short_address = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordAddress.ShortAddress;
-        }
-        ndesc.nearest_neighbor_public_key = beacon_payload->public_key;
-        ndesc.pan_id                      = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
-        ndesc.radio_channel               = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
-        ndesc.routing_tree_depth          = beacon_payload->tree_depth;
-        ndesc.routing_tree_position       = beacon_payload->tree_position + (uint8_t)1;
+        ndesc.router_address        = beacon_payload->address;
+        ndesc.router_public_key     = beacon_payload->public_key;
+        ndesc.pan_id                = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
+        ndesc.radio_channel         = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
+        ndesc.routing_tree_depth    = beacon_payload->tree_depth;
+        ndesc.routing_tree_position = beacon_payload->tree_position + (uint8_t)1;
 
         callback(session, &ndesc, extradata);
     }
@@ -331,20 +342,14 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
     session->nib.tree_position    = network->routing_tree_position;
     //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
     session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
-    if(network->nearest_neighbor_short_address != SN_NO_SHORT_ADDRESS) {
-        session->nib.parent_address.type                 = mac_short_address;
-        session->nib.parent_address.address.ShortAddress = network->nearest_neighbor_short_address;
-    } else {
-        session->nib.parent_address.type    = mac_extended_address;
-        session->nib.parent_address.address = network->nearest_neighbor_long_address;
-    }
+    session->nib.parent_address   = network->router_address;
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
     session->pib.phyCurrentChannel    = network->radio_channel;
     session->mib.macPANId             = network->pan_id;
     session->mib.macCoordAddrMode     = mac_short_address;
-    session->mib.macCoordShortAddress = FIXED_COORDINATOR_ADDRESS;
+    session->mib.macCoordShortAddress = SN_COORDINATOR_ADDRESS;
     //... (including setting our short address to the "we don't have a short address" flag value)
     session->mib.macShortAddress      = SN_NO_SHORT_ADDRESS;
 
@@ -407,10 +412,9 @@ int do_radio_join(SN_Session_t* session, SN_Network_descriptor_t* network, bool 
     //add parent to node table
     SN_Table_entry_t parent_table_entry = {
         .session       = session,
-        .long_address  = network->nearest_neighbor_long_address,
-        .short_address = network->nearest_neighbor_short_address,
+        .short_address = network->router_address,
         .neighbor      = 1,
-        .public_key    = network->nearest_neighbor_public_key,
+        .public_key    = network->router_public_key,
         .details_known = 1,
     };
     if(ret == SN_OK) {

@@ -3,7 +3,7 @@
 
 #include <sn_types.h>
 #include <sn_logging.h>
-#include <mac802154.h>
+#include "mac802154.h"
 
 #include "mac_util.h"
 

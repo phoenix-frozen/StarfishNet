@@ -43,6 +43,8 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    network_session.nib.tx_retry_timeout = 2;
+
     printf("Init complete. Printing MAC address:\n");
 
     printf("MAC address is %#018"PRIx64"\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
@@ -78,8 +80,8 @@ int main(int argc, char* argv[]) {
     printf("Attempting association.\n");
 
     SN_Address_t address = {
-        .type = mac_extended_address,
-        .address = network.nearest_neighbor_long_address,
+        .type = mac_short_address,
+        .address.ShortAddress = network.router_address,
     };
 
     ret = SN_Associate(&network_session, &address, NULL);
@@ -94,7 +96,11 @@ int main(int argc, char* argv[]) {
     SN_Address_t remote_address;
     SN_Message_t association_message;
 
-    ret = SN_Receive(&network_session, &remote_address, &association_message, sizeof(association_message));
+    do {
+        SN_Tick();
+
+        ret = SN_Receive(&network_session, &remote_address, &association_message, sizeof(association_message));
+    } while(ret != -SN_ERR_RADIO && ret != SN_OK);
 
     if(ret != SN_OK) {
         printf("Failed to receive reply: %d\n", -ret);

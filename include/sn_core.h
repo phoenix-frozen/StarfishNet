@@ -48,9 +48,8 @@ typedef struct SN_Network_descriptor {
     uint8_t         routing_tree_depth;
     uint8_t         routing_tree_position;
 
-    uint16_t        nearest_neighbor_short_address;
-    mac_address_t   nearest_neighbor_long_address;
-    SN_Public_key_t nearest_neighbor_public_key;
+    uint16_t        router_address;
+    SN_Public_key_t router_public_key;
 } SN_Network_descriptor_t;
 
 //StarfishNet node association states

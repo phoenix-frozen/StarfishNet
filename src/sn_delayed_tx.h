@@ -2,7 +2,7 @@
 #define __SN_DELAYED_TX_H__
 
 #include <sn_table.h>
-#include <mac802154.h>
+#include "mac802154.h"
 
 #include "sn_txrx.h"
 

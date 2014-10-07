@@ -73,7 +73,8 @@ typedef struct SN_Address {
     mac_address_t address;
     mac_address_mode_t type;
 } SN_Address_t;
-#define SN_NO_SHORT_ADDRESS 0xFFFE
+#define SN_NO_SHORT_ADDRESS    0xFFFE
+#define SN_COORDINATOR_ADDRESS 0x0000
 
 typedef struct SN_Nib {
     //routing tree config
@@ -90,7 +91,7 @@ typedef struct SN_Nib {
     uint16_t        tx_retry_timeout; //time to wait between retransmits
 
     //parent pointer
-    SN_Address_t    parent_address;
+    uint16_t        parent_address;
     SN_Public_key_t parent_public_key;
 } SN_Nib_t;
 

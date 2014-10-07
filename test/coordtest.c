@@ -8,6 +8,8 @@
 #include <sn_table.h>
 #include <inttypes.h>
 
+#define RECEIVE_BUFFER_SIZE 256
+
 int main(int argc, char* argv[]) {
     const int          channel = 0xb;
     const mac_pan_id_t panid   = 0xcafe;
@@ -39,6 +41,8 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    network_session.nib.tx_retry_timeout = 2;
+
     printf("Init complete. Printing MAC address:\n");
 
     printf("MAC address is %#018"PRIx64"\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
@@ -46,8 +50,7 @@ int main(int argc, char* argv[]) {
     printf("Starting network on channel %d with ID %x...\n", channel, panid);
 
     SN_Network_descriptor_t network = {
-        //nearest_neighbor_address       is ignored
-        //nearest_neighbor_short_address is ignored
+        //router_address       is ignored
         .pan_id                         = panid,
         .radio_channel                  = channel,
         .routing_tree_depth             = 2,
@@ -61,83 +64,69 @@ int main(int argc, char* argv[]) {
         goto main_exit;
     }
 
-    printf("Network start complete.\n");
-
-    printf("Waiting for associate request...\n");
+    printf("Network start complete. Entering service loop.\n");
 
     SN_Address_t remote_address;
-    SN_Message_t association_request;
+    uint8_t message_data[RECEIVE_BUFFER_SIZE];
 
-    ret = SN_Receive(&network_session, &remote_address, &association_request, sizeof(association_request));
+    while(ret != -SN_ERR_RADIO) {
+        SN_Tick();
 
-    if(ret != SN_OK) {
-        printf("Receive failed with %d\n", -ret);
-        goto main_exit;
+        SN_Message_t* message = (SN_Message_t*)message_data;
+
+        printf("Receiving message...\n");
+        ret = SN_Receive(&network_session, &remote_address, message, RECEIVE_BUFFER_SIZE);
+
+        if(ret != SN_OK) {
+            printf("Received invalid message, continuing...\n");
+            continue;
+        }
+
+        if(message->type == SN_Association_request) {
+            message = message->association_message.stapled_data;
+            printf("Received association request. Transmitting association reply...\n");
+            ret = SN_Associate(&network_session, &remote_address, NULL);
+
+            if(ret != SN_OK) {
+                printf("Associate reply transmission failed: %d\n", -ret);
+            } else {
+                printf("Associate reply transmission succeeded.\n");
+            }
+        } else if(message->type == SN_Dissociation_request) {
+            message = message->association_message.stapled_data;
+            printf("Received dissociation request.\n");
+        }
+
+        if(message == NULL)
+            continue;
+
+        if(message->type == SN_Data_message && message->data_message.payload_length > 0) {
+            printf("Received data message: \"%s\"\n", message->data_message.payload);
+            printf("Transmitting acknowledgement...\n");
+            ret = SN_Send(&network_session, &remote_address, NULL);
+
+            if(ret != SN_OK) {
+                printf("Acknowledgement transmission failed: %d\n", -ret);
+            } else {
+                printf("Acknowledgement transmission succeeded.\n");
+            }
+        }
+
+        if(message->type == SN_Evidence_message) {
+            printf("Received certificate.\n");
+
+            printf("Transmitting acknowledgement...\n");
+            ret = SN_Send(&network_session, &remote_address, NULL);
+
+            if(ret != SN_OK) {
+                printf("Acknowledgement transmission failed: %d\n", -ret);
+            } else {
+                printf("Acknowledgement transmission succeeded.\n");
+            }
+        }
     }
 
-    if(association_request.type != SN_Association_request) {
-        printf("Received message of type %d instead of association request...\n", association_request.type);
-        goto main_exit;
-    }
-
-    printf("Transmitting associate reply...\n");
-
-    ret = SN_Associate(&network_session, &remote_address, NULL);
-
-    if(ret != SN_OK) {
-        printf("Associate reply transmission failed: %d\n", -ret);
-        goto main_exit;
-    }
-
-    printf("Associate reply transmission succeeded.\n");
-
-    SN_Table_entry_t table_entry = {
-        .session = &network_session,
-    };
-    SN_Table_lookup_by_address(&remote_address, &table_entry, NULL);
-    printf("Relationship is in state %d (should be at least %d)\n", table_entry.state, SN_Awaiting_finalise);
-    if(table_entry.state < SN_Awaiting_finalise) {
-        goto main_exit;
-    }
-
-    printf("Association transaction appears to have succeeded.\n");
-
-    printf("Attempting to receive data message...\n");
-
-    uint8_t recvbuf_size = aMaxPHYPacketSize;
-    SN_Message_t* recvbuf = malloc(recvbuf_size);
-    SN_Address_t srcaddr;
-
-    ret = SN_Receive(&network_session, &srcaddr, recvbuf, recvbuf_size);
-
-    if(ret != SN_OK) {
-        printf("Packet receive failed: %d\n", -ret);
-        goto main_exit;
-    }
-
-    printf("Packet received: \"%s\"\n", recvbuf->data_message.payload);
-
-    printf("Sending acknowledgement...\n");
-
-    ret = SN_Send(&network_session, &remote_address, NULL);
-
-    if(ret != SN_OK) {
-        printf("Acknowledgement transmission failed: %d\n", -ret);
-    } else {
-        printf("Acknowledgement transmission succeeded.\n");
-    }
-
-    printf("Test complete. Type \"die\" to clean up and exit.\n");
-
-    char buf[BUFSIZ];
-
-    for(;;) {
-        fgets(buf, BUFSIZ, stdin);
-        if(strncmp(buf, "die", 3) == 0)
-            break;
-    }
-
-    printf("Instruction received. Dying.\n");
+    printf("Dying due to radio error.\n");
 
 main_exit:
     SN_Destroy(&network_session);
