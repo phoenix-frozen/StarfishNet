@@ -613,6 +613,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         return ret;
     }
 
+    table_entry.unavailable = 0;
+
     if(PACKET_ENTRY(packet, association_header, indication) != NULL &&
        //we have an association header, and...
        !(PACKET_ENTRY(packet, association_header, indication)->dissociate &&

@@ -351,6 +351,11 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
         return -SN_ERR_SECURITY;
     }
 
+    if(table_entry.unavailable) {
+        SN_ErrPrintf("contact with remote node has been lost. aborting\n");
+        return -SN_ERR_DISCONNECTED;
+    }
+
     //actual packet buffer
     packet_t packet;
     memset(&packet.layout, 0, sizeof(packet.layout));

@@ -63,8 +63,6 @@ static int do_packet_transmission(int slot) {
         return ret;
     }
 
-    //TODO: rekeying: encryption here as well?
-
     uint8_t max_payload_size = aMaxMACPayloadSize - 2;
     /* aMaxMACPayloadSize is for a packet with a short destination address, and no source addressing
      * information. we always send a source address, which is at least 2 byte long
@@ -366,7 +364,7 @@ void SN_Delayed_tick() {
     for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
         transmission_slot_t* slot = &transmission_queue[i];
 
-        if(slot->allocated && slot->valid) {
+        if(slot->allocated && slot->valid && slot->retries < slot->session->nib.tx_retry_limit) {
             SN_InfoPrintf("doing retransmission processing for slot %d\n", i);
 
             slot->ticks_remaining--;
@@ -376,8 +374,16 @@ void SN_Delayed_tick() {
                 do_packet_transmission(i);
             }
             slot->ticks_remaining = slot->session->nib.tx_retry_timeout;
+
             if(slot->retries >= slot->session->nib.tx_retry_limit) {
-                //TODO: how do I fail, here?
+                SN_ErrPrintf("slot %d has reached its retry limit\n", i);
+                SN_Table_entry_t table_entry = {
+                    .session = slot->session,
+                };
+                if(SN_Table_lookup_by_public_key(&slot->destination, &table_entry, NULL) == SN_OK) {
+                    table_entry.unavailable = 1;
+                    SN_Table_update(&table_entry);
+                }
             }
 
             SN_InfoPrintf("retransmission processing for slot %d done\n", i);

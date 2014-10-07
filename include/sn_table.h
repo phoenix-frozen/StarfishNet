@@ -29,7 +29,8 @@ typedef struct SN_Table_entry {
             uint16_t child         :1; //only valid if neighbor == 1. this node is our child
             uint16_t router        :1; //only valid if child == 1. this node is a router (and thus possesses an address block)
             uint16_t ack           :1; //we've received new packets. send an acknowledgement in the next transmission
-            uint16_t mbz           :7;
+            uint16_t unavailable   :1;
+            uint16_t mbz           :6;
         };
         uint16_t     relationship;
     };
@@ -59,5 +60,8 @@ int SN_Table_associate_metadata (SN_Table_entry_t* entry, SN_Certificate_storage
 //entry->session must be valid
 int SN_Table_lookup_by_address    (SN_Address_t*    address,    SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
 int SN_Table_lookup_by_public_key (SN_Public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
+
+//indicate that no entries belonging to this session should be considered neighbors anymore
+void SN_Table_clear_all_neighbors(SN_Session_t* session);
 
 #endif /* __SN_TABLE_H__ */

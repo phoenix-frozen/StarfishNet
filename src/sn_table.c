@@ -17,7 +17,7 @@ typedef struct internal_table_entry {
 
 typedef uint32_t table_bitmap_t;
 
-static internal_table_entry_t table[TABLE_SIZE];
+static internal_table_entry_t table[TABLE_SIZE] = {};
 
 static table_bitmap_t entry_bitmap = 0;
 
@@ -80,7 +80,7 @@ static int find_entry(SN_Table_entry_t* entry) {
     }
 
     table_bitmap_t limit = entry->session->table_entries;
-    int            ret   = -1;
+    int            ret;
 
     ret = lookup_by_long_address(limit, &entry->long_address);
     if(ret >= 0) {
@@ -276,3 +276,14 @@ void SN_Table_clear(SN_Session_t* session) {
     session->table_entries = 0;
 }
 
+void SN_Table_clear_all_neighbors(SN_Session_t* session) {
+    if(session == NULL) {
+        return;
+    }
+
+    for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
+        if((entry_bitmap & session->table_entries & BIT(i))) {
+            table[i].data.neighbor = 0;
+        }
+    }
+}

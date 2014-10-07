@@ -70,9 +70,12 @@ int SN_Init(SN_Session_t* session, SN_Keypair_t* master_keypair, char* params) {
         return -SN_ERR_NULL;
     }
 
+    //make sure the node table is clean
+    SN_InfoPrintf("clearing node table...\n");
+    SN_Table_clear(session);
+
     //allocate some stack space
-    SN_Session_t protosession;
-    memset(&protosession, 0, sizeof(protosession));
+    SN_Session_t protosession = {};
 
     //init the mac layer
     SN_InfoPrintf("initialising MAC layer...\n");

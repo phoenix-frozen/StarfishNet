@@ -339,41 +339,36 @@ int mac_join(SN_Session_t* session, SN_Network_descriptor_t* network) {
 
     mac_primitive_t packet;
 
-    //reinit node table
-    SN_InfoPrintf("clearing node table\n");
-    SN_Table_clear(session);
-
-    //update the MIB and PIB
-    SN_InfoPrintf("filling [MP]IB...\n");
-    session->pib.phyCurrentChannel    = network->radio_channel;
-    session->mib.macPANId             = network->pan_id;
-    session->mib.macCoordAddrMode     = mac_short_address;
-    session->mib.macCoordShortAddress = SN_COORDINATOR_ADDRESS;
-    //... (including setting our short address to the "we don't have a short address" flag value)
-    session->mib.macShortAddress      = SN_NO_SHORT_ADDRESS;
-
     //configure the radio
 
     //Tune to the right channel
-    SN_InfoPrintf("setting channel...\n");
-    packet.type                              = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute     = phyCurrentChannel;
-    packet.MLME_SET_request.PIBAttributeSize = 1;
-    packet.MLME_SET_request.PIBAttributeValue[0] = session->pib.phyCurrentChannel;
-    MAC_CALL(mac_transmit, session->mac_session, &packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)phyCurrentChannel_set_confirm);
+    if(session->pib.phyCurrentChannel != network->radio_channel) {
+        SN_InfoPrintf("setting channel...\n");
+        packet.type                              = mac_mlme_set_request;
+        packet.MLME_SET_request.PIBAttribute     = phyCurrentChannel;
+        packet.MLME_SET_request.PIBAttributeSize = 1;
+        packet.MLME_SET_request.PIBAttributeValue[0] = network->radio_channel;
+        MAC_CALL(mac_transmit, session->mac_session, &packet);
+        MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)phyCurrentChannel_set_confirm);
+        session->pib.phyCurrentChannel = network->radio_channel;
+    }
 
     //Set our PAN Id
-    SN_InfoPrintf("setting PAN ID...\n");
-    packet.type                              = mac_mlme_set_request;
-    packet.MLME_SET_request.PIBAttribute     = macPANId;
-    packet.MLME_SET_request.PIBAttributeSize = 2;
-    memcpy(packet.MLME_SET_request.PIBAttributeValue, &session->mib.macPANId, 2);
-    MAC_CALL(mac_transmit, session->mac_session, &packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macPANId_set_confirm);
+    if(session->mib.macPANId != network->pan_id) {
+        SN_InfoPrintf("setting PAN ID...\n");
+        packet.type                              = mac_mlme_set_request;
+        packet.MLME_SET_request.PIBAttribute     = macPANId;
+        packet.MLME_SET_request.PIBAttributeSize = 2;
+        memcpy(packet.MLME_SET_request.PIBAttributeValue, &network->pan_id, 2);
+        MAC_CALL(mac_transmit, session->mac_session, &packet);
+        MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macPANId_set_confirm);
+        session->mib.macPANId = network->pan_id;
+    }
 
     //Set our coord short address
     SN_InfoPrintf("setting coord short address...\n");
+    session->mib.macCoordShortAddress        = SN_COORDINATOR_ADDRESS;
+    session->mib.macCoordAddrMode            = mac_short_address;
     packet.type                              = mac_mlme_set_request;
     packet.MLME_SET_request.PIBAttribute     = macCoordShortAddress;
     packet.MLME_SET_request.PIBAttributeSize = 2;
@@ -385,6 +380,7 @@ int mac_join(SN_Session_t* session, SN_Network_descriptor_t* network) {
 
     //Set our short address to the no-short-address marker address, enabling transmission
     SN_InfoPrintf("setting our short address...\n");
+    session->mib.macShortAddress             = SN_NO_SHORT_ADDRESS;
     packet.type                              = mac_mlme_set_request;
     packet.MLME_SET_request.PIBAttribute     = macShortAddress;
     packet.MLME_SET_request.PIBAttributeSize = 2;
@@ -407,13 +403,16 @@ int mac_join(SN_Session_t* session, SN_Network_descriptor_t* network) {
     return SN_OK;
 }
 
-/* Tune the radio to a StarfishNet network and listen for packets with its PAN ID.
- * Then, associate with our new parent and get an address.
+/* Tune the radio to a StarfishNet network.
+ * Then, discover any other nearby nodes, and add them to the node table as neighbors.
+ * Finally, associate with our new parent and get an address.
  *
  * Note that if routing is disabled, we don't transmit beacons.
+ *
+ * (fill_node_table is a callback for SN_Discover)
  */
 static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
-    SN_Table_entry_t parent_table_entry = {
+    SN_Table_entry_t router_table_entry = {
         .session       = session,
         .short_address = network->router_address,
         .neighbor      = 1,
@@ -421,7 +420,7 @@ static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* netw
         .details_known = 1,
     };
     SN_InfoPrintf("adding neighbor to node table...\n");
-    SN_Table_insert(&parent_table_entry);
+    SN_Table_insert(&router_table_entry);
 
     (void)extradata;
 };
@@ -430,6 +429,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     int ret;
 
     //perform extra discovery step to fill in node table
+    SN_Table_clear_all_neighbors(session);
     ret = SN_Discover(session, 1u << network->radio_channel, 2000, &fill_node_table, NULL);
 
     //Fill NIB (and set parent)
@@ -459,7 +459,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         SN_InfoPrintf("adding parent to node table...\n");
         ret = SN_Table_insert(&parent_table_entry);
         if(ret == -SN_ERR_UNEXPECTED) {
-            //it's ok if the entry already exists, since the earlier rediscovery should have added it
+            //it's ok if the entry already exists, since the earlier discovery should have added it
             ret = SN_OK;
         }
     }
@@ -504,7 +504,6 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     if(ret != SN_OK) {
         SN_ErrPrintf("an error occurred; resetting radio and clearing node table...\n");
         mac_primitive_t packet;
-        SN_Table_clear(session);
         mac_reset_radio(session, &packet);
     }
     SN_InfoPrintf("exit\n");
