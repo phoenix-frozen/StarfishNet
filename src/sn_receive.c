@@ -13,6 +13,7 @@
 #include "sn_constants.h"
 #include "sn_txrx.h"
 #include "sn_delayed_tx.h"
+#include "sn_beacons.h"
 
 //some templates for mac_receive_primitive
 static MAC_SET_CONFIRM(macShortAddress);
@@ -93,32 +94,6 @@ static int detect_packet_layout(packet_t* packet) {
         packet->layout.key_confirmation_header = current_position;
         packet->layout.present.key_confirmation_header = 1;
         current_position += sizeof(key_confirmation_header_t);
-    }
-
-    //address_allocation_header_t / address_block_allocation_header_t (only found in associate_reply packets)
-    if(network_header->associate && network_header->key_confirm &&
-       PACKET_ENTRY(*packet, association_header, indication)->child) {
-        if(PACKET_ENTRY(*packet, association_header, indication)->router) {
-            //block allocation
-            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(address_block_allocation_header_t)) {
-                SN_ErrPrintf("packet indicates an address block allocation header, but is too small. aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            SN_InfoPrintf("found address block allocation header at %d\n", current_position);
-            packet->layout.address_block_allocation_header = current_position;
-            packet->layout.present.address_block_allocation_header = 1;
-            current_position += sizeof(address_block_allocation_header_t);
-        } else {
-            //single allocation
-            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(address_allocation_header_t)) {
-                SN_ErrPrintf("packet indicates an address allocation header, but is too small. aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            SN_InfoPrintf("found address allocation header at %d\n", current_position);
-            packet->layout.address_allocation_header = current_position;
-            packet->layout.present.address_allocation_header = 1;
-            current_position += sizeof(address_allocation_header_t);
-        }
     }
 
     //encrypted_ack_header_t / signed_ack_header_t
@@ -333,11 +308,11 @@ static int do_public_key_operations(SN_Table_entry_t* table_entry, packet_t* pac
     return SN_OK;
 }
 
-static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packet) {
+static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet) {
     //at this point, security and integrity checks are guaranteed to have passed
 
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
+    if(session == NULL || table_entry == NULL || packet == NULL) {
+        SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
         return -SN_ERR_NULL;
     }
 
@@ -355,9 +330,11 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
 
     //association_header
     if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
+        network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
+        association_header_t* association_header = PACKET_ENTRY(*packet, association_header, indication);
         //relationship state is checked in do_public_key_operations
         //signature is checked in do_public_key_operations
-        if(!PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
+        if(!association_header->dissociate) {
             //association processing
             assert(PACKET_ENTRY(*packet, key_agreement_header, indication) != NULL);
             table_entry->remote_key_agreement_key = PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key;
@@ -366,17 +343,49 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
                 //associate_request
                 assert(table_entry->state == SN_Unassociated);
 
-                table_entry->child  = PACKET_ENTRY(*packet, association_header, indication)->child;
-                table_entry->router = PACKET_ENTRY(*packet, association_header, indication)->router;
+                table_entry->child  = association_header->child;
+                table_entry->router = association_header->router;
 
                 table_entry->state = SN_Associate_received;
             } else {
                 //associate_reply
                 assert(table_entry->state == SN_Awaiting_reply);
                 //key agreement processing in do_public_key_operations
-            }
 
-            //TODO: PACKET_ENTRY(*packet, association_header, indication)->delegate;
+                //parent/child handling
+                if(association_header->child) {
+                    if(network_header->src_addr != session->nib.parent_address) {
+                        SN_ErrPrintf("received address delegation packet from someone not our parent\n");
+                        return -SN_ERR_SECURITY;
+                    }
+
+                    if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS) {
+                        SN_ErrPrintf("received address delegation when we already have a short address\n");
+                        return -SN_ERR_UNEXPECTED;
+                    }
+
+                    if(session->nib.enable_routing) {
+                        session->nib.enable_routing = association_header->router;
+                    }
+
+                    //set our short address to the one we were just given
+                    SN_InfoPrintf("setting our short address to %#04x...\n", network_header->dst_addr);
+                    mac_primitive_t set_primitive;
+                    set_primitive.type                              = mac_mlme_set_request;
+                    set_primitive.MLME_SET_request.PIBAttribute     = macShortAddress;
+                    set_primitive.MLME_SET_request.PIBAttributeSize = 2;
+                    memcpy(set_primitive.MLME_SET_request.PIBAttributeValue, &network_header->dst_addr, 2);
+                    MAC_CALL(mac_transmit, session->mac_session, &set_primitive);
+                    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macShortAddress_set_confirm);
+                    session->mib.macShortAddress             = network_header->dst_addr;
+
+                    int ret = SN_Beacon_update(session);
+                    if(ret != SN_OK) {
+                        SN_ErrPrintf("beacon update failed: %d\n", -ret);
+                        return ret;
+                    }
+                }
+            }
         } else {
             //TODO: dissociation processing
         }
@@ -432,9 +441,6 @@ static int process_packet_headers(SN_Table_entry_t* table_entry, packet_t* packe
 
         SN_Delayed_acknowledge_special(table_entry, packet);
     }
-
-    //TODO: address_allocation_header
-    //TODO: address_block_allocation_header
 
     //encrypted_ack_header
     if(PACKET_ENTRY(*packet, encrypted_ack_header, indication) != NULL) {
@@ -553,9 +559,21 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         return ret;
     }
 
-    //TODO: routing/addressing
-    src_addr->type    = packet.contents.MCPS_DATA_indication.SrcAddrMode;
-    src_addr->address = packet.contents.MCPS_DATA_indication.SrcAddr;
+    network_header_t* network_header = PACKET_ENTRY(packet, network_header, indication);
+    assert(network_header != NULL);
+
+    if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS && network_header->dst_addr != session->mib.macShortAddress) {
+        //packet was sent to our MAC address, but wasn't for our network address. that means we need to route it
+        SN_InfoPrintf("packet isn't for us. routing\n");
+        if(session->nib.enable_routing) {
+            //TODO: routing
+            SN_WarnPrintf("we haven't implemented routing yet. drop\n");
+            return SN_Receive(session, src_addr, buffer, buffer_size);
+        } else {
+            SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
+            return SN_Receive(session, src_addr, buffer, buffer_size);
+        }
+    }
 
     SN_InfoPrintf("consulting neighbor table...\n");
     SN_Table_entry_t table_entry = {
@@ -597,7 +615,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         return ret;
     }
 
-    if(PACKET_ENTRY(packet, network_header, indication)->encrypt) {
+    if(network_header->encrypt) {
         SN_InfoPrintf("doing decryption and integrity checking...\n");
         ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, table_entry.packet_rx_counter++, &packet);
         if(ret != SN_OK) {
@@ -607,7 +625,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     }
 
     SN_InfoPrintf("processing packet headers...\n");
-    ret = process_packet_headers(&table_entry, &packet);
+    ret = process_packet_headers(session, &table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d processing packet headers. aborting\n", -ret);
         return ret;
@@ -618,7 +636,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     if(PACKET_ENTRY(packet, association_header, indication) != NULL &&
        //we have an association header, and...
        !(PACKET_ENTRY(packet, association_header, indication)->dissociate &&
-         (PACKET_ENTRY(packet, association_header, indication)->child || PACKET_ENTRY(packet, association_header, indication)->delegate)
+         (PACKET_ENTRY(packet, association_header, indication)->child)
        )
         //...it's not a rights revocation
         ) {
@@ -646,7 +664,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     uint8_t* payload_data = PACKET_ENTRY(packet, payload_data, indication);
     if(payload_data != NULL) {
         table_entry.ack = (uint8_t)(PACKET_ENTRY(packet, encryption_header, indication) != NULL);
-        if(PACKET_ENTRY(packet, network_header, indication)->evidence) {
+        if(network_header->evidence) {
             //evidence packet
             if(packet.layout.payload_length != sizeof(SN_Certificate_t)) {
                 SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %zu)\n", packet.layout.payload_length, sizeof(SN_Certificate_t));
@@ -671,7 +689,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
             buffer->evidence_message.evidence = *evidence;
         } else {
             //data packet
-            if(!PACKET_ENTRY(packet, network_header, indication)->encrypt) {
+            if(!network_header->encrypt) {
                 //stapled plain data on unencrypted packet. warn and ignore
                 SN_WarnPrintf("received plain data in unencrypted packet. ignoring.\n");
             } else {
@@ -687,6 +705,14 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     }
 
     SN_Table_update(&table_entry);
+
+    if(network_header->src_addr == SN_NO_SHORT_ADDRESS) {
+        src_addr->type    = packet.contents.MCPS_DATA_indication.SrcAddrMode;
+        src_addr->address = packet.contents.MCPS_DATA_indication.SrcAddr;
+    } else {
+        src_addr->type                 = mac_short_address;
+        src_addr->address.ShortAddress = network_header->src_addr;
+    }
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

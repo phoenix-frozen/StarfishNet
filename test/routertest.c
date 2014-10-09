@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
     printf("Scanning for networks...\n");
 
     SN_Network_descriptor_t network = {};
-    ret = SN_Discover(&network_session, 0xFFFFFFFF, 1000, &network_discovered, (void*)&network);
+    ret = SN_Discover(&network_session, 0xFFFFFFFF, 1000, 0, &network_discovered, (void*)&network);
 
     if(ret != SN_OK) {
         printf("Network discovery failed: %d\n", -ret);

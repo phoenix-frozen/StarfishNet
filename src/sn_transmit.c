@@ -59,6 +59,8 @@
 #include "sn_constants.h"
 #include "sn_txrx.h"
 #include "sn_delayed_tx.h"
+#include "sn_routing_tree.h"
+#include "sn_beacons.h"
 
 //some templates for mac_receive_primitive
 static MAC_SET_CONFIRM(macShortAddress);
@@ -146,13 +148,6 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 
         association_header->flags             = 0;
         association_header->dissociate        = (uint8_t)(dissociate ? 1 : 0);
-        association_header->router            = session->nib.enable_routing;
-        association_header->child =
-            memcmp(
-                session->nib.parent_public_key.data,
-                table_entry->public_key.data,
-                sizeof(session->nib.parent_public_key.data)
-            ) == 0 ? (uint8_t)1 : (uint8_t)0;
 
         //key_agreement_header_t
         if(!association_header->dissociate) {
@@ -163,6 +158,50 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
             assert(key_agreement_header != NULL);
 
             key_agreement_header->key_agreement_key = table_entry->local_key_agreement_keypair.public_key;
+        }
+
+        //parent/child handling
+        if(!association_header->dissociate) {
+            if(network_header->key_confirm) {
+                //this is a reply
+
+                //address bits
+                association_header->child  = (uint8_t)table_entry->child;
+                association_header->router = (uint8_t)table_entry->router;
+
+                //address allocation
+                if(association_header->child) {
+                    bool     block = association_header->router;
+                    uint16_t address;
+
+                    int ret = SN_Tree_allocate_address(session, &address, &block);
+
+                    if(ret == SN_OK) {
+                        network_header->dst_addr   = address;
+                        association_header->router = (uint8_t)(block ? 1 : 0);
+
+
+                        ret = SN_Beacon_update(session);
+                    } else {
+                        association_header->child  = 0;
+                        association_header->router = 0;
+                    }
+
+                    if(ret != SN_OK) {
+                        SN_ErrPrintf("beacon update failed: %d\n", -ret);
+                        return ret;
+                    }
+                }
+            } else {
+                //this is a request
+                association_header->router = session->nib.enable_routing;
+                association_header->child =
+                    memcmp(
+                        session->nib.parent_public_key.data,
+                        table_entry->public_key.data,
+                        sizeof(session->nib.parent_public_key.data)
+                    ) == 0 ? (uint8_t)1 : (uint8_t)0;
+            }
         }
     }
 
@@ -196,11 +235,10 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         }
     }
 
-    //TODO: address_allocation[_block]_header_t
-
     //{encrypted,signed}_ack_header_t
     if(network_header->ack) {
         if(network_header->encrypt) {
+            //encrypted_ack_header_t
             SN_InfoPrintf("generating encrypted-ack header at %d\n", PACKET_SIZE(*packet, request));
             if(PACKET_SIZE(*packet, request) + sizeof(encrypted_ack_header_t) > aMaxMACPayloadSize) {
                 SN_ErrPrintf("adding encrypted_ack header would make packet too large, aborting\n");
@@ -214,6 +252,7 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 
             encrypted_ack_header->counter = table_entry->packet_rx_counter - 1;
         } else {
+            //signed_ack_header_t
             SN_InfoPrintf("generating signed-ack header at %d\n", PACKET_SIZE(*packet, request));
             if(PACKET_SIZE(*packet, request) + sizeof(signed_ack_header_t) > aMaxMACPayloadSize) {
                 SN_ErrPrintf("adding signed_ack header would make packet too large, aborting\n");
@@ -224,6 +263,8 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
             PACKET_SIZE(*packet, request) += sizeof(signed_ack_header_t);
             signed_ack_header_t* signed_ack_header = PACKET_ENTRY(*packet, signed_ack_header, request);
             assert(signed_ack_header != NULL);
+
+            (void)signed_ack_header; //shut up CLion
 
             //TODO: signed_ack_header_t
             SN_ErrPrintf("signed_ack headers not implemented yet\n");
@@ -243,6 +284,8 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         PACKET_SIZE(*packet, request) += sizeof(encryption_header_t);
         encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, request);
         assert(encryption_header != NULL);
+
+        (void)encryption_header; //shut up CLion
     } else {
         SN_InfoPrintf("generating signature header at %d\n", PACKET_SIZE(*packet, request));
 
@@ -329,7 +372,8 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     }
 
     //validity check on address
-    mac_address_t null_address = {.ExtendedAddress = {}};
+    mac_address_t null_address;
+    memset(&null_address, 0, sizeof(null_address));
     if((dst_addr->type == mac_short_address && dst_addr->address.ShortAddress == SN_NO_SHORT_ADDRESS) ||
        (dst_addr->type == mac_extended_address && memcmp(
            dst_addr->address.ExtendedAddress,
@@ -375,7 +419,9 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     header->req_details                    = (uint8_t)!table_entry.details_known;
     header->details                        = (uint8_t)!table_entry.knows_details;
     header->key_confirm                    = (uint8_t)(table_entry.state == SN_Send_finalise);
-    header->evidence                       = (uint8_t)(message != NULL && message->type == SN_Evidence_message);
+    if(message != NULL) {
+        header->evidence                   = (uint8_t)(message->type == SN_Evidence_message);
+    }
     header->ack                            = (uint8_t)(table_entry.ack && header->encrypt);
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
@@ -437,7 +483,8 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     }
 
     //validity check on address
-    mac_address_t null_address = {.ExtendedAddress = {}};
+    mac_address_t null_address;
+    memset(&null_address, 0, sizeof(null_address));
     if((dst_addr->type == mac_short_address && dst_addr->address.ShortAddress == SN_NO_SHORT_ADDRESS) ||
        (dst_addr->type == mac_extended_address && memcmp(
            dst_addr->address.ExtendedAddress,
@@ -489,8 +536,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     header->details                        = (uint8_t)!table_entry.knows_details;
     header->associate                      = 1;
     header->key_confirm                    = (uint8_t)(table_entry.state == SN_Associate_received);
-    header->encrypt                        = 0;
-    header->evidence                       = 1; //association packets are unencrypted. so if there's a payload, it must be evidence
+    header->evidence                       = (uint8_t)(message != NULL); //association packets are unencrypted. so if there's a payload, it must be evidence
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
 

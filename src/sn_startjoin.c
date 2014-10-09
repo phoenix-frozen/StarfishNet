@@ -10,14 +10,10 @@
 
 #include "sn_constants.h"
 #include "mac_util.h"
-
-static MAC_CONFIRM(start);
+#include "sn_routing_tree.h"
+#include "sn_beacons.h"
 
 static MAC_SET_CONFIRM(macAssociationPermit);
-
-static MAC_SET_CONFIRM(macBeaconPayload);
-
-static MAC_SET_CONFIRM(macBeaconPayloadLength);
 
 static MAC_SET_CONFIRM(macPANId);
 
@@ -32,98 +28,6 @@ static MAC_SET_CONFIRM(macCoordShortAddress);
 static MAC_SET_CONFIRM(macCoordExtendedAddress);
 
 static MAC_SET_CONFIRM(macPromiscuousMode);
-
-#define BEACON_HASH_LENGTH        sizeof(SN_Hash_t)
-
-typedef struct __attribute__((packed)) beacon_payload {
-    //protocol ID information
-    uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
-    uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
-
-    //device tree metadata
-    uint8_t tree_depth; //maximum tree depth
-    uint8_t tree_position; //depth in the tree of this router
-    int8_t  router_capacity; //remaining child slots. negative if children can only be leaves
-
-    //mac_address_t address; //64-bit mode. in case I'm broadcasting with my short address
-    uint16_t address;
-
-    SN_Public_key_t public_key;
-} beacon_payload_t;
-
-static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer, SN_Hash_t* hash) {
-    if(session == NULL || buffer == NULL || hash == NULL) {
-        return -SN_ERR_NULL;
-    }
-
-    //protocol ID information
-    buffer->protocol_id     = STARFISHNET_PROTOCOL_ID;
-    buffer->protocol_ver    = STARFISHNET_PROTOCOL_VERSION;
-    //routing tree metadata
-    buffer->tree_depth      = session->nib.tree_depth;
-    buffer->tree_position   = session->nib.tree_position;
-    buffer->router_capacity = 127;
-
-    //public key
-    buffer->public_key = session->device_root_key.public_key;
-
-    //address
-    //buffer->address = session->mib.macIEEEAddress;
-    buffer->address = session->mib.macShortAddress;
-
-    //hash
-    SN_Crypto_hash((uint8_t*)buffer, sizeof(*buffer), hash, 0);
-
-    return SN_OK;
-}
-
-static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
-    SN_DebugPrintf("enter\n");
-
-    if(session == NULL || packet == NULL) {
-        return -SN_ERR_NULL;
-    }
-
-    //build beacon payload
-    beacon_payload_t* proto_beacon = (beacon_payload_t*)session->mib.macBeaconPayload;
-    SN_Hash_t beacon_hash;
-    build_beacon_payload(session, proto_beacon, &beacon_hash); //no need to check error code, it only checks for nulls
-    _Static_assert(sizeof(beacon_payload_t) + BEACON_HASH_LENGTH < aMaxBeaconPayloadSize, "beacon payloads are too big!");
-    memcpy(session->mib.macBeaconPayload + sizeof(beacon_payload_t), &beacon_hash, BEACON_HASH_LENGTH);
-    session->mib.macBeaconPayloadLength = sizeof(beacon_payload_t) + BEACON_HASH_LENGTH;
-
-    //set beacon payload length
-    packet->type                              = mac_mlme_set_request;
-    packet->MLME_SET_request.PIBAttribute     = macBeaconPayloadLength;
-    packet->MLME_SET_request.PIBAttributeSize = 1;
-    packet->MLME_SET_request.PIBAttributeValue[0] = session->mib.macBeaconPayloadLength;
-    MAC_CALL(mac_transmit, session->mac_session, packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macBeaconPayloadLength_set_confirm);
-
-    //set beacon payload
-    packet->type                              = mac_mlme_set_request;
-    packet->MLME_SET_request.PIBAttribute     = macBeaconPayload;
-    packet->MLME_SET_request.PIBAttributeSize = session->mib.macBeaconPayloadLength;
-    memcpy(packet->MLME_SET_request.PIBAttributeValue, session->mib.macBeaconPayload, session->mib.macBeaconPayloadLength);
-    MAC_CALL(mac_transmit, session->mac_session, packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macBeaconPayload_set_confirm);
-
-    //start beacon transmissions
-    packet->type                                    = mac_mlme_start_request;
-    packet->MLME_START_request.PANId                = session->mib.macPANId;
-    packet->MLME_START_request.LogicalChannel       = session->pib.phyCurrentChannel;
-    packet->MLME_START_request.BeaconOrder          = session->mib.macBeaconOrder;
-    packet->MLME_START_request.SuperframeOrder      = session->mib.macSuperframeOrder;
-    packet->MLME_START_request.PANCoordinator       = isCoordinator;
-    packet->MLME_START_request.BatteryLifeExtension = session->mib.macBattLifeExt;
-    packet->MLME_START_request.CoordRealignment     = 0;
-    packet->MLME_START_request.SecurityEnable       = 0;
-    MAC_CALL(mac_transmit, session->mac_session, packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)start_confirm);
-
-    SN_DebugPrintf("exit\n");
-    return SN_OK;
-}
 
 //start a new StarfishNet network as coordinator
 int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
@@ -142,9 +46,16 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
 
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
-    session->nib.tree_depth          = network->routing_tree_depth;
+    session->nib.tree_branching_factor = network->routing_tree_branching_factor;
     session->nib.tree_position       = 0;
+    session->nib.leaf_blocks         = network->leaf_blocks;
     session->nib.parent_address      = SN_COORDINATOR_ADDRESS;
+
+    int ret = SN_Tree_configure(session);
+    if(ret != SN_OK) {
+        SN_ErrPrintf("error in routing tree configuration: %d\n", -ret);
+        return ret;
+    }
 
     //update the MIB and PIB
     SN_InfoPrintf("filling [MP]IB...\n");
@@ -175,17 +86,8 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     session->mib.macRxOnWhenIdle = 1;
 
     //configure the radio
-    int ret;
     SN_InfoPrintf("setting up beacon transmission, PAN ID, and radio channel...\n");
-    ret = do_network_start(session, &packet, 1);
-
-    //And we're done. Setting up a security association with our new parent is deferred until the first packet exchange.
-    if(ret != SN_OK) {
-        SN_ErrPrintf("an error occurred; resetting radio...\n");
-        mac_reset_radio(session, &packet);
-    }
-    SN_InfoPrintf("exit\n");
-    return ret;
+    return SN_Beacon_update(session);
 }
 
 static inline uint8_t log2i(uint32_t n) {
@@ -199,7 +101,7 @@ static inline uint8_t log2i(uint32_t n) {
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, SN_Discovery_callback_t* callback, void* extradata) {
+int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, bool show_full_networks, SN_Discovery_callback_t* callback, void* extradata) {
     SN_InfoPrintf("enter\n");
     SN_InfoPrintf("performing discovery over %#010"PRIx32", in %d ms\n", channel_mask, timeout);
 
@@ -302,8 +204,16 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
             continue;
         }
 
-        if(beacon_payload->router_capacity == 0) {
+        if(beacon_payload->router_capacity == 0 && beacon_payload->leaf_capacity == 0) {
             SN_WarnPrintf("Router is full.\n");
+
+            if(show_full_networks) {
+                continue;
+            }
+        }
+
+        if(SN_Tree_check_join(beacon_payload->tree_position + (uint8_t)1, beacon_payload->branching_factor) < 0) {
+            SN_WarnPrintf("Router has invalid tree configuration\n");
             continue;
         }
 
@@ -311,8 +221,9 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         ndesc.router_public_key     = beacon_payload->public_key;
         ndesc.pan_id                = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.CoordPANId;
         ndesc.radio_channel         = packet.MLME_BEACON_NOTIFY_indication.PANDescriptor.LogicalChannel;
-        ndesc.routing_tree_depth    = beacon_payload->tree_depth;
+        ndesc.routing_tree_branching_factor = beacon_payload->branching_factor;
         ndesc.routing_tree_position = beacon_payload->tree_position + (uint8_t)1;
+        ndesc.leaf_blocks           = beacon_payload->leaf_blocks;
 
         callback(session, &ndesc, extradata);
     }
@@ -430,16 +341,21 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
     //perform extra discovery step to fill in node table
     SN_Table_clear_all_neighbors(session);
-    ret = SN_Discover(session, 1u << network->radio_channel, 2000, &fill_node_table, NULL);
+    ret = SN_Discover(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
 
     //Fill NIB (and set parent)
     if(ret == SN_OK) {
         SN_InfoPrintf("filling NIB...\n");
-        session->nib.tree_depth     = network->routing_tree_depth;
-        session->nib.tree_position  = network->routing_tree_position;
-        //we can join a network below the maximum tree depth. however, we will not be able to acquire a short address
-        session->nib.enable_routing = (uint8_t)(disable_routing ? 0 : 1);
-        session->nib.parent_address = network->router_address;
+        session->nib.tree_branching_factor = network->routing_tree_branching_factor;
+        session->nib.tree_position    = network->routing_tree_position;
+        session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
+        session->nib.parent_address   = network->router_address;
+        session->nib.leaf_blocks      = network->leaf_blocks;
+    }
+
+    //Do routing tree math and set up address allocation
+    if(ret == SN_OK) {
+        ret = SN_Tree_configure(session);
     }
 
     //tune radio
@@ -468,7 +384,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     if(ret == SN_OK) {
         SN_Address_t parent_address = {
             .type = mac_short_address,
-            .address = { .ShortAddress = network->router_address },
+            .address.ShortAddress = network->router_address,
         };
         SN_InfoPrintf("sending association message...\n");
         ret = SN_Associate(session, &parent_address, NULL);
@@ -477,8 +393,8 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
     //make sure the association completes
     if(ret == SN_OK) {
         SN_Address_t address;
-        SN_Message_t* message;
-        uint8_t message_data[sizeof(message->data_message) + SN_MAX_DATA_MESSAGE_LENGTH];
+        SN_Message_t* message = NULL;
+        uint8_t message_data[sizeof(message->data_message) + SN_MAX_DATA_MESSAGE_LENGTH]; //XXX: this won't segfault
         message = (SN_Message_t*)message_data;
 
         SN_InfoPrintf("waiting for association reply...\n");

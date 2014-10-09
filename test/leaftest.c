@@ -12,7 +12,7 @@
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
     *((SN_Network_descriptor_t*)extradata) = *network;
-    (void)session;
+    (void)session; //shut up CLion
 }
 
 int main(int argc, char* argv[]) {
@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     printf("Scanning for networks...\n");
 
     SN_Network_descriptor_t network = {};
-    ret = SN_Discover(&network_session, 0xFFFFFFFF, 5000, &network_discovered, (void*)&network);
+    ret = SN_Discover(&network_session, 0xFFFFFFFF, 5000, 0, &network_discovered, (void*)&network);
 
     if(ret != SN_OK) {
         printf("Network discovery failed: %d\n", -ret);

@@ -26,7 +26,8 @@ static int lookup_by_long_address(table_bitmap_t limit, mac_address_t* address) 
         return -1;
     }
 
-    mac_address_t null_address = {};
+    mac_address_t null_address;
+    memset(&null_address, 0, sizeof(null_address));
     if(!memcmp(address, &null_address, sizeof(null_address))) {
         return -1;
     }
@@ -124,7 +125,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
         return -SN_ERR_NULL;
     }
 
-    int ret = -1;
+    int ret;
 
     //see if entry already exists
     ret = find_entry(entry);
@@ -134,8 +135,10 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
     }
 
     //consistency checks to make sure we don't pollute the table with BS entries
-    mac_address_t   null_address = {};
-    SN_Public_key_t null_key     = {};
+    mac_address_t   null_address;
+    memset(&null_address, 0, sizeof(null_address));
+    SN_Public_key_t null_key;
+    memset(&null_key, 0, sizeof(null_key));
     if((!memcmp(&entry->long_address, &null_address, sizeof(null_address)))
        && (entry->short_address == SN_NO_SHORT_ADDRESS)
        && (!memcmp(&entry->public_key, &null_key, sizeof(null_key)))) {
@@ -162,10 +165,8 @@ int SN_Table_update(SN_Table_entry_t* entry) {
         return -SN_ERR_NULL;
     }
 
-    int ret = -1;
-
     //see if entry already exists
-    ret = find_entry(entry);
+    int ret = find_entry(entry);
     if(ret < 0) {
         //it doesn't. return an error
         return -SN_ERR_UNEXPECTED;
@@ -227,7 +228,7 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
         return -SN_ERR_NULL;
     }
 
-    int ret = -1;
+    int ret;
 
     if(address->type == mac_extended_address) {
         ret = lookup_by_long_address(entry->session->table_entries, &address->address);

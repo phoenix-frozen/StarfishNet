@@ -1,11 +1,9 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
 
 #include <sn_core.h>
 #include <sn_crypto.h>
 #include <sn_status.h>
-#include <sn_table.h>
 #include <inttypes.h>
 
 #define RECEIVE_BUFFER_SIZE 256
@@ -53,8 +51,9 @@ int main(int argc, char* argv[]) {
         //router_address       is ignored
         .pan_id                         = panid,
         .radio_channel                  = channel,
-        .routing_tree_depth             = 2,
+        .routing_tree_branching_factor  = 8,
         //routing_tree_position          is ignored
+        .leaf_blocks                    = 0,
     };
 
     ret = SN_Start(&network_session, &network);

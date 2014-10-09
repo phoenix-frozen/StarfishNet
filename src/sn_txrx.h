@@ -53,13 +53,7 @@ typedef struct __attribute__((packed)) association_header {
             //in a request   : the address request is for a block, not a single
             //in a reply     : the following address allocation header is for a block
             //in a dissociate: ignored
-            uint8_t delegate   :1; //only valid if child == 1
-            //in a request   : request that the remote node perform association transactions on our behalf
-            //in a reply     : indicates that the remote node is willing to perform association transactions on our behalf
-            //in a dissociate: this is a delegate revocation, not a full dissociation
-            uint8_t mbz        :4;
-
-            //note: dissociate, child, and delegate may all be true
+            uint8_t mbz        :5;
         };
         uint8_t flags;
     };
@@ -72,15 +66,6 @@ typedef struct __attribute__((packed)) key_agreement_header {
 typedef struct __attribute__((packed)) key_confirmation_header {
     SN_Hash_t challenge;
 } key_confirmation_header_t;
-
-typedef struct __attribute__((packed)) address_allocation_header {
-    uint16_t address;
-} address_allocation_header_t;
-
-typedef struct __attribute__((packed)) address_block_allocation_header {
-    uint16_t address;
-    uint8_t  block_size; //size of address block being granted. power of 2
-} address_block_allocation_header_t;
 
 typedef struct __attribute__((packed)) encryption_header {
     uint8_t  tag[SN_Tag_size];
@@ -123,15 +108,11 @@ typedef struct packet {
                 uint16_t key_agreement_header            :1;
                 uint16_t encryption_header               :1;
                 uint16_t key_confirmation_header         :1;
-                uint16_t address_allocation_header       :1;
-                uint16_t address_block_allocation_header :1;
                 uint16_t signature_header                :1;
                 uint16_t encrypted_ack_header            :1;
                 uint16_t signed_ack_header               :1;
 
                 uint16_t payload_data                    :1;
-
-                uint16_t mbz                             :4;
             };
 
             uint16_t raw;
@@ -143,8 +124,6 @@ typedef struct packet {
         uint8_t key_agreement_header;
         uint8_t encryption_header;
         uint8_t key_confirmation_header;
-        uint8_t address_allocation_header;
-        uint8_t address_block_allocation_header;
         uint8_t signature_header;
         uint8_t encrypted_ack_header;
         uint8_t signed_ack_header;

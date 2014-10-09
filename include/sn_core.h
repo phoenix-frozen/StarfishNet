@@ -43,11 +43,16 @@
 //TODO: totally ignoring broadcasts for the moment
 
 typedef struct SN_Network_descriptor {
+    //MAC information
     uint16_t        pan_id;
     uint8_t         radio_channel;
-    uint8_t         routing_tree_depth;
-    uint8_t         routing_tree_position;
 
+    //routing tree configuration
+    uint8_t         routing_tree_branching_factor;
+    uint16_t        leaf_blocks;
+
+    //router information
+    uint8_t         routing_tree_position;
     uint16_t        router_address;
     SN_Public_key_t router_public_key;
 } SN_Network_descriptor_t;
@@ -119,6 +124,7 @@ int SN_Discover ( //scan for StarfishNet networks. also serves as a nearest-neig
     SN_Session_t*            session,
     uint32_t                 channel_mask,
     uint32_t                 timeout,  //in ms
+    bool                     show_full_networks, //0 gets you a callback only from networks with spare capacity
     SN_Discovery_callback_t* callback, //you get one callback for each network found
     void*                    extradata //will be passed to the callback
 );

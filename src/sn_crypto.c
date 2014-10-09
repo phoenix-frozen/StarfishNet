@@ -2,7 +2,6 @@
 #include <sn_status.h>
 #include <sn_logging.h>
 
-#include <string.h>
 #include <assert.h>
 
 //setup uECC
