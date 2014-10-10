@@ -54,6 +54,7 @@
 #include <string.h>
 
 #include <assert.h>
+#include <inttypes.h>
 
 #include "mac_util.h"
 #include "sn_constants.h"
@@ -171,6 +172,8 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 
                 //address allocation
                 if(association_header->child) {
+                    SN_InfoPrintf("node is our child; allocating it an address...\n");
+
                     bool     block = association_header->router;
                     uint16_t address;
 
@@ -180,15 +183,19 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
                         network_header->dst_addr   = address;
                         association_header->router = (uint8_t)(block ? 1 : 0);
 
+                        SN_InfoPrintf("allocated %s address %#06x\n", block ? "router" : "leaf", address);
 
+                        table_entry->short_address = address;
                         ret = SN_Beacon_update(session);
                     } else {
+                        SN_WarnPrintf("address allocation failed; proceeding without\n");
+
                         association_header->child  = 0;
                         association_header->router = 0;
                     }
 
                     if(ret != SN_OK) {
-                        SN_ErrPrintf("beacon update failed: %d\n", -ret);
+                        SN_ErrPrintf("address allocation failed: %d\n", -ret);
                         return ret;
                     }
                 }
@@ -482,6 +489,12 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
         return -SN_ERR_NULL;
     }
 
+    if(dst_addr->type == mac_short_address) {
+        SN_DebugPrintf("attempting to associate with %#06x\n", dst_addr->address.ShortAddress);
+    } else {
+        SN_DebugPrintf("attempting to associate with %#018"PRIx64"\n", *(uint64_t*)dst_addr->address.ExtendedAddress);
+    }
+
     //validity check on address
     mac_address_t null_address;
     memset(&null_address, 0, sizeof(null_address));
@@ -631,15 +644,15 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
         }
     }
 
+    //update node table
+    SN_Table_update(&table_entry);
+
     SN_InfoPrintf("beginning packet transmission...\n");
     ret = SN_Delayed_transmit(session, &table_entry, &packet, encryption_counter);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
     }
-
-    //update node table
-    SN_Table_update(&table_entry);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

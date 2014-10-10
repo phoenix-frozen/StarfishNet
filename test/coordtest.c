@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
         //router_address       is ignored
         .pan_id                         = panid,
         .radio_channel                  = channel,
-        .routing_tree_branching_factor  = 8,
+        .routing_tree_branching_factor  = 3,
         //routing_tree_position          is ignored
         .leaf_blocks                    = 0,
     };

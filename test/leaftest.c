@@ -10,7 +10,7 @@
 #include <inttypes.h>
 
 static void network_discovered(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
-    printf("Found network ID %x on channel %d.\n", network->pan_id, network->radio_channel);
+    printf("Found network ID %#06x on channel %d.\n", network->pan_id, network->radio_channel);
     *((SN_Network_descriptor_t*)extradata) = *network;
     (void)session; //shut up CLion
 }

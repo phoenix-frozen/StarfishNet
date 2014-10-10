@@ -50,6 +50,7 @@ int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
     session->nib.tree_position       = 0;
     session->nib.leaf_blocks         = network->leaf_blocks;
     session->nib.parent_address      = SN_COORDINATOR_ADDRESS;
+    session->nib.enable_routing      = 1;
 
     int ret = SN_Tree_configure(session);
     if(ret != SN_OK) {
@@ -207,7 +208,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         if(beacon_payload->router_capacity == 0 && beacon_payload->leaf_capacity == 0) {
             SN_WarnPrintf("Router is full.\n");
 
-            if(show_full_networks) {
+            if(!show_full_networks) {
                 continue;
             }
         }
@@ -228,7 +229,7 @@ int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, 
         callback(session, &ndesc, extradata);
     }
 
-    SN_InfoPrintf("enter\n");
+    SN_InfoPrintf("exit\n");
     return SN_OK;
 }
 
@@ -351,6 +352,8 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         session->nib.enable_routing   = (uint8_t)(disable_routing ? 0 : 1);
         session->nib.parent_address   = network->router_address;
         session->nib.leaf_blocks      = network->leaf_blocks;
+        session->nib.parent_public_key = network->router_public_key;
+        session->nib.parent_address    = network->router_address;
     }
 
     //Do routing tree math and set up address allocation

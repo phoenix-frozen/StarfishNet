@@ -9,18 +9,20 @@ int SN_Tree_allocate_address(SN_Session_t* session, uint16_t* address, bool* blo
         return -SN_ERR_NULL;
     }
 
-    assert(session->nib.tree_branching_factor < 16);
-    assert(session->nib.tree_position < 16);
-    assert((session->nib.tree_position + session->nib.tree_branching_factor + 1) <= 16);
+    assert(session->nib.tree_branching_factor <= 16);
+    assert(session->nib.tree_position * session->nib.tree_branching_factor < 16);
+    assert(session->nib.enable_routing);
 
     uint16_t total_blocks         = (uint16_t)(1 << session->nib.tree_branching_factor);
-    uint16_t address_block_size   = (uint16_t)(1 << (16 - session->nib.tree_position * session->nib.tree_branching_factor));
-    uint16_t total_leaf_blocks    = session->nib.leaf_blocks + (uint16_t)1;
-    uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * address_block_size);
+    uint8_t  space_exponent       = (uint8_t )(16 - session->nib.tree_position * session->nib.tree_branching_factor);
+    uint8_t  block_exponent       =            space_exponent - session->nib.tree_branching_factor;
+    uint16_t block_size           = (uint16_t)(1 << block_exponent);
+    uint16_t total_leaf_blocks    = (uint16_t)(1 + session->nib.leaf_blocks);
+    uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
 
     if(*block) {
         if(session->nib.router_blocks_allocated < total_blocks - total_leaf_blocks) {
-            *address = session->mib.macShortAddress + total_leaf_addresses + session->nib.router_blocks_allocated * address_block_size;
+            *address = session->mib.macShortAddress + total_leaf_addresses + session->nib.router_blocks_allocated * block_size;
 
             session->nib.router_blocks_allocated++;
         } else {
@@ -56,9 +58,11 @@ int SN_Tree_determine_capacity(SN_Session_t* session, uint16_t* leaf, uint16_t* 
     }
 
     uint16_t total_blocks         = (uint16_t)(1 << session->nib.tree_branching_factor);
-    uint16_t address_block_size   = (uint16_t)(1 << (16 - session->nib.tree_position * session->nib.tree_branching_factor));
-    uint16_t total_leaf_blocks    = (uint16_t)(session->nib.leaf_blocks + 1);
-    uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * address_block_size);
+    uint8_t  space_exponent       = (uint8_t )(16 - session->nib.tree_position * session->nib.tree_branching_factor);
+    uint8_t  block_exponent       =            space_exponent - session->nib.tree_branching_factor;
+    uint16_t block_size           = (uint16_t)(1 << block_exponent);
+    uint16_t total_leaf_blocks    = (uint16_t)(1 + session->nib.leaf_blocks);
+    uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
 
     *leaf  = total_leaf_addresses - session->nib.leaf_addresses_allocated;
     *block = total_blocks - total_leaf_blocks - session->nib.router_blocks_allocated;

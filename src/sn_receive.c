@@ -8,6 +8,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <inttypes.h>
 
 #include "mac_util.h"
 #include "sn_constants.h"
@@ -317,12 +318,17 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
     }
 
     //network_header
+    if(PACKET_ENTRY(*packet, network_header, indication)->req_details) {
+        SN_InfoPrintf("partner has requested our details\n");
+    }
     table_entry->knows_details = (uint8_t)!PACKET_ENTRY(*packet, network_header, indication)->req_details;
 
 
     //node_details_header
     if(PACKET_ENTRY(*packet, node_details_header, indication) != NULL) {
+        SN_InfoPrintf("processing node details header...\n");
         if(!table_entry->details_known) {
+            SN_InfoPrintf("storing public key...\n");
             table_entry->details_known = 1;
             table_entry->public_key    = PACKET_ENTRY(*packet, node_details_header, indication)->signing_key;
         }
@@ -330,6 +336,7 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
 
     //association_header
     if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
+        SN_InfoPrintf("processing association header...\n");
         network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
         association_header_t* association_header = PACKET_ENTRY(*packet, association_header, indication);
         //relationship state is checked in do_public_key_operations
@@ -337,6 +344,7 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
         if(!association_header->dissociate) {
             //association processing
             assert(PACKET_ENTRY(*packet, key_agreement_header, indication) != NULL);
+            SN_InfoPrintf("detected key agreement header\n");
             table_entry->remote_key_agreement_key = PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key;
 
             if(PACKET_ENTRY(*packet, key_confirmation_header, indication) == NULL) {
@@ -345,6 +353,8 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
 
                 table_entry->child  = association_header->child;
                 table_entry->router = association_header->router;
+
+                SN_InfoPrintf("node is%s a %s child\n", (association_header->child ? "" : " not"), (association_header->router ? "router" : "leaf"));
 
                 table_entry->state = SN_Associate_received;
             } else {
@@ -369,7 +379,7 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
                     }
 
                     //set our short address to the one we were just given
-                    SN_InfoPrintf("setting our short address to %#04x...\n", network_header->dst_addr);
+                    SN_InfoPrintf("setting our short address to %#06x...\n", network_header->dst_addr);
                     mac_primitive_t set_primitive;
                     set_primitive.type                              = mac_mlme_set_request;
                     set_primitive.MLME_SET_request.PIBAttribute     = macShortAddress;
@@ -393,6 +403,7 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
 
     //key_confirmation_header
     if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
+        SN_InfoPrintf("processing key confirmation header...\n");
         if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
             //associate_reply
             assert(table_entry->state == SN_Awaiting_reply);
@@ -444,11 +455,13 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
 
     //encrypted_ack_header
     if(PACKET_ENTRY(*packet, encrypted_ack_header, indication) != NULL) {
+        SN_InfoPrintf("processing encrypted acknowledgement header...\n");
         SN_Delayed_acknowledge_encrypted(table_entry, PACKET_ENTRY(*packet, encrypted_ack_header, indication)->counter);
     }
 
     //signed_ack_header
     if(PACKET_ENTRY(*packet, signed_ack_header, indication) != NULL) {
+        SN_InfoPrintf("processing signed acknowledgement header...\n");
         SN_Delayed_acknowledge_signed(table_entry, &PACKET_ENTRY(*packet, signed_ack_header, indication)->signature);
     }
 
@@ -575,6 +588,16 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         }
     }
 
+    if(network_header->src_addr == SN_NO_SHORT_ADDRESS) {
+        SN_WarnPrintf("network header has no address; using MAC-layer header\n");
+        src_addr->type    = packet.contents.MCPS_DATA_indication.SrcAddrMode;
+        src_addr->address = packet.contents.MCPS_DATA_indication.SrcAddr;
+    } else {
+        SN_InfoPrintf("setting source address to %#06x\n", network_header->src_addr);
+        src_addr->type                 = mac_short_address;
+        src_addr->address.ShortAddress = network_header->src_addr;
+    }
+
     SN_InfoPrintf("consulting neighbor table...\n");
     SN_Table_entry_t table_entry = {
         .session       = session,
@@ -586,13 +609,13 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
         if(src_addr->type == mac_short_address) {
-            table_entry.short_address = src_addr->address.ShortAddress;
+            table_entry.short_address = packet.contents.MCPS_DATA_indication.SrcAddr.ShortAddress;
         } else {
-            table_entry.long_address = src_addr->address;
+            table_entry.long_address = packet.contents.MCPS_DATA_indication.SrcAddr;
         }
 
         ret = SN_Table_insert(&table_entry);
-        if(ret != SN_OK) {
+        if(ret != SN_OK && ret != -SN_ERR_UNEXPECTED) {
             SN_ErrPrintf("cannot allocate entry in node table (error %d), aborting.\n", -ret);
             return -SN_ERR_RESOURCES;
         }
@@ -705,14 +728,6 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     }
 
     SN_Table_update(&table_entry);
-
-    if(network_header->src_addr == SN_NO_SHORT_ADDRESS) {
-        src_addr->type    = packet.contents.MCPS_DATA_indication.SrcAddrMode;
-        src_addr->address = packet.contents.MCPS_DATA_indication.SrcAddr;
-    } else {
-        src_addr->type                 = mac_short_address;
-        src_addr->address.ShortAddress = network_header->src_addr;
-    }
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

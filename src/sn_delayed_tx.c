@@ -83,10 +83,12 @@ static int do_packet_transmission(int slot) {
 
     //SrcAddr and SrcAddrMode
     if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
+        SN_InfoPrintf("sending from short address\n");
         SN_DebugPrintf("sending from our short address, %#06x\n", session->mib.macShortAddress);
         packet->MCPS_DATA_request.SrcAddrMode          = mac_short_address;
         packet->MCPS_DATA_request.SrcAddr.ShortAddress = session->mib.macShortAddress;
     } else {
+        SN_InfoPrintf("sending from long address\n");
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_DebugPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
         packet->MCPS_DATA_request.SrcAddrMode = mac_extended_address;
@@ -96,16 +98,19 @@ static int do_packet_transmission(int slot) {
 
     //DstAddr
     //TODO: routing logic goes here
-    if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-        SN_DebugPrintf("sending to short address %#06x\n", table_entry->short_address);
-        packet->MCPS_DATA_request.DstAddrMode          = mac_short_address;
-        packet->MCPS_DATA_request.DstAddr.ShortAddress = table_entry.short_address;
-    } else {
+    //sent to short address if and only if a) we know their short address, and b) we're not sending an association reply with an address
+    if((PACKET_ENTRY(slot_data->packet, association_header, request) != NULL && PACKET_ENTRY(slot_data->packet, key_confirmation_header, request) != NULL && PACKET_ENTRY(slot_data->packet, association_header, request)->child) || table_entry.short_address == SN_NO_SHORT_ADDRESS) {
+        SN_InfoPrintf("sending to long address\n");
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("sending to long address %#018"PRIx64"\n", *(uint64_t*)table_entry->long_address.ExtendedAddress);
+        SN_DebugPrintf("sending to long address %#018"PRIx64"\n", *(uint64_t*)table_entry.long_address.ExtendedAddress);
         packet->MCPS_DATA_request.DstAddrMode = mac_extended_address;
         packet->MCPS_DATA_request.DstAddr     = table_entry.long_address;
         max_payload_size -= 6; //header size increases by 6 bytes if we're using a long address
+    } else {
+        SN_InfoPrintf("sending to short address\n");
+        SN_DebugPrintf("sending to short address %#06x\n", table_entry.short_address);
+        packet->MCPS_DATA_request.DstAddrMode          = mac_short_address;
+        packet->MCPS_DATA_request.DstAddr.ShortAddress = table_entry.short_address;
     }
 
     if(packet->MCPS_DATA_request.msduLength > max_payload_size) {
