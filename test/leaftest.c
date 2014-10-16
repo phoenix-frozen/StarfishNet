@@ -107,7 +107,9 @@ int main(int argc, char* argv[]) {
 
     printf("Attempting to receive acknowledgement...\n");
 
-    ret = SN_Receive(&network_session, &address, test_message, sizeof(SN_Message_t) + 5);
+    do {
+        ret = SN_Receive(&network_session, &address, test_message, sizeof(SN_Message_t) + 5);
+    } while (ret != SN_OK && ret != -SN_ERR_RADIO);
 
     if(ret != SN_OK) {
         printf("Acknowledgement receive failed: %d\n", -ret);

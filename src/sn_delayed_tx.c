@@ -62,6 +62,11 @@ static int do_packet_transmission(int slot) {
         return ret;
     }
 
+    if(table_entry.unavailable) {
+        SN_ErrPrintf("lost contact with remote node; transmissions will resume when we find it again\n");
+        return -SN_ERR_DISCONNECTED;
+    }
+
     uint8_t max_payload_size = aMaxMACPayloadSize - 2;
     /* aMaxMACPayloadSize is for a packet with a short destination address, and no source addressing
      * information. we always send a source address, which is at least 2 byte long

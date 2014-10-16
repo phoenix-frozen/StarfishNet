@@ -429,7 +429,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     if(message != NULL) {
         header->evidence                   = (uint8_t)(message->type == SN_Evidence_message);
     }
-    header->ack                            = (uint8_t)(table_entry.ack && header->encrypt);
+    header->ack                            = (uint8_t)((table_entry.ack && header->encrypt) || message == NULL);
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
 

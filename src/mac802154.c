@@ -574,13 +574,13 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
                     assert(attribute_length == PIBAttributeSize);
 
                     if(!(attribute_length == PIBAttributeSize)) {
-                        return 0;
+                        return -1;
                     }
                 }
             } else {
                 assert(PIBAttributeSize != 0);
                 if(PIBAttributeSize == 0) {
-                    return 0;
+                    return -1;
                 }
 
                 attribute_length = PIBAttributeSize;
@@ -663,7 +663,7 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
         }
 
         default:
-            return 0;
+            return -1;
     }
 
     assert(chunk_size < sizeof(mac_primitive_t));
@@ -711,10 +711,10 @@ int mac_receive_timeout(mac_session_handle_t session, mac_primitive_t* primitive
 
     if(ret == -1) {
         return -SN_ERR_RADIO;
-    } else if(ret) {
-        return mac_receive(session, primitive);
-    } else {
+    } else if(ret == 0) {
         return 0;
+    } else {
+        return mac_receive(session, primitive);
     }
 }
 
@@ -737,27 +737,34 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
     GUARANTEE_STRUCT_SIZE(primitive_header, 5);
 
     //Read header, which consists of 4B timestamp, and 1B length
-    if(read(session.fd, &primitive_header, sizeof(primitive_header)) != sizeof(primitive_header)) {
-        //Header read failed
-        return 0;
+    size_t toread = sizeof(primitive_header);
+    while(toread > 0) {
+        ssize_t ret = read(session.fd, (uint8_t*)&primitive_header + (sizeof(primitive_header) - toread), toread);
+
+        if(ret < 0) {
+            //Header read failed
+            return -SN_ERR_RADIO;
+        }
+
+        toread -= ret;
     }
 
     //check data size, and abort if if would be too large or too small
     assert(primitive_header.length > 0);
     assert(primitive_header.length <= sizeof(mac_primitive_t));
     if(primitive_header.length == 0 || primitive_header.length > sizeof(mac_primitive_t)) {
-        return 0;
+        return -1;
     }
 
     //Read primitive itself to a temporary buffer for decoding
     memset(buffer, 0, sizeof(mac_primitive_t));
-    unsigned int bytes_read = 0;
+    size_t bytes_read = 0;
     while(bytes_read < primitive_header.length) {
         ssize_t retval = read(session.fd, buffer + bytes_read, primitive_header.length - bytes_read);
 
         assert(retval > 0);
         if(retval < 0) {
-            return 0;
+            return -1;
         }
 
         bytes_read += retval;
@@ -800,10 +807,10 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
                 memcpy(SrcAddr.ExtendedAddress, &data[2], 8);
                 data += 10;
             } else {
-                assert(SrcAddrMode == mac_no_address);
-                //if we get a weird address mode, die and send back the raw bytes
+                //assert(SrcAddrMode == mac_no_address);
+                //if we get a weird address mode, die
                 if(SrcAddrMode != mac_no_address) {
-                    goto raw;
+                    return -1;
                 }
             }
 
@@ -816,18 +823,18 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
                 memcpy(DstAddr.ExtendedAddress, &data[2], 8);
                 data += 10;
             } else {
-                assert(DstAddrMode == mac_no_address);
-                //if we get a weird address mode, die and send back the raw bytes
+                //assert(DstAddrMode == mac_no_address);
+                //if we get a weird address mode, die
                 if(DstAddrMode != mac_no_address) {
-                    goto raw;
+                    return -1;
                 }
             }
 
             msduLength = data[0];
-            assert(msduLength == primitive_header.length - ((data - buffer) + 1 + 2));
+            //assert(msduLength == primitive_header.length - ((data - buffer) + 1 + 2));
             if(msduLength != primitive_header.length - ((data - buffer) + 1 + 2)) {
-                //if this expression doesn't hold, we have a malformed packet. die and send back the raw bytes
-                goto raw;
+                //if this expression doesn't hold, we have a malformed packet. die
+                return -1;
             }
             memcpy(msdu, data + 1, msduLength);
             data += msduLength + 1;
@@ -863,7 +870,7 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
             uint8_t* data = buffer + 1;
 
             if(primitive_header.length < 17) {
-                return 0;
+                return -1;
             }
 
             i = 0;
@@ -871,7 +878,7 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
             i += extract_pan_descriptor(&data[i], &PANDescriptor);
             if(i == 1) {
                 /* PAN descriptor was invalid */
-                return 0;
+                return -1;
             }
             PendAddrSpec.raw = data[i++];
             for(int j = 0; j < PendAddrSpec.Short; j++) {
@@ -886,7 +893,7 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
             sduLength = data[i++];
             assert(sduLength <= primitive_header.length - i);
             if(sduLength > primitive_header.length - i) {
-                return 0;
+                return -1;
             }
             memcpy(sdu, &data[i], sduLength);
 #undef BSN
@@ -934,8 +941,7 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
 
                 default:
                     //this should be impossible
-                    assert(0);
-                    return 0;
+                    return -1;
             }
             break;
         }
@@ -1103,17 +1109,10 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
         }
 
         default:
-            goto raw;
+            return -1;
     }
 
     return primitive_header.length;
-
-    raw:
-#ifdef MAC_DEBUG
-    printf("%s: copying raw...\n", __FUNCTION__);
-#endif
-    memcpy(primitive->raw_data, buffer, primitive_header.length);
-    return -primitive_header.length;
 }
 
 
@@ -1139,16 +1138,16 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
 int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, const mac_primitive_type_t* primitive_types, unsigned int primitive_type_count) {
     assert(primitive != NULL);
 
-    int rev = mac_receive(session, primitive);
+    int ret = mac_receive(session, primitive);
 
-    if(rev == 0) { //on error die
-        return -1;
+    if(ret < 0) { //on error die
+        return ret;
     }
 
     //if it matches any of the requested types, return
     for(int i = 0; i < primitive_type_count; i++)
         if(primitive->type == primitive_types[i]) {
-            return rev;
+            return ret;
         }
 
 #ifdef MAC_DEBUG
@@ -1163,23 +1162,19 @@ int mac_receive_primitive_exactly(mac_session_handle_t session, const mac_primit
     assert(primitive != NULL);
 
     mac_primitive_t temp;
-    int             rev = mac_receive_primitive_type(session, &temp, primitive->type); //XXX: is this a bug?
+    int             ret = mac_receive_primitive_type(session, &temp, primitive->type); //XXX: is this a bug?
 
-    if(rev == 0) { //on error die
+    if(ret <= 0) { //on error die
         return -1;
     }
 
-    if(rev < 0) { //if we don't understand the thing, who cares
-        rev = -rev;
-    }
-
-    if(memcmp(&temp, primitive, rev)) {
+    if(memcmp(&temp, primitive, ret)) {
         //they're different
 #ifdef MAC_DEBUG
         printf("wanted: ");
-        mac_print_primitive((uint8_t*)primitive, rev);
+        mac_print_primitive((uint8_t*)primitive, ret);
         printf("got   : ");
-        mac_print_primitive((uint8_t*)&temp, rev);
+        mac_print_primitive((uint8_t*)&temp, ret);
 #endif
         return 0;
     } else {

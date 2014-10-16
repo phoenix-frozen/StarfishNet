@@ -545,14 +545,17 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         SN_Delayed_tick();
     }
 
-    //TODO: this just skips things that aren't packets. fix
-    if(packet.contents.type != mac_mcps_data_indication) {
-        return SN_Receive(session, src_addr, buffer, buffer_size);
+    if(ret < 0) {
+        SN_ErrPrintf("packet receive failed with %d\n", ret);
+        if(ret == -SN_ERR_RADIO) {
+            SN_ErrPrintf("radio has died.\n");
+            return -SN_ERR_RADIO;
+        }
     }
 
-    if(ret <= 0) {
-        SN_ErrPrintf("packet receive failed with %d\n", ret);
-        return -SN_ERR_RADIO;
+    //TODO: this just skips things that aren't packets. fix
+    if(ret < -1 || packet.contents.type != mac_mcps_data_indication) {
+        return SN_Receive(session, src_addr, buffer, buffer_size);
     }
 
     //print some debugging information
@@ -676,6 +679,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     table_entry.unavailable = 0;
 
+    SN_Message_t* association_request = NULL;
+
     if(PACKET_ENTRY(packet, association_header, indication) != NULL &&
        //we have an association header, and...
        !(PACKET_ENTRY(packet, association_header, indication)->dissociate &&
@@ -687,7 +692,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         SN_InfoPrintf("received association/dissociation request; synthesising appropriate message...\n");
 
         //the association request will be the first of two message
-        SN_Message_t* association_request = buffer;
+        association_request = buffer;
 
         //advance the buffer by one association message
         buffer = (SN_Message_t*)((uint8_t*)buffer + sizeof(buffer->association_message));
@@ -705,7 +710,9 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     SN_InfoPrintf("processing packet...\n");
     uint8_t* payload_data = PACKET_ENTRY(packet, payload_data, indication);
-    if(payload_data != NULL) {
+    if(packet.layout.payload_length != 0) {
+        assert(payload_data != NULL);
+
         table_entry.ack = (uint8_t)(PACKET_ENTRY(packet, encryption_header, indication) != NULL);
         if(network_header->evidence) {
             //evidence packet
@@ -745,6 +752,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
                 memcpy(buffer->data_message.payload, payload_data, packet.layout.payload_length);
             }
         }
+    } else if(association_request != NULL) {
+        association_request->association_message.stapled_data = NULL;
     }
 
     SN_Table_update(&table_entry);

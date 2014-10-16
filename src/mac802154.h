@@ -505,7 +505,6 @@ void                 mac_destroy(mac_session_handle_t session);
  *
  * RETURNS
  *  n - Size of transmitted primitive.
- *  0 - If primitive cannot be decoded.
  *  -1 - If an error occurs while trying to write to the radio.
  */
 int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive);
@@ -516,8 +515,8 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive);
  *
  * RETURNS
  *  n - Size of received primitive.
- *  0 - If an error occurs while trying to read the primitive.
- *  -n - -size of received primitive, if primitive is received but cannot be decoded. (The data structure will be filled with the raw bytes.)
+ *  0 - If a timeout occurs.
+ *  -n - An error occurred; n is some kind of error code.
  */
 int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive);
 int mac_receive_timeout(mac_session_handle_t session, mac_primitive_t* primitive, struct timeval* timeout);
@@ -528,7 +527,6 @@ int mac_receive_timeout(mac_session_handle_t session, mac_primitive_t* primitive
  *
  * RETURNS
  *  n - Size of received primitive.
- *  0 - If an error occurs while trying to read the primitive.
  *  -1 - If an error occurs while trying to read the primitive.
  */
 int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* primitive, mac_primitive_type_t primitive_type);
@@ -539,7 +537,6 @@ int mac_receive_primitive_type(mac_session_handle_t session, mac_primitive_t* pr
  *
  * RETURNS
  *  n - Size of received primitive.
- *  0 - If an error occurs while trying to read the primitive.
  *  -1 - If an error occurs while trying to read the primitive.
  */
 int mac_receive_primitive_types(mac_session_handle_t session, mac_primitive_t* primitive, const mac_primitive_type_t* primitive_types, unsigned int primitive_type_count);

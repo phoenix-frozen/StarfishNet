@@ -404,17 +404,17 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         do {
             //wait for data...
             ret = SN_Receive(session, &address, message, sizeof(message_data));
-        } while (ret != -SN_ERR_RADIO && !(address.type == mac_short_address && address.address.ShortAddress == network->router_address)); //... from our parent
+        } while(ret != SN_ERR_RADIO || !(ret == SN_OK && address.type == mac_short_address &&
+            address.address.ShortAddress == network->router_address));
+            //... from our parent
 
-        if(ret == SN_OK) {
-            //received a message from our parent
-            if(message->type != SN_Association_request) {
-                //received something not an association request; we probably need to abort
-                ret = -SN_ERR_DISCONNECTED;
-                SN_ErrPrintf("reply from parent was not an association message\n");
+        //received a message from our parent
+        if(message->type != SN_Association_request) {
+            //received something not an association request; we probably need to abort
+            ret = -SN_ERR_DISCONNECTED;
+            SN_ErrPrintf("reply from parent was not an association message\n");
 
-                //XXX: this code precludes stapled data in an associate_reply
-            }
+            //XXX: this code precludes stapled data in an associate_reply
         }
     }
 

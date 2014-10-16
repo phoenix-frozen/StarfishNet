@@ -249,8 +249,12 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
 }
 
 int SN_Table_lookup_by_public_key(SN_Public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
-    if(public_key == NULL || entry == NULL || entry->session == NULL) {
+    if(entry == NULL || entry->session == NULL) {
         return -SN_ERR_NULL;
+    }
+
+    if(public_key == NULL) {
+        public_key = &entry->public_key;
     }
 
     int ret = lookup_by_public_key(entry->session->table_entries, public_key);
