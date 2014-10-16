@@ -318,10 +318,17 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
     }
 
     //network_header
-    if(PACKET_ENTRY(*packet, network_header, indication)->req_details) {
+    network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
+    assert(network_header != NULL);
+    if(network_header->req_details) {
         SN_InfoPrintf("partner has requested our details\n");
     }
     table_entry->knows_details = (uint8_t)!PACKET_ENTRY(*packet, network_header, indication)->req_details;
+    if(network_header->src_addr != SN_NO_SHORT_ADDRESS) {
+        //if the remote node has a short address, we can erase its MAC address from memory
+        SN_InfoPrintf("short address is known; erasing long address\n");
+        memset(table_entry->long_address.ExtendedAddress, 0, sizeof(table_entry->long_address.ExtendedAddress));
+    }
 
 
     //node_details_header
@@ -337,7 +344,6 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
     //association_header
     if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
         SN_InfoPrintf("processing association header...\n");
-        network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
         association_header_t* association_header = PACKET_ENTRY(*packet, association_header, indication);
         //relationship state is checked in do_public_key_operations
         //signature is checked in do_public_key_operations
@@ -535,7 +541,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         struct timeval tv = { .tv_usec = session->nib.tx_retry_timeout * 1000 };
         (ret = mac_receive_timeout(session->mac_session, &packet.contents, &tv)) == 0;
         tv.tv_sec = 0, tv.tv_usec = session->nib.tx_retry_timeout * 1000) {
-        SN_InfoPrintf("receive timed out; ticking...\n");
+        SN_DebugPrintf("receive timed out; ticking...\n");
         SN_Delayed_tick();
     }
 
