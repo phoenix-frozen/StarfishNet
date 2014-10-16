@@ -527,8 +527,22 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     packet_t packet;
     SN_InfoPrintf("receiving packet...\n");
-    //TODO: switch to a raw mac_receive() and do network-layer housekeeping (including retransmission)
-    int ret = mac_receive_primitive_type(session->mac_session, &packet.contents, mac_mcps_data_indication);
+
+    int ret;
+
+    //do network-layer housekeeping (mainly retransmission)
+    for(
+        struct timeval tv = { .tv_usec = session->nib.tx_retry_timeout * 1000 };
+        (ret = mac_receive_timeout(session->mac_session, &packet.contents, &tv)) == 0;
+        tv.tv_sec = 0, tv.tv_usec = session->nib.tx_retry_timeout * 1000) {
+        SN_InfoPrintf("receive timed out; ticking...\n");
+        SN_Delayed_tick();
+    }
+
+    //TODO: this just skips things that aren't packets. fix
+    if(packet.contents.type != mac_mcps_data_indication) {
+        return SN_Receive(session, src_addr, buffer, buffer_size);
+    }
 
     if(ret <= 0) {
         SN_ErrPrintf("packet receive failed with %d\n", ret);

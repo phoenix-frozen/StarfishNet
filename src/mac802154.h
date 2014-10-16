@@ -45,6 +45,7 @@
 #define __MAC802154_H__
 
 #include "mac802154_types.h"
+#include <sys/time.h>
 
 /* MCPS-DATA.request TxOptions flags */
 #define MAC_TX_OPTION_ACKNOWLEDGED              0x01
@@ -519,7 +520,7 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive);
  *  -n - -size of received primitive, if primitive is received but cannot be decoded. (The data structure will be filled with the raw bytes.)
  */
 int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive);
-int mac_receive_timeout(mac_session_handle_t session, mac_primitive_t* primitive, uint32_t timeout);
+int mac_receive_timeout(mac_session_handle_t session, mac_primitive_t* primitive, struct timeval* timeout);
 
 /*
  * DESCRIPTION

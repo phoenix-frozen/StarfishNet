@@ -49,6 +49,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <sys/select.h>
+
 #include "mac802154.h"
 #include "sn_status.h"
 
@@ -677,18 +679,43 @@ int mac_transmit(mac_session_handle_t session, mac_primitive_t* primitive) {
     mac_print_primitive (buffer + 1, buffer[0]);
 #endif
 
-    int bytes_written = 0;
+    size_t bytes_written = 0;
     while(bytes_written < chunk_size) {
-        int retval = write(session.fd, buffer + bytes_written, chunk_size - bytes_written);
+        ssize_t retval = write(session.fd, buffer + bytes_written, chunk_size - bytes_written);
         assert(retval > 0);
         if(retval < 0) {
-            return retval;
+            return (int)retval;
         }
         bytes_written += retval;
     }
     assert(bytes_written == chunk_size);
 
-    return bytes_written;
+    return (int)bytes_written;
+}
+
+int mac_receive_timeout(mac_session_handle_t session, mac_primitive_t* primitive, struct timeval* timeout) {
+    assert(MAC_IS_SESSION_VALID(session));
+    if(!MAC_IS_SESSION_VALID(session)) {
+        return -SN_ERR_NULL;
+    }
+    assert(primitive != NULL);
+    if(primitive == NULL) {
+        return -SN_ERR_NULL;
+    }
+
+    fd_set fdset;
+    FD_ZERO(&fdset);
+    FD_SET(session.fd, &fdset);
+
+    int ret = select(session.fd + 1, &fdset, NULL, NULL, timeout);
+
+    if(ret == -1) {
+        return -SN_ERR_RADIO;
+    } else if(ret) {
+        return mac_receive(session, primitive);
+    } else {
+        return 0;
+    }
 }
 
 int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
@@ -724,9 +751,9 @@ int mac_receive(mac_session_handle_t session, mac_primitive_t* primitive) {
 
     //Read primitive itself to a temporary buffer for decoding
     memset(buffer, 0, sizeof(mac_primitive_t));
-    int bytes_read = 0;
+    unsigned int bytes_read = 0;
     while(bytes_read < primitive_header.length) {
-        int retval = read(session.fd, buffer + bytes_read, primitive_header.length - bytes_read);
+        ssize_t retval = read(session.fd, buffer + bytes_read, primitive_header.length - bytes_read);
 
         assert(retval > 0);
         if(retval < 0) {

@@ -39,8 +39,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    network_session.nib.tx_retry_timeout = 2;
-
     printf("Init complete. Printing MAC address:\n");
 
     printf("MAC address is %#018"PRIx64"\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);
@@ -69,8 +67,6 @@ int main(int argc, char* argv[]) {
     uint8_t message_data[RECEIVE_BUFFER_SIZE];
 
     while(ret != -SN_ERR_RADIO) {
-        SN_Tick();
-
         SN_Message_t* message = (SN_Message_t*)message_data;
 
         printf("Receiving message...\n");

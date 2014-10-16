@@ -142,10 +142,6 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     SN_InfoPrintf("exit\n");
 }
 
-void SN_Tick() { //inform the network stack that a time tick has occurred
-    return SN_Delayed_tick();
-}
-
 static void struct_checks() __attribute__((unused));
 static void struct_checks() {
     SN_Message_t message;

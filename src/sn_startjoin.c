@@ -403,7 +403,6 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         SN_InfoPrintf("waiting for association reply...\n");
         do {
             //wait for data...
-            SN_Tick();
             ret = SN_Receive(session, &address, message, sizeof(message_data));
         } while (ret != -SN_ERR_RADIO && !(address.type == mac_short_address && address.address.ShortAddress == network->router_address)); //... from our parent
 

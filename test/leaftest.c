@@ -43,8 +43,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    network_session.nib.tx_retry_timeout = 2;
-
     printf("Init complete. Printing MAC address:\n");
 
     printf("MAC address is %#018"PRIx64"\n", *(uint64_t*)network_session.mib.macIEEEAddress.ExtendedAddress);

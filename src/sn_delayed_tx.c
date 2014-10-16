@@ -25,7 +25,6 @@ typedef struct transmission_slot {
     };
 
     unsigned int retries;
-    unsigned int ticks_remaining;
 
     SN_Session_t* session;
 
@@ -372,13 +371,7 @@ void SN_Delayed_tick() {
         if(slot->allocated && slot->valid && slot->retries < slot->session->nib.tx_retry_limit) {
             SN_InfoPrintf("doing retransmission processing for slot %d\n", i);
 
-            slot->ticks_remaining--;
-            slot->retries++;
-            if(slot->ticks_remaining == 0) {
-                SN_InfoPrintf("doing retransmission %d\n", slot->retries);
-                do_packet_transmission(i);
-            }
-            slot->ticks_remaining = slot->session->nib.tx_retry_timeout;
+            do_packet_transmission(i);
 
             if(slot->retries >= slot->session->nib.tx_retry_limit) {
                 SN_ErrPrintf("slot %d has reached its retry limit\n", i);
