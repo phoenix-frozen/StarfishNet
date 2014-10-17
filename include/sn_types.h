@@ -9,7 +9,7 @@
 #define SN_PK_key_bits  160
 #define SN_AES_key_bits 128 //mandated by IEEE 802.15.4
 #define SN_Hash_bits    160
-#define SN_Tag_bits     128
+#define SN_Tag_bits      64 //matches IEEE 802.15.4 required security mode
 
 #define SN_PK_key_size    (SN_PK_key_bits/8)
 #define SN_AES_block_size (128/8) //mandated by AES
