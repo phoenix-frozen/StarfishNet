@@ -395,10 +395,12 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
                     MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macShortAddress_set_confirm);
                     session->mib.macShortAddress             = network_header->dst_addr;
 
-                    int ret = SN_Beacon_update(session);
-                    if(ret != SN_OK) {
-                        SN_ErrPrintf("beacon update failed: %d\n", -ret);
-                        return ret;
+                    if(session->nib.enable_routing) {
+                        int ret = SN_Beacon_update(session);
+                        if(ret != SN_OK) {
+                            SN_ErrPrintf("beacon update failed: %d\n", -ret);
+                            return ret;
+                        }
                     }
                 }
             }
