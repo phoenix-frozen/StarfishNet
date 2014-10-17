@@ -542,7 +542,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         (ret = mac_receive_timeout(session->mac_session, &packet.contents, &tv)) == 0;
         tv.tv_sec = 0, tv.tv_usec = session->nib.tx_retry_timeout * 1000) {
         SN_DebugPrintf("receive timed out; ticking...\n");
-        SN_Delayed_tick();
+        SN_Delayed_tick(1);
     }
 
     if(ret < 0) {
@@ -651,6 +651,11 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     ret = do_security_checks(&table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in packet security checks. aborting\n", -ret);
+        //certain security check failures could come from a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
+        if(-ret == SN_ERR_UNEXPECTED) {
+            SN_WarnPrintf("possible retransmission bug; triggering retransmission\n");
+            SN_Delayed_tick(0);
+        }
         return ret;
     }
 
@@ -666,6 +671,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, table_entry.packet_rx_counter++, &packet);
         if(ret != SN_OK) {
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
+            //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
+            SN_Delayed_tick(0);
             return ret;
         }
     }

@@ -2,6 +2,7 @@
 #define __SN_DELAYED_TX_H__
 
 #include <sn_table.h>
+#include <stdbool.h>
 #include "mac802154.h"
 
 #include "sn_txrx.h"
@@ -19,7 +20,7 @@ int SN_Delayed_acknowledge_signed(SN_Table_entry_t* table_entry, SN_Signature_t*
 int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* packet);
 
 //tell the retransmission subsystem that a time tick has elapsed
-void SN_Delayed_tick();
+void SN_Delayed_tick(bool count_towards_disconnection);
 
 //inform the retransmission subsystem that a session is being cleared
 void SN_Delayed_clear(SN_Session_t* session);

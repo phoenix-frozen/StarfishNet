@@ -208,6 +208,7 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
     slot_data->packet      = *packet;
     slot_data->valid       = 1;
     slot_data->counter     = counter;
+    slot_data->retries     = 0;
 
     int ret = do_packet_transmission(slot);
 
@@ -217,7 +218,7 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
         return ret;
     }
 
-    if((PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL || PACKET_ENTRY(*packet, signed_ack_header, request) != NULL) && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
+    if(PACKET_ENTRY(*packet, key_confirmation_header, request) == NULL && (PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL || PACKET_ENTRY(*packet, signed_ack_header, request) != NULL) && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
         //this is a pure acknowledgement packet
         SN_InfoPrintf("just sent pure acknowledgement packet; not performing retransmissions\n");
         slot_data->allocated = 0;
@@ -369,29 +370,40 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
     return -SN_ERR_UNKNOWN;
 }
 
-void SN_Delayed_tick() {
+void SN_Delayed_tick(bool count_towards_disconnection) {
+    SN_InfoPrintf("enter\n");
+
     for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
         transmission_slot_t* slot = &transmission_queue[i];
 
-        if(slot->allocated && slot->valid && slot->retries < slot->session->nib.tx_retry_limit) {
+        if(slot->allocated && slot->valid) {
             SN_InfoPrintf("doing retransmission processing for slot %d\n", i);
 
-            do_packet_transmission(i);
+            if(count_towards_disconnection ? slot->retries < slot->session->nib.tx_retry_limit : 1) {
+                do_packet_transmission(i);
+            }
 
-            if(slot->retries >= slot->session->nib.tx_retry_limit) {
-                SN_ErrPrintf("slot %d has reached its retry limit\n", i);
-                SN_Table_entry_t table_entry = {
-                    .session = slot->session,
-                };
-                if(SN_Table_lookup_by_public_key(&slot->destination, &table_entry, NULL) == SN_OK) {
-                    table_entry.unavailable = 1;
-                    SN_Table_update(&table_entry);
+            if(count_towards_disconnection) {
+                slot->retries++;
+                if(slot->retries >= slot->session->nib.tx_retry_limit) {
+                    SN_ErrPrintf("slot %d has reached its retry limit\n", i);
+                    SN_Table_entry_t table_entry = {
+                        .session = slot->session,
+                    };
+                    if(SN_Table_lookup_by_public_key(&slot->destination, &table_entry, NULL) == SN_OK) {
+                        table_entry.unavailable = 1;
+                        SN_Table_update(&table_entry);
+                    }
                 }
+            } else {
+                slot->retries = 1;
             }
 
             SN_InfoPrintf("retransmission processing for slot %d done\n", i);
         }
     }
+
+    SN_InfoPrintf("exit\n");
 }
 
 void SN_Delayed_clear(SN_Session_t* session) {
@@ -405,6 +417,7 @@ void SN_Delayed_clear(SN_Session_t* session) {
 
         if(slot->allocated && slot->valid) {
             if(slot->session == session) {
+                slot->valid = 0;
                 slot->allocated = 0;
             }
         }

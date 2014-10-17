@@ -400,11 +400,26 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         uint8_t message_data[sizeof(message->data_message) + SN_MAX_DATA_MESSAGE_LENGTH]; //XXX: this won't segfault
         message = (SN_Message_t*)message_data;
 
-        SN_InfoPrintf("waiting for association reply...\n");
+        SN_InfoPrintf("waiting for association reply from %#06x...\n", network->router_address);
         do {
             //wait for data...
             ret = SN_Receive(session, &address, message, sizeof(message_data));
-        } while(ret != SN_ERR_RADIO || !(ret == SN_OK && address.type == mac_short_address &&
+            if(ret == SN_OK) {
+                switch(address.type) {
+                    case mac_extended_address:
+                        SN_InfoPrintf("received from (long) %#18"PRIx64"\n", *(uint64_t*)address.address.ExtendedAddress);
+                        break;
+
+                    case mac_short_address:
+                        SN_InfoPrintf("received from (short) %#06x\n", address.address.ShortAddress);
+                        break;
+
+                    default:
+                        SN_ErrPrintf("packet address is bullshit\n");
+                        break;
+                }
+            }
+        } while(ret != SN_ERR_RADIO && !(ret == SN_OK && address.type == mac_short_address &&
             address.address.ShortAddress == network->router_address));
             //... from our parent
 

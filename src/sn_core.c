@@ -11,7 +11,7 @@
 #include <string.h>
 
 //network configuration defaults
-#define DEFAULT_TX_RETRY_LIMIT 3
+#define DEFAULT_TX_RETRY_LIMIT 5
 #define DEFAULT_TX_RETRY_TIMEOUT 2500
 
 //copies the configuration out of session into the space provided. anything but session can be NULL
