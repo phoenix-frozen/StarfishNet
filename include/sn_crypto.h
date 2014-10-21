@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #include "sn_types.h"
 
@@ -49,7 +50,8 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     size_t           ad_len,
     uint8_t*         data,
     size_t           data_len,
-    uint8_t*         tag
+    uint8_t*         tag,
+    bool             pure_ack
 );
 
 int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
@@ -60,7 +62,8 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     size_t           ad_len,
     uint8_t*         data,
     size_t           data_len,
-    uint8_t*         tag
+    uint8_t*         tag,
+    bool             pure_ack
 );
 
 int SN_Crypto_add_certificate ( //add a certificate to a storage repository. implicitly calls SN_Crypto_check_certificate on it first

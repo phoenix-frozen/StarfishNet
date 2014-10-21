@@ -133,7 +133,7 @@ void SN_Crypto_hash(uint8_t* data, size_t data_len, SN_Hash_t* hash, size_t repe
 
 #define CCM_MAX_IV_LENGTH 12
 
-int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
+int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag, bool pure_ack) {
     SN_InfoPrintf("enter\n");
 
     if(key == NULL || key_agreement_key == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
@@ -155,6 +155,10 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
     sha1_starts( &iv_ctx );
     sha1_update( &iv_ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
     sha1_update( &iv_ctx, (uint8_t*)&counter, sizeof(counter));
+    if(pure_ack) {
+        //this is to prevent IV reuse without requiring retransmission of pure-ack packets
+        sha1_update( &iv_ctx, (uint8_t*)"ACK", 3);
+    }
     sha1_finish( &iv_ctx, iv.data );
     sha1_free( &iv_ctx );
 
@@ -172,7 +176,7 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
     return SN_OK;
 }
 
-int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag) {
+int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag, bool pure_ack) {
     SN_InfoPrintf("enter\n");
 
     if(key == NULL || key_agreement_key == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
@@ -194,6 +198,10 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
     sha1_starts( &iv_ctx );
     sha1_update( &iv_ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
     sha1_update( &iv_ctx, (uint8_t*)&counter, sizeof(counter));
+    if(pure_ack) {
+        //this is to prevent IV reuse without requiring retransmission of pure-ack packets
+        sha1_update( &iv_ctx, (uint8_t*)"ACK", 3);
+    }
     sha1_finish( &iv_ctx, iv.data );
     sha1_free( &iv_ctx );
 

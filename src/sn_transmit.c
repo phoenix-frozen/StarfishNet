@@ -67,7 +67,7 @@
 static MAC_SET_CONFIRM(macShortAddress);
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
-static int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet) {
+static int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack) {
     SN_DebugPrintf("enter\n");
 
     if(link_key == NULL || key_agreement_key == NULL || packet == NULL) {
@@ -90,7 +90,7 @@ static int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* 
         packet->contents.MCPS_DATA_request.msdu, packet->layout.encryption_header,
         packet->contents.MCPS_DATA_request.msdu + skip_size,
         packet->contents.MCPS_DATA_request.msduLength - skip_size,
-        encryption_header->tag);
+        encryption_header->tag, pure_ack);
     if(ret != SN_OK) {
         SN_ErrPrintf("Packet encryption failed with %d, aborting\n", -ret);
         return -SN_ERR_SECURITY;
@@ -461,8 +461,17 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     }
 
     SN_InfoPrintf("beginning packet crypto...\n");
-    uint32_t encryption_counter = table_entry.packet_tx_counter++;
-    ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet);
+    uint32_t encryption_counter = table_entry.packet_tx_counter;
+    bool pure_ack = 0;
+
+    if(PACKET_ENTRY(packet, key_confirmation_header, request) == NULL && PACKET_ENTRY(packet, encrypted_ack_header, request) != NULL && PACKET_ENTRY(packet, payload_data, request) == NULL) {
+        //this is a pure-acknowledgement packet; don't change the counter
+        pure_ack = 1;
+    } else {
+        table_entry.packet_tx_counter++;
+    }
+
+    ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet, pure_ack);
     if(ret != SN_OK) {
         SN_ErrPrintf("packet crypto failed with %d\n", -ret);
         return ret;
@@ -635,9 +644,11 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     uint32_t encryption_counter = 0;
 
     if(header->encrypt) {
+        //XXX: header->encrypt is always false here, so this never gets executed. it's worth leaving in tho, in case rekeying is ever implemented
         SN_InfoPrintf("encrypting packet...\n");
         encryption_counter = table_entry.packet_tx_counter++;
-        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet);
+        //XXX: also, an association packet is never a pure-ack
+        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet, 0);
         if(ret != SN_OK) {
             SN_ErrPrintf("packet crypto failed with %d\n", -ret);
             return ret;
