@@ -1,9 +1,9 @@
 StarfishNet
 ===========
 
-This is the Starfish protocol.  Named for the neurological independence of the
-limbs of a starfish from the rest of the animal; nonetheless, the limbs and CNS
-visibly and functionally form part of a single, coherent body.
+This is the StarfishNet protocol.  Named for the neurological independence of
+the limbs of a starfish from the rest of the animal; nonetheless, the limbs and
+CNS visibly and functionally form part of a single, coherent body.
 
 StarfishNet works the same way.  Much as in other 802.15.4-based wireless
 sensor network protocols, there is a single coordinator node at the centre of
