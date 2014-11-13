@@ -1,6 +1,20 @@
 #ifndef __SN_LOGGING_H__
 #define __SN_LOGGING_H__
 
+/* If debugging is turned on, set a default debug level.
+ * If it isn't, but a debug level it set, turn it on.
+ */
+#ifdef SN_DEBUG
+#ifndef SN_DEBUG_LEVEL
+#define SN_DEBUG_LEVEL 3
+#endif //SN_DEBUG_LEVEL
+#else //SN_DEBUG
+#ifdef SN_DEBUG_LEVEL
+#warning "Debugging is turned off, but a debug level is set. Turning debugging on."
+#define SN_DEBUG
+#endif //SN_DEBUG_LEVEL
+#endif //SN_DEBUG
+
 #ifdef SN_DEBUG
 #include <stdio.h>
 #define SN_Printf(level, fmt, x...) fprintf(stderr, "SN_" level " %s: " fmt, __FUNCTION__, ##x)
@@ -12,10 +26,6 @@
 #define SN_WarnPrintf(x...)
 #define SN_InfoPrintf(x...)
 #define SN_DebugPrintf(x...)
-
-#ifndef SN_DEBUG_LEVEL
-#define SN_DEBUG_LEVEL 3
-#endif //SN_DEBUG_LEVEL
 
 #if (SN_DEBUG_LEVEL > 0)
 #undef SN_ErrPrintf

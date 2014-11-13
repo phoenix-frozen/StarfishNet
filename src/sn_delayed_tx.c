@@ -1,4 +1,6 @@
 #include "sn_delayed_tx.h"
+#include "sn_queued_rx.h"
+#include "mac_util.h"
 
 #include <sn_status.h>
 #include <sn_logging.h>
@@ -87,14 +89,12 @@ static int do_packet_transmission(int slot) {
 
     //SrcAddr and SrcAddrMode
     if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
-        SN_InfoPrintf("sending from short address\n");
-        SN_DebugPrintf("sending from our short address, %#06x\n", session->mib.macShortAddress);
+        SN_InfoPrintf("sending from our short address, %#06x\n", session->mib.macShortAddress);
         packet->MCPS_DATA_request.SrcAddrMode          = mac_short_address;
         packet->MCPS_DATA_request.SrcAddr.ShortAddress = session->mib.macShortAddress;
     } else {
-        SN_InfoPrintf("sending from long address\n");
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
+        SN_InfoPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
         packet->MCPS_DATA_request.SrcAddrMode = mac_extended_address;
         packet->MCPS_DATA_request.SrcAddr     = session->mib.macIEEEAddress;
         max_payload_size -= 6; //header size increases by 6 bytes if we're using a long address
@@ -104,15 +104,13 @@ static int do_packet_transmission(int slot) {
     //TODO: routing logic goes here
     //sent to short address if and only if a) we know their short address, and b) we're not sending an association reply with an address
     if((PACKET_ENTRY(slot_data->packet, association_header, request) != NULL && PACKET_ENTRY(slot_data->packet, key_confirmation_header, request) != NULL && PACKET_ENTRY(slot_data->packet, association_header, request)->child) || table_entry.short_address == SN_NO_SHORT_ADDRESS) {
-        SN_InfoPrintf("sending to long address\n");
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("sending to long address %#018"PRIx64"\n", *(uint64_t*)table_entry.long_address.ExtendedAddress);
+        SN_InfoPrintf("sending to long address %#018"PRIx64"\n", *(uint64_t*)table_entry.long_address.ExtendedAddress);
         packet->MCPS_DATA_request.DstAddrMode = mac_extended_address;
         packet->MCPS_DATA_request.DstAddr     = table_entry.long_address;
         max_payload_size -= 6; //header size increases by 6 bytes if we're using a long address
     } else {
-        SN_InfoPrintf("sending to short address\n");
-        SN_DebugPrintf("sending to short address %#06x\n", table_entry.short_address);
+        SN_InfoPrintf("sending to short address %#06x\n", table_entry.short_address);
         packet->MCPS_DATA_request.DstAddrMode          = mac_short_address;
         packet->MCPS_DATA_request.DstAddr.ShortAddress = table_entry.short_address;
     }
@@ -148,20 +146,39 @@ static int do_packet_transmission(int slot) {
         return -SN_ERR_RADIO;
     }
 
-    //TODO: queueing behaviour: queue MCPS_DATA.indication while waiting for MCPS_DATA.confirm
-
     SN_InfoPrintf("waiting for transmission status report from radio...\n");
-    //TODO: actual transmission status handling, including interpreting both MCPS_DATA.confirm and MLME_COMM_STATUS.indication
-    uint8_t tx_confirm[] = {mac_mcps_data_confirm, (uint8_t)(slot + 1), mac_success};
-    ret = mac_receive_primitive_exactly(session->mac_session, (mac_primitive_t*)tx_confirm);
-    if(ret <= 0) {
-        SN_ErrPrintf("wait for transmission status report failed with %d\n", ret);
-        return -SN_ERR_RADIO;
+    mac_primitive_t status_report;
+    while(1) {
+        MAC_CALL(mac_receive, session->mac_session, &status_report);
+
+        if(status_report.type == mac_mcps_data_confirm) {
+            if(status_report.MCPS_DATA_confirm.msduHandle == (uint8_t)(slot + 1)) {
+                SN_InfoPrintf("got transmission report\n");
+                if(status_report.MCPS_DATA_confirm.status == mac_success) {
+                    ret = SN_OK;
+                } else {
+                    ret = -SN_ERR_TXRXFAIL;
+                }
+                break;
+            } else {
+                SN_WarnPrintf("dropping MCPS-DATA.confirm for invalid handle %d\n", status_report.MCPS_DATA_confirm.msduHandle);
+            }
+        } else {
+            /* we don't consider MLME-COMM-STATUS.indication, because it's only generated as a result of
+             * either transmission via a .response primitive, or reception of an invalid frame
+             */
+            SN_WarnPrintf("got irrelevant primitive; banishing to the queue\n");
+            SN_Enqueue(session, &status_report); //implicitly drops irrelevant primitives
+        }
     }
-    SN_InfoPrintf("received transmission status report\n");
+    if(ret != SN_OK) {
+        SN_ErrPrintf("received transmission status report. transmission failed with %d\n", status_report.MCPS_DATA_confirm.status);
+    } else {
+        SN_InfoPrintf("received transmission status report. transmission succeeded\n");
+    }
 
     SN_InfoPrintf("exit\n");
-    return SN_OK;
+    return ret;
 }
 
 int allocate_slot() {

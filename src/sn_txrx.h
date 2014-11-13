@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <sn_types.h>
+#include "mac802154.h"
 
 /*StarfishNet header ordering:
  * network_header_t

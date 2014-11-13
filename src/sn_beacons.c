@@ -6,11 +6,10 @@
 #include "mac_util.h"
 #include "sn_constants.h"
 #include "sn_routing_tree.h"
+#include "sn_queued_rx.h"
 
 static MAC_CONFIRM(start);
-
 static MAC_SET_CONFIRM(macBeaconPayload);
-
 static MAC_SET_CONFIRM(macBeaconPayloadLength);
 
 static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer, SN_Hash_t* hash) {
@@ -51,6 +50,29 @@ static int build_beacon_payload(SN_Session_t* session, beacon_payload_t* buffer,
     return SN_OK;
 }
 
+static int do_queued_receive_exactly(SN_Session_t* session, mac_primitive_t* packet, const mac_primitive_t* primitive) {
+    if(session == NULL || packet == NULL || primitive == NULL) {
+        return -SN_ERR_NULL;
+    }
+
+    while(1) {
+        int ret = mac_receive(session->mac_session, packet);
+        if(ret <= 0)
+            return -SN_ERR_RADIO;
+
+        if(packet->type == primitive->type) {
+            if(memcmp(packet, primitive, (size_t)ret)) {
+                //they're different
+                return -SN_ERR_UNEXPECTED;
+            } else {
+                return SN_OK;
+            }
+        } else {
+            SN_Enqueue(session, packet); //implicitly drops irrelevant primitives
+        }
+    }
+}
+
 static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool isCoordinator) {
     SN_DebugPrintf("enter\n");
 
@@ -72,7 +94,10 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     packet->MLME_SET_request.PIBAttributeSize = 1;
     packet->MLME_SET_request.PIBAttributeValue[0] = session->mib.macBeaconPayloadLength;
     MAC_CALL(mac_transmit, session->mac_session, packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macBeaconPayloadLength_set_confirm);
+    if(do_queued_receive_exactly(session, packet, (mac_primitive_t*)macBeaconPayloadLength_set_confirm) != SN_OK) {
+        SN_ErrPrintf("set beacon payload length failed\n");
+        return -SN_ERR_RADIO;
+    }
 
     //set beacon payload
     packet->type                              = mac_mlme_set_request;
@@ -80,7 +105,10 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     packet->MLME_SET_request.PIBAttributeSize = session->mib.macBeaconPayloadLength;
     memcpy(packet->MLME_SET_request.PIBAttributeValue, session->mib.macBeaconPayload, session->mib.macBeaconPayloadLength);
     MAC_CALL(mac_transmit, session->mac_session, packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macBeaconPayload_set_confirm);
+    if(do_queued_receive_exactly(session, packet, (mac_primitive_t*)macBeaconPayload_set_confirm) != SN_OK) {
+        SN_ErrPrintf("set beacon payload failed\n");
+        return -SN_ERR_RADIO;
+    }
 
     //start beacon transmissions
     packet->type                                    = mac_mlme_start_request;
@@ -93,7 +121,10 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     packet->MLME_START_request.CoordRealignment     = 0;
     packet->MLME_START_request.SecurityEnable       = 0;
     MAC_CALL(mac_transmit, session->mac_session, packet);
-    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)start_confirm);
+    if(do_queued_receive_exactly(session, packet, (mac_primitive_t*)start_confirm) != SN_OK) {
+        SN_ErrPrintf("start beaconing failed\n");
+        return -SN_ERR_RADIO;
+    }
 
     SN_DebugPrintf("exit\n");
     return SN_OK;

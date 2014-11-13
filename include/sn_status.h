@@ -34,6 +34,7 @@ typedef enum {
     SN_ERR_INVALID      , /**< A value was invalid */
     SN_ERR_UNKNOWN      , /**< A unknown value */
     SN_ERR_RADIO        , /**< An error while communicating with the radio */
+    SN_ERR_TXRXFAIL     , /**< An error while communicating with the radio */
     SN_ERR_TIMEOUT      , /**< A timeout occurred */
     SN_ERR_END_OF_DATA  , /**< Not enough data */
     SN_ERR_RESOURCES    , /**< Insufficient memory to perform the operation */

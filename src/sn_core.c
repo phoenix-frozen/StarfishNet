@@ -32,6 +32,7 @@ int SN_Get_configuration(SN_Session_t* session, SN_Nib_t* nib, mac_mib_t* mib, m
         packet.type                          = mac_mlme_get_request;
         packet.MLME_SET_request.PIBAttribute = macDSN;
         MAC_CALL(mac_transmit, session->mac_session, &packet);
+        //XXX: BUG! this can drop packets! rewrite if this starts becoming a problem
         MAC_CALL(mac_receive_primitive_type, session->mac_session, &packet, mac_mlme_get_confirm);
         assert(packet.type == mac_mlme_get_confirm);
         assert(packet.MLME_GET_confirm.PIBAttribute == macDSN);

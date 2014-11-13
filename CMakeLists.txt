@@ -4,17 +4,18 @@ project(StarfishNet)
 set(SRC_DIR src)
 set(TEST_DIR test)
 
-add_definitions(-std=gnu99 -g -Wall -DuECC_CURVE=uECC_secp160r1 -DPOLARSSL_CONFIG_FILE=<config-starfishnet.h>)
-add_definitions(-DSN_DEBUG)
-#add_definitions(-DSN_DEBUG_LEVEL=4)
-#add_definitions(-DMAC_DEBUG)
-#add_definitions(-DNDEBUG)
+add_definitions(-std=gnu99 -Wall -DuECC_CURVE=uECC_secp160r1 -DPOLARSSL_CONFIG_FILE=<config-starfishnet.h>)
+
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSN_DEBUG")
+#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSN_DEBUG -DSN_DEBUG_LEVEL=4 -DMAC_DEBUG")
+#set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG")
 
 include_directories(include)
 include_directories(src/polarssl)
 include_directories(extern/micro-ecc)
 include_directories(extern/polarssl/include)
 
+#begin core code
 file(GLOB HEADERS include/*.h)
 list(APPEND HEADERS extern/micro-ecc/uECC.h)
 list(APPEND HEADERS extern/polarssl/include/polarssl/aes.h)
@@ -33,13 +34,20 @@ list(APPEND SOURCES extern/polarssl/library/sha1.c)
 
 add_library(StarfishNet STATIC ${SOURCES} ${HEADERS})
 
-aux_source_directory(${TEST_DIR} TESTSRCS)
+#begin tests
 
-foreach(TESTSRC ${TESTSRCS})
-  string(REGEX REPLACE "test/(.*)\\.c$" "\\1" TEST ${TESTSRC})
-  add_executable(${TEST} ${TESTSRC})
-  target_link_libraries(${TEST} StarfishNet)
-  list(APPEND TESTS ${TEST})
-endforeach(TESTSRC)
+#routertest
+add_executable(routertest test/routertest.c)
+target_link_libraries(routertest StarfishNet)
 
-add_custom_target(ALL DEPENDS StarfishNet ${TESTS})
+#coordtest
+add_executable(coordtest test/coordtest.c)
+target_link_libraries(coordtest StarfishNet)
+
+#leaftest
+add_executable(leaftest test/leaftest.c)
+target_link_libraries(leaftest StarfishNet)
+
+
+#hack for CLion
+add_custom_target(ALL DEPENDS StarfishNet routertest coordtest leaftest)

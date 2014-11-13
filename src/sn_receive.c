@@ -15,6 +15,7 @@
 #include "sn_txrx.h"
 #include "sn_delayed_tx.h"
 #include "sn_beacons.h"
+#include "sn_queued_rx.h"
 
 //some templates for mac_receive_primitive
 static MAC_SET_CONFIRM(macShortAddress);
@@ -309,6 +310,31 @@ static int do_public_key_operations(SN_Table_entry_t* table_entry, packet_t* pac
     return SN_OK;
 }
 
+static int do_queued_receive_exactly(SN_Session_t* session, const mac_primitive_t* primitive) {
+    if(session == NULL || primitive == NULL) {
+        return -SN_ERR_NULL;
+    }
+
+    mac_primitive_t packet;
+
+    while(1) {
+        int ret = mac_receive(session->mac_session, &packet);
+        if(ret <= 0)
+            return -SN_ERR_RADIO;
+
+        if(packet.type == primitive->type) {
+            if(memcmp(&packet, primitive, (size_t)ret)) {
+                //they're different
+                return -SN_ERR_UNEXPECTED;
+            } else {
+                return SN_OK;
+            }
+        } else {
+            SN_Enqueue(session, &packet); //implicitly drops irrelevant primitives
+        }
+    }
+}
+
 static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet) {
     //at this point, security and integrity checks are guaranteed to have passed
 
@@ -392,7 +418,7 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
                     set_primitive.MLME_SET_request.PIBAttributeSize = 2;
                     memcpy(set_primitive.MLME_SET_request.PIBAttributeValue, &network_header->dst_addr, 2);
                     MAC_CALL(mac_transmit, session->mac_session, &set_primitive);
-                    MAC_CALL(mac_receive_primitive_exactly, session->mac_session, (mac_primitive_t*)macShortAddress_set_confirm);
+                    do_queued_receive_exactly(session, (mac_primitive_t*)macShortAddress_set_confirm);
                     session->mib.macShortAddress             = network_header->dst_addr;
 
                     if(session->nib.enable_routing) {
@@ -531,18 +557,25 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     SN_DebugPrintf("output buffer size is %ld\n", buffer_size);
 
-    //TODO: presumably there's some kind of queue-check here
-
     packet_t packet;
     SN_InfoPrintf("receiving packet...\n");
 
     int ret;
 
-    //do network-layer housekeeping (mainly retransmission)
-    for(
-        struct timeval tv = { .tv_usec = session->nib.tx_retry_timeout * 1000 };
-        (ret = mac_receive_timeout(session->mac_session, &packet.contents, &tv)) == 0;
-        tv.tv_sec = 0, tv.tv_usec = session->nib.tx_retry_timeout * 1000) {
+    //this is the receive loop. takes timeouts into account, and does retransmissions every timeout
+    while(1) {
+        //check the receive queue
+        if(SN_Dequeue(session, &packet.contents, mac_mcps_data_indication) == SN_OK) {
+            break;
+        }
+
+        //receive queue was empty. wait for a packet from the radio
+        struct timeval tv = {.tv_usec = session->nib.tx_retry_timeout * 1000};
+        if((ret = mac_receive_timeout(session->mac_session, &packet.contents, &tv)) != 0) {
+            break;
+        }
+
+        //wait timed out. do retransmission processing
         SN_DebugPrintf("receive timed out; ticking...\n");
         SN_Delayed_tick(1);
     }
@@ -555,8 +588,9 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         }
     }
 
-    //TODO: this just skips things that aren't packets. fix
+    //just skip things that aren't packets
     if(ret < -1 || packet.contents.type != mac_mcps_data_indication) {
+        //TODO: some kind of COMM-STATUS.indication / DATA.confirm processing here?
         return SN_Receive(session, src_addr, buffer, buffer_size);
     }
 
@@ -599,6 +633,9 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     network_header_t* network_header = PACKET_ENTRY(packet, network_header, indication);
     assert(network_header != NULL);
+
+    SN_DebugPrintf("network layer says packet is to %#06x\n", network_header->dst_addr);
+    SN_DebugPrintf("network layer says packet is from %#06x\n", network_header->src_addr);
 
     if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS && network_header->dst_addr != session->mib.macShortAddress) {
         //packet was sent to our MAC address, but wasn't for our network address. that means we need to route it
@@ -657,6 +694,18 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         if(-ret == SN_ERR_UNEXPECTED) {
             SN_WarnPrintf("possible retransmission bug; triggering retransmission\n");
             SN_Delayed_tick(0);
+
+            //special case: if the security check failure is because this is a finalise, and we've already received one, it's probably an acknowledgement drop. send acknowledgements
+            if(PACKET_ENTRY(packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(packet, association_header, indication) == NULL) {
+                SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission");
+                if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
+                    SN_Address_t ack_address = {
+                        .type = mac_short_address,
+                        .address = {.ShortAddress = table_entry.short_address},
+                    };
+                    SN_Send(session, &ack_address, NULL);
+                }
+            }
         }
         return ret;
     }
@@ -684,7 +733,15 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         if(ret != SN_OK) {
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
             //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
+            SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission");
             SN_Delayed_tick(0);
+            if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
+                SN_Address_t ack_address = {
+                    .type = mac_short_address,
+                    .address = {.ShortAddress = table_entry.short_address},
+                };
+                SN_Send(session, &ack_address, NULL);
+            }
             return ret;
         }
     }
