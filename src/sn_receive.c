@@ -696,7 +696,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
             //special case: if the security check failure is because this is a finalise, and we've already received one, it's probably an acknowledgement drop. send acknowledgements
             if(PACKET_ENTRY(packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(packet, association_header, indication) == NULL) {
-                SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission");
+                SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
                 if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
                     SN_Address_t ack_address = {
                         .type = mac_short_address,

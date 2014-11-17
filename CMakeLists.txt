@@ -48,6 +48,9 @@ target_link_libraries(coordtest StarfishNet)
 add_executable(leaftest test/leaftest.c)
 target_link_libraries(leaftest StarfishNet)
 
+#routeleaftest
+add_executable(routeleaftest test/routeleaftest.c)
+target_link_libraries(routeleaftest StarfishNet)
 
 #hack for CLion
-add_custom_target(ALL DEPENDS StarfishNet routertest coordtest leaftest)
+add_custom_target(ALL DEPENDS StarfishNet routertest coordtest leaftest routeleaftest)

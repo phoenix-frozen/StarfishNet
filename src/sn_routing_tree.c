@@ -1,4 +1,5 @@
 #include <sn_status.h>
+#define SN_DEBUG_LEVEL 100
 #include <sn_logging.h>
 #include <assert.h>
 #include "sn_routing_tree.h"
@@ -150,7 +151,7 @@ int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr, u
     uint16_t space_mask           = (uint16_t)(space_size - 1);
     uint16_t block_mask           = (uint16_t)(block_size - 1);
 
-    uint16_t space_base           = session->mib.macShortAddress;
+    uint16_t space_base           = (uint16_t)(session->mib.macShortAddress & ~space_mask);
 
     uint16_t total_leaf_blocks    = (uint16_t)(1 + session->nib.leaf_blocks);
     uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
@@ -167,6 +168,7 @@ int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr, u
             //dst_addr is one of my leaf children.
             //Rule 1 applies. Forward directly to the node.
             *next_hop = dst_addr;
+            SN_DebugPrintf("Rule 1: %#06x\n", *next_hop);
             return SN_OK;
             //XXX: in practice, this branch should never be taken, because it should be caught by Rule 1.
         }
@@ -174,6 +176,7 @@ int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr, u
             //dst_addr is one of my router children.
             //Rule 1 applies. Forward directly to the node.
             *next_hop = dst_addr;
+            SN_DebugPrintf("Rule 1: %#06x\n", *next_hop);
             return SN_OK;
             //XXX: in practice, this branch should never be taken, because it should be caught by Rule 1.
         }
@@ -182,22 +185,26 @@ int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr, u
             if((dst_addr & ~block_mask) == (src_addr & ~block_mask)) {
                 //dst_addr and src_addr are both in the same smaller subtree
                 //Rule 3 applies. Do not route.
+                SN_DebugPrintf("Rule 3: Do not route.\n");
                 return -SN_ERR_INVALID;
             }
         }
         //if we get to here, dst_addr is in my subtree, but is not my immediate child.
         //Rule 4 applies. Determine the child whose subtree it is in, and forward to it.
         *next_hop = dst_addr & ~block_mask;
+        SN_DebugPrintf("Rule 4: %#06x\n", *next_hop);
         return SN_OK;
     }
     if((src_addr & ~space_mask) == space_base) {
         //src_addr is in my subtree, dst_addr is not
         //Rule 5 applies. Forward to my parent.
         *next_hop = session->nib.parent_address;
+        SN_DebugPrintf("Rule 5: %#06x\n", *next_hop);
         return SN_OK;
     }
     //neither src_addr nor dst_addr is in my subtree.
     //Rule 2 applies. Do not route.
+    SN_DebugPrintf("Rule 2: Do not route.\n");
     return -SN_ERR_INVALID;
 
 #endif //SN_MESH_SHORTCUT_ROUTING

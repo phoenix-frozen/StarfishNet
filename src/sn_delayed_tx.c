@@ -23,6 +23,7 @@ typedef struct transmission_slot {
         struct {
             uint8_t valid     :1;
             uint8_t allocated :1;
+            uint8_t routing   :1;
         };
         uint8_t flags;
     };
@@ -31,14 +32,8 @@ typedef struct transmission_slot {
 
     SN_Session_t* session;
 
-    struct {
-        bool routing;
-        union {
-            uint16_t dst_address;
-            uint16_t src_address;
-            SN_Public_key_t key;
-        };
-    } destination;
+    SN_Address_t dst_address;
+    uint16_t src_address; //only valid for routing packets
 
     uint32_t counter;
 
@@ -97,10 +92,13 @@ static int do_packet_transmission(int slot) {
     }
 
     //DstAddr
-    if(slot_data->destination.routing) {
+    if(slot_data->routing) {
         SN_InfoPrintf("this is a routing slot\n");
+        assert(slot_data->dst_address.type == mac_short_address);
+        assert(slot_data->dst_address.address.ShortAddress != SN_NO_SHORT_ADDRESS);
+        assert(slot_data->src_address != SN_NO_SHORT_ADDRESS);
         //this is a routing slot
-        ret = SN_Tree_route(session, slot_data->destination.src_address, slot_data->destination.dst_address, &packet->MCPS_DATA_request.DstAddr.ShortAddress);
+        ret = SN_Tree_route(session, slot_data->src_address, slot_data->dst_address.address.ShortAddress, &packet->MCPS_DATA_request.DstAddr.ShortAddress);
         if(ret != SN_OK) {
             SN_ErrPrintf("routing failed with %d\n", -ret);
             return ret;
@@ -108,18 +106,15 @@ static int do_packet_transmission(int slot) {
             SN_InfoPrintf("routing through short address %#06x\n", packet->MCPS_DATA_request.DstAddr.ShortAddress);
         }
     } else {
+        //non-routing slot
         SN_Table_entry_t table_entry = {
             .session = session,
         };
 
-        //only do this for non-routing slots
-        ret = SN_Table_lookup_by_public_key(&slot_data->destination.key, &table_entry, NULL);
+        ret = SN_Table_lookup_by_address(&slot_data->dst_address, &table_entry, NULL);
         if(ret != SN_OK) {
-            SN_ErrPrintf("cannot transmit to node with unknown address (lookup error %d)\n", -ret);
-            return ret;
-        }
-
-        if(table_entry.unavailable) {
+            SN_WarnPrintf("transmitting packet to new node (lookup error %d)\n", -ret);
+        } else if(table_entry.unavailable) {
             SN_ErrPrintf("lost contact with remote node; transmissions will resume when we find it again\n");
             return -SN_ERR_DISCONNECTED;
         }
@@ -232,6 +227,7 @@ int allocate_slot() {
             slot = next_free_slot;
             memset(&transmission_queue[next_free_slot], 0, sizeof(transmission_slot_t));
             transmission_queue[next_free_slot].allocated = 1;
+            transmission_queue[next_free_slot].src_address = SN_NO_SHORT_ADDRESS;
         }
 
         next_free_slot++;
@@ -260,9 +256,10 @@ int SN_Delayed_forward(SN_Session_t* session, uint16_t source, uint16_t destinat
     assert(slot_data->allocated);
 
     slot_data->session     = session;
-    slot_data->destination.routing = true;
-    slot_data->destination.dst_address = destination;
-    slot_data->destination.src_address = source;
+    slot_data->routing = true;
+    slot_data->dst_address.type = mac_short_address;
+    slot_data->dst_address.address.ShortAddress = destination;
+    slot_data->src_address = source;
     slot_data->packet      = *packet;
     slot_data->valid       = 1;
 
@@ -302,8 +299,14 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
     assert(slot_data->allocated);
 
     slot_data->session     = session;
-    slot_data->destination.routing = false;
-    slot_data->destination.key = table_entry->public_key;
+    slot_data->routing     = false;
+    if(table_entry->short_address == SN_NO_SHORT_ADDRESS) {
+        slot_data->dst_address.type = mac_extended_address;
+        slot_data->dst_address.address = table_entry->long_address;
+    } else {
+        slot_data->dst_address.type = mac_short_address;
+        slot_data->dst_address.address.ShortAddress = table_entry->short_address;
+    }
     slot_data->packet      = *packet;
     slot_data->valid       = 1;
     slot_data->counter     = counter;
@@ -326,6 +329,28 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
     return SN_OK;
 }
 
+/* convenience macro to iterate over allocated, valid, non-routing slots. provides:
+ *  transmission_slot_t* slot    : a pointer to the current slot
+ *  int                  slot_idx: the current slot's index
+ * @param x A statement to execute on each slot.
+ */
+#define FOR_EACH_ACTIVE_SLOT(x)\
+    /* for each transmission slot... */\
+    for(int slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {\
+        transmission_slot_t* slot = &transmission_queue[slot_idx];\
+        /* ... if the slot is allocated, valid, not a routing slot, and in my session... */\
+        if(slot->allocated && slot->valid && !slot->routing) {\
+            /* ... do work x. */\
+            x;\
+        }\
+    }
+
+//convenience macro to determine whether a SN_Table_entry_t matches a SN_Address_t
+#define TABLE_ENTRY_MATCHES_ADDRESS(table_entry, proto_address)\
+    (((proto_address).type == mac_short_address && (proto_address).address.ShortAddress == (table_entry).short_address)\
+     ||\
+     ((proto_address).type == mac_extended_address && memcmp(&(proto_address).address, &(table_entry).long_address, sizeof(mac_address_t)) == 0))
+
 int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t counter) {
     SN_InfoPrintf("enter\n");
 
@@ -336,28 +361,19 @@ int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t cou
 
     int rv = -SN_ERR_UNKNOWN;
 
-    //for each transmission slot...
-    for(int slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {
-        transmission_slot_t* slot = &transmission_queue[slot_idx];
+    //for each active slot...
+    FOR_EACH_ACTIVE_SLOT({
+        //... if it's in my session and its packet's destination is the one I'm talking about...
+        if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+            //... and it's encrypted with the right counter...
+            if(PACKET_ENTRY(slot->packet, encryption_header, request) != NULL && slot->counter <= counter) {
+                //... acknowledge it.
+                slot->allocated = 0;
 
-        //... if the slot is allocated, valid, not a routing slot, and in my session...
-        if(slot->allocated && slot->valid && !slot->destination.routing && table_entry->session == slot->session) {
-
-            //... and its packet's destination is the one I'm talking about...
-            if(memcmp(slot->destination.key.data, &table_entry->public_key.data, sizeof(SN_Public_key_t)) == 0) {
-
-                //... and it's encrypted...
-                if(PACKET_ENTRY(slot->packet, encryption_header, request) != NULL &&
-                   slot->counter <= counter) {
-
-                    //... acknowledge it.
-                    slot->allocated = 0;
-
-                    rv = SN_OK;
-                }
+                rv = SN_OK;
             }
         }
-    }
+    });
 
     SN_InfoPrintf("exit\n");
     return rv;
@@ -371,29 +387,22 @@ int SN_Delayed_acknowledge_signed(SN_Table_entry_t* table_entry, SN_Signature_t*
         return -SN_ERR_NULL;
     }
 
-    //for each transmission slot...
-    for(int slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {
-        transmission_slot_t* slot = &transmission_queue[slot_idx];
+    //for each active slot...
+    FOR_EACH_ACTIVE_SLOT({
+        //... if it's in my session and its packet's destination is the one I'm talking about...
+        if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+            //... and it's signed...
+            if(PACKET_ENTRY(slot->packet, signature_header, request) != NULL &&
+               memcmp(PACKET_ENTRY(slot->packet, signature_header, request)->signature.data, signature->data, sizeof(signature->data)) != 0) {
 
-        //... if the slot is allocated, valid, not a routing slot, and in my session...
-        if(slot->allocated && slot->valid && !slot->destination.routing && table_entry->session == slot->session) {
+                //... acknowledge it.
+                slot->allocated = 0;
 
-            //... and its packet's destination is the one I'm talking about...
-            if(memcmp(slot->destination.key.data, &table_entry->public_key.data, sizeof(SN_Public_key_t)) == 0) {
-
-                //... and it's signed...
-                if(PACKET_ENTRY(slot->packet, signature_header, request) != NULL &&
-                   memcmp(PACKET_ENTRY(slot->packet, signature_header, request)->signature.data, signature->data, sizeof(signature->data)) != 0) {
-
-                    //... acknowledge it.
-                    slot->allocated = 0;
-
-                    SN_InfoPrintf("exit\n");
-                    return SN_OK;
-                }
+                SN_InfoPrintf("exit\n");
+                return SN_OK;
             }
         }
-    }
+    });
 
     SN_ErrPrintf("acknowledgement entry not found\n");
     return -SN_ERR_UNKNOWN;
@@ -413,55 +422,41 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
         if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
             //this is an association reply; it acknowledges an association_request
 
-            //for each transmission slot...
-            for(int slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {
-                transmission_slot_t* slot = &transmission_queue[slot_idx];
+            //for each active slot...
+            FOR_EACH_ACTIVE_SLOT({
+                //... if it's in my session and its packet's destination is the one I'm talking about...
+                if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+                    //... and it's an association request...
+                    if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
+                       PACKET_ENTRY(slot->packet, key_confirmation_header, request) == NULL) {
 
-                //... if the slot is allocated, valid, not a routing slot, and in my session...
-                if(slot->allocated && slot->valid && !slot->destination.routing && table_entry->session == slot->session) {
+                        //... acknowledge it.
+                        slot->allocated = 0;
 
-                    //... and its packet's destination is the one I'm talking about...
-                    if(memcmp(slot->destination.key.data, &table_entry->public_key.data, sizeof(SN_Public_key_t)) == 0) {
-
-                        //... and it's an association request...
-                        if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
-                           PACKET_ENTRY(slot->packet, key_confirmation_header, request) == NULL) {
-
-                            //... acknowledge it.
-                            slot->allocated = 0;
-
-                            SN_InfoPrintf("exit\n");
-                            return SN_OK;
-                        }
+                        SN_InfoPrintf("exit\n");
+                        return SN_OK;
                     }
                 }
-            }
+            });
         } else {
             //this is an association finalise; it acknowledges an association_reply
 
-            //for each transmission slot...
-            for(int slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {
-                transmission_slot_t* slot = &transmission_queue[slot_idx];
+            //for each active slot...
+            FOR_EACH_ACTIVE_SLOT({
+                //... if it's in my session and its packet's destination is the one I'm talking about...
+                if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+                    //... and it's an association reply...
+                    if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
+                       PACKET_ENTRY(slot->packet, key_confirmation_header, request) != NULL) {
 
-                //... if the slot is allocated, valid, not a routing slot, and in my session...
-                if(slot->allocated && slot->valid && !slot->destination.routing && table_entry->session == slot->session) {
+                        //... acknowledge it.
+                        slot->allocated = 0;
 
-                    //... and its packet's destination is the one I'm talking about...
-                    if(memcmp(slot->destination.key.data, &table_entry->public_key.data, sizeof(SN_Public_key_t)) == 0) {
-
-                        //... and it's an association reply...
-                        if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
-                           PACKET_ENTRY(slot->packet, key_confirmation_header, request) != NULL) {
-
-                            //... acknowledge it.
-                            slot->allocated = 0;
-
-                            SN_InfoPrintf("exit\n");
-                            return SN_OK;
-                        }
+                        SN_InfoPrintf("exit\n");
+                        return SN_OK;
                     }
                 }
-            }
+            });
         }
     }
 
@@ -472,35 +467,29 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
 void SN_Delayed_tick(bool count_towards_disconnection) {
     SN_InfoPrintf("enter\n");
 
-    for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
-        transmission_slot_t* slot = &transmission_queue[i];
+    FOR_EACH_ACTIVE_SLOT({
+        SN_InfoPrintf("doing retransmission processing for slot %d\n", slot_idx);
 
-        if(slot->allocated && slot->valid && !slot->destination.routing) {
-            SN_InfoPrintf("doing retransmission processing for slot %d\n", i);
-
-            if(count_towards_disconnection ? slot->retries < slot->session->nib.tx_retry_limit : 1) {
-                do_packet_transmission(i);
-            }
-
-            if(count_towards_disconnection) {
-                slot->retries++;
-                if(slot->retries >= slot->session->nib.tx_retry_limit) {
-                    SN_ErrPrintf("slot %d has reached its retry limit\n", i);
-                    SN_Table_entry_t table_entry = {
-                        .session = slot->session,
-                    };
-                    if(SN_Table_lookup_by_public_key(&slot->destination.key, &table_entry, NULL) == SN_OK) {
-                        table_entry.unavailable = 1;
-                        SN_Table_update(&table_entry);
-                    }
-                }
-            } else {
-                slot->retries = 1;
-            }
-
-            SN_InfoPrintf("retransmission processing for slot %d done\n", i);
+        if(count_towards_disconnection ? slot->retries < slot->session->nib.tx_retry_limit : 1) {
+            do_packet_transmission(slot_idx);
         }
-    }
+
+        if(count_towards_disconnection) {
+            slot->retries++;
+            if(slot->retries >= slot->session->nib.tx_retry_limit) {
+                SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
+                SN_Table_entry_t table_entry = { .session = slot->session };
+                if(SN_Table_lookup_by_address(&slot->dst_address, &table_entry, NULL) == SN_OK) {
+                    table_entry.unavailable = 1;
+                    SN_Table_update(&table_entry);
+                }
+            }
+        } else {
+            slot->retries = 1;
+        }
+
+        SN_InfoPrintf("retransmission processing for slot %d done\n", slot_idx);
+    });
 
     SN_InfoPrintf("exit\n");
 }
