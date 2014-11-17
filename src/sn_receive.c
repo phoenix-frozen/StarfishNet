@@ -641,8 +641,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         //packet was sent to our MAC address, but wasn't for our network address. that means we need to route it
         SN_InfoPrintf("packet isn't for us. routing\n");
         if(session->nib.enable_routing) {
-            //TODO: routing
-            SN_WarnPrintf("we haven't implemented routing yet. drop\n");
+            SN_Delayed_forward(session, network_header->src_addr, network_header->dst_addr, &packet);
             return SN_Receive(session, src_addr, buffer, buffer_size);
         } else {
             SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
@@ -701,7 +700,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
                 if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
                     SN_Address_t ack_address = {
                         .type = mac_short_address,
-                        .address = {.ShortAddress = table_entry.short_address},
+                        .address.ShortAddress = table_entry.short_address,
                     };
                     SN_Send(session, &ack_address, NULL);
                 }
@@ -738,7 +737,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
             if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
                 SN_Address_t ack_address = {
                     .type = mac_short_address,
-                    .address = {.ShortAddress = table_entry.short_address},
+                    .address.ShortAddress = table_entry.short_address,
                 };
                 SN_Send(session, &ack_address, NULL);
             }
