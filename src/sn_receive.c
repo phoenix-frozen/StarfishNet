@@ -12,7 +12,7 @@
 
 #include "mac_util.h"
 #include "sn_constants.h"
-#include "sn_txrx.h"
+#include "sn_packet.h"
 #include "sn_delayed_tx.h"
 #include "sn_beacons.h"
 #include "sn_queued_rx.h"

@@ -58,7 +58,7 @@
 
 #include "mac_util.h"
 #include "sn_constants.h"
-#include "sn_txrx.h"
+#include "sn_packet.h"
 #include "sn_delayed_tx.h"
 #include "sn_routing_tree.h"
 #include "sn_beacons.h"

@@ -1,5 +1,5 @@
-#ifndef __SN_TXRX_H__
-#define __SN_TXRX_H__
+#ifndef __SN_PACKET_H__
+#define __SN_PACKET_H__
 
 #include <stdint.h>
 #include <sn_types.h>
@@ -145,4 +145,4 @@ typedef struct packet {
 #define PACKET_ENTRY(packet, header, req_type) ((header##_t*)((packet).layout.present.header ? (packet).contents.MCPS_DATA_##req_type.msdu + (packet).layout.header : NULL))
 #define PACKET_SIZE(packet, req_type) ((packet).contents.MCPS_DATA_##req_type.msduLength)
 
-#endif /* __SN_TXRX_H__ */
+#endif /* __SN_PACKET_H__ */
