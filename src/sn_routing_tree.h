@@ -27,6 +27,20 @@ int SN_Tree_check_join(uint8_t tree_position, uint8_t tree_branching_factor);
  * @param next_hop Will be filled with the address of the packet's next hop.
  * @return         Error code.
  */
-int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr, uint16_t* next_hop);
+int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr,
+
+
+
+
+
+
+
+
+
+
+
+
+
+    uint16_t* next_hop);
 
 #endif /* __SN_ADDRESSING_H__ */

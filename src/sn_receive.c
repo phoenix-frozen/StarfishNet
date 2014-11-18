@@ -560,7 +560,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     packet_t packet;
     SN_InfoPrintf("receiving packet...\n");
 
-    int ret;
+    int ret = 0;
 
     //this is the receive loop. takes timeouts into account, and does retransmissions every timeout
     while(1) {
@@ -670,9 +670,9 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
         if(src_addr->type == mac_short_address) {
-            table_entry.short_address = packet.contents.MCPS_DATA_indication.SrcAddr.ShortAddress;
+            table_entry.short_address = src_addr->address.ShortAddress;
         } else {
-            table_entry.long_address = packet.contents.MCPS_DATA_indication.SrcAddr;
+            table_entry.long_address = src_addr->address;
         }
 
         ret = SN_Table_insert(&table_entry);

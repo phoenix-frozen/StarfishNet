@@ -256,7 +256,7 @@ typedef union mac_primitive {
                 uint8_t       msdu[aMaxMACPayloadSize];
             } MCPS_DATA_request;
 
-            struct MCPS_DATA_confirm {
+            struct __attribute__((packed)) MCPS_DATA_confirm {
                 uint8_t      msduHandle;
                 mac_status_t status;
             } MCPS_DATA_confirm;

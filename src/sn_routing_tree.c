@@ -1,5 +1,4 @@
 #include <sn_status.h>
-#define SN_DEBUG_LEVEL 100
 #include <sn_logging.h>
 #include <assert.h>
 #include "sn_routing_tree.h"
@@ -194,6 +193,7 @@ int SN_Tree_route(SN_Session_t* session, uint16_t src_addr, uint16_t dst_addr, u
         *next_hop = dst_addr & ~block_mask;
         SN_DebugPrintf("Rule 4: %#06x\n", *next_hop);
         return SN_OK;
+
     }
     if((src_addr & ~space_mask) == space_base) {
         //src_addr is in my subtree, dst_addr is not

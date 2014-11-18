@@ -134,14 +134,24 @@ static int do_packet_transmission(int slot) {
             SN_InfoPrintf("sending to short address %#06x\n", table_entry.short_address);
             packet->MCPS_DATA_request.DstAddrMode = mac_short_address;
             if(table_entry.neighbor || session->mib.macShortAddress == SN_NO_SHORT_ADDRESS) {
+                //if the peer is a neighbor (or we're joining the network), send directly
+                SN_InfoPrintf("peer is a neighbor. transmitting directly\n");
                 packet->MCPS_DATA_request.DstAddr.ShortAddress = table_entry.short_address;
             } else {
-                ret = SN_Tree_route(session, session->mib.macShortAddress, table_entry.short_address, &packet->MCPS_DATA_request.DstAddr.ShortAddress);
-                if(ret != SN_OK) {
-                    SN_ErrPrintf("routing failed with %d\n", -ret);
-                    return ret;
+                //peer isn't a neighbor.
+                if(session->nib.enable_routing) {
+                    //if we're a router, then route.
+                    ret = SN_Tree_route(session, session->mib.macShortAddress, table_entry.short_address, &packet->MCPS_DATA_request.DstAddr.ShortAddress);
+                    if(ret != SN_OK) {
+                        SN_ErrPrintf("routing failed with %d\n", -ret);
+                        return ret;
+                    } else {
+                        SN_InfoPrintf("routing through short address %#06x\n", packet->MCPS_DATA_request.DstAddr.ShortAddress);
+                    }
                 } else {
-                    SN_InfoPrintf("routing through short address %#06x\n", packet->MCPS_DATA_request.DstAddr.ShortAddress);
+                    //we're not a router. just send to our parent.
+                    packet->MCPS_DATA_request.DstAddr.ShortAddress = session->nib.parent_address;
+                    SN_InfoPrintf("peer is not a neighbor. routing though parent (%#06x)\n", packet->MCPS_DATA_request.DstAddr.ShortAddress);
                 }
             }
         }
@@ -167,7 +177,7 @@ static int do_packet_transmission(int slot) {
     }
     SN_DebugPrintf("end packet data\n");
 
-    SN_InfoPrintf("beginning packet transmission...\n");
+    SN_InfoPrintf("beginning packet transmission with handle %d...\n", packet->MCPS_DATA_request.msduHandle);
     ret = mac_transmit(session->mac_session, packet);
     SN_InfoPrintf("packet transmission returned %d\n", ret);
 
