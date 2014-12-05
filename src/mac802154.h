@@ -1,46 +1,3 @@
-/*
- * Integration MAC interface definitions, types and function prototypes.
- *
- * Written by Jon Beniston <jbeniston@integration.com>
- *
- * Copyright 2005 Integration Associates Inc.  All rights reserved.
- *
- * LIMITED USE LICENSE.  By using this software, the user agrees to the terms
- * of the following license.  If the user does not agree to these terms, then
- * this software should be returned within 30 days and a full refund of the
- * purchase price or license fee will provided.  Integration Associates
- * hereby grants a license to the user on the following terms and conditions:
- * The user may use, copy, modify, revise, translate, abridge, condense, expand,
- * collect, compile, link, recast, distribute, transform or adapt this software
- * solely in connection with the development of products incorporating
- * integrated circuits sold by Integration Associates.  Any other use for any
- * other purpose is expressly prohibited with the prior written consent of
- * Integration Associates.
- *
- * Any copy or modification made must satisfy the following conditions:
- *
- * 1. Both the copyright notice and this permission notice appear in all copies
- * of the software, derivative works or modified versions, and any portions
- * thereof, and that both notices appear in supporting documentation.
- *
- * 2. All copies of the software shall contain the following acknowledgement:
- * "Portions of this software are used under license from Integration Associates
- * Inc. and are copyrighted."
- *
- * 3  Neither the name of Integration Associates Inc. nor any of its
- * subsidiaries may be used to endorse or promote products derived from this
- * software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY "AS IS" AND ALL WARRANTIES OF ANY KIND,
- * INCLUDING THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR USE,
- * ARE EXPRESSLY DISCLAIMED.  THE DEVELOPER SHALL NOT BE LIABLE FOR ANY DAMAGES
- * WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.  THIS SOFTWARE MAY NOT
- * BE USED IN PRODUCTS INTENDED FOR USE IN IMPLANTATION OR OTHER DIRECT LIFE
- * SUPPORT APPLICATIONS WHERE MALFUNCTION MAY RESULT IN THE DIRECT PHYSICAL
- * HARM OR INJURY TO PERSONS.  ALL SUCH IS USE IS EXPRESSLY PROHIBITED.
- *
- */
-
 #ifndef __MAC802154_H__
 #define __MAC802154_H__
 
@@ -155,7 +112,7 @@ enum mac_pib_attribute {
     macShortAddress                  = 0x53,
     macSuperframeOrder               = 0x54,
     macTransactionPersistenceTime    = 0x55,
-    macIEEEAddress                   = 0x6f, /* Integration extension */
+    macIEEEAddress                   = 0x6f,
     macACLEntryDescriptorSet         = 0x70,
     macACLEntryDescriptorSetSize     = 0x71,
     macDefaultSecurity               = 0x72,
