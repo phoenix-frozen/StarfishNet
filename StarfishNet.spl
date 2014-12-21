@@ -1,0 +1,109 @@
+-- StarfishNet IoT network protocol.
+-- Authentication sequence.
+
+#Free variables
+
+-- Actual agents, which have root signing keys.
+A, B : Agent
+PK : Agent -> PublicKey
+SK : Agent -> SecretKey
+
+-- Functions for generating DHE keys
+PDH : Nonce -> PublicKey
+SDH : Nonce -> SecretKey
+
+-- Virtual nonces for generation of DHE keys
+x, y : Nonce
+
+-- Function representing a DH operation
+DH : PublicKey x SecretKey -> SessionKey
+
+-- Hash function for key confirmation
+SHA1 : HashFunction
+
+---------------------------------------------------------------------
+-- Above: filled at start time. Below: filled during protocol run. --
+---------------------------------------------------------------------
+
+-- Variables representing DHE public keys
+pdhI, pdhR : PublicKey
+
+-- End session key
+k : SessionKey
+
+-- Permit all of the relevant encryption and decryption ops.
+InverseKeys = (PK, SK), (k, k)
+
+#Processes
+
+INITIATOR(A,x) knows PDH(x), SDH(x), PK, SK(A)
+RESPONDER(B,y) knows PDH(y), SDH(y), PK, SK(B)
+
+#Protocol description
+
+-- 0. Init system.
+0.    -> A : B
+[A != B]
+
+
+-- 1. Associate_Request  (A sends DHE public key.)
+<pdhI := PDH(x)>
+1.  A -> B : {pdhI}{SK(A)}
+
+
+-- 2. Associate_Reply    (B sends DHE public key, and challenge1 == H(H(k)).)
+-- This is all actually one B -> A message, split into three parts.
+-- Note that the key confirmation check is implied by HashFunction.
+
+-- 2a. B sends DHE public key.
+<pdhR := PDH(y)>
+2a. B -> A : {pdhR}{SK(B)}
+
+-- 2b. Dummy to give A an assignment clause, in which the DH maths is done.
+<k := DH(pdhR, SDH(x))>
+2b. A ->   : B
+
+-- 2c. B sends challenge1.
+<k := DH(pdhI, SDH(y))>
+2c. B -> A : {SHA1(SHA1(k))}{SK(B)}
+
+
+-- 3. Associate_Finalise (A sends challenge2 == H(k).)
+--    Note that the key confirmation check is implied by HashFunction.
+3.  A -> B : SHA1(k)
+
+#Equivalences
+
+-- Core invariant for DH
+forall x, y . DH(PDH(x), SDH(y)) = DH(PDH(y), SDH(x))
+
+#Specification
+
+-- k should be known only to A and B.
+Secret(A, k, [B])
+Secret(B, k, [A])
+
+-- A and B should derive the same k
+Agreement(B, A, [k])
+Agreement(A, B, [k])
+
+#Functions
+
+-- Don't care what any of these functions actualy are.
+symbolic PK, SK, PDH, SDH, DH
+
+#Actual variables
+
+Alice, Bob, Mallory : Agent
+W, X, Y: Nonce
+
+#System
+
+INITIATOR(Alice, X)
+RESPONDER(Bob, Y)
+
+#Intruder Information
+
+Intruder = Mallory
+IntruderKnowledge = {Alice, Bob, Mallory, W, PK, SK(Mallory), PDH(W), SDH(W)}
+

@@ -6,3 +6,4 @@ cscope.*
 *.a
 test/*test
 .idea/
+StarfishNet.csp
