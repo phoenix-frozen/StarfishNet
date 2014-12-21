@@ -32,7 +32,7 @@ pdhI, pdhR : PublicKey
 k : SessionKey
 
 -- Permit all of the relevant encryption and decryption ops.
-InverseKeys = (PK, SK), (k, k)
+InverseKeys = (PK, SK), (k, k), (PDH, SDH), (DH, DH)
 
 #Processes
 
@@ -70,7 +70,7 @@ RESPONDER(B,y) knows PDH(y), SDH(y), PK, SK(B)
 
 -- 3. Associate_Finalise (A sends challenge2 == H(k).)
 --    Note that the key confirmation check is implied by HashFunction.
-3.  A -> B : SHA1(k)
+3.  A -> B : {SHA1(k)}{k}
 
 #Equivalences
 
