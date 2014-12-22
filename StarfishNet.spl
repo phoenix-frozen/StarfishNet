@@ -5,18 +5,18 @@
 
 -- Actual agents, which have root signing keys.
 A, B : Agent
-PK : Agent -> PublicKey
-SK : Agent -> SecretKey
+PK : Agent -> SigningPublicKey
+SK : Agent -> SigningSecretKey
 
 -- Functions for generating DHE keys
-PDH : Nonce -> PublicKey
-SDH : Nonce -> SecretKey
+PDH : Nonce -> AgreementPublicKey
+SDH : Nonce -> AgreementSecretKey
 
 -- Virtual nonces for generation of DHE keys
 x, y : Nonce
 
 -- Function representing a DH operation
-DH : PublicKey x SecretKey -> SessionKey
+DH : AgreementPublicKey x AgreementSecretKey -> SessionKey
 
 -- Hash function for key confirmation
 SHA1 : HashFunction
@@ -26,7 +26,7 @@ SHA1 : HashFunction
 ---------------------------------------------------------------------
 
 -- Variables representing DHE public keys
-pdhI, pdhR : PublicKey
+pdhI, pdhR : AgreementPublicKey
 
 -- End session key
 k : SessionKey
@@ -36,8 +36,8 @@ InverseKeys = (PK, SK), (k, k), (PDH, SDH), (DH, DH)
 
 #Processes
 
-INITIATOR(A,x) knows PDH(x), SDH(x), PK, SK(A)
-RESPONDER(B,y) knows PDH(y), SDH(y), PK, SK(B)
+INITIATOR(A, x) knows PDH, SDH, PK, SK(A)
+RESPONDER(B, y) knows PDH, SDH, PK, SK(B)
 
 #Protocol description
 
@@ -70,7 +70,8 @@ RESPONDER(B,y) knows PDH(y), SDH(y), PK, SK(B)
 
 -- 3. Associate_Finalise (A sends challenge2 == H(k).)
 --    Note that the key confirmation check is implied by HashFunction.
-3.  A -> B : {SHA1(k)}{k}
+3.  A -> B : SHA1(k)
+
 
 #Equivalences
 
@@ -105,5 +106,5 @@ RESPONDER(Bob, Y)
 #Intruder Information
 
 Intruder = Mallory
-IntruderKnowledge = {Alice, Bob, Mallory, W, PK, SK(Mallory), PDH(W), SDH(W)}
+IntruderKnowledge = {Alice, Bob, Mallory, W, PK, SK(Mallory), PDH, SDH}
 
