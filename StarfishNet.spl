@@ -36,8 +36,8 @@ InverseKeys = (PK, SK), (k, k)
 
 #Processes
 
-INITIATOR(A, x) knows PDH, SDH, PK, SK(A)
-RESPONDER(B, y) knows PDH, SDH, PK, SK(B)
+INITIATOR(A, x) knows DH, PDH, SDH, PK, SK(A)
+RESPONDER(B, y) knows DH, PDH, SDH, PK, SK(B)
 
 #Protocol description
 
@@ -61,7 +61,7 @@ RESPONDER(B, y) knows PDH, SDH, PK, SK(B)
 
 -- 2b. Dummy to give A an assignment clause, in which the DH maths is done.
 <k := DH(pdhR, SDH(x))>
-2b. A -> A : A
+2b. A -> A : {A}{PK(A)}
 
 -- 2c. B sends challenge1.
 <k := DH(pdhI, SDH(y))>
@@ -106,5 +106,5 @@ RESPONDER(Bob, Y)
 #Intruder Information
 
 Intruder = Eve
-IntruderKnowledge = {Alice, Bob, Eve, W, PK, SK(Eve), PDH, SDH}
+IntruderKnowledge = {Alice, Bob, Eve, W, PK, SK(Eve), PDH, SDH, DH}
 
