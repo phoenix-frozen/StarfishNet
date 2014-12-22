@@ -32,7 +32,7 @@ pdhI, pdhR : AgreementPublicKey
 k : SessionKey
 
 -- Permit all of the relevant encryption and decryption ops.
-InverseKeys = (PK, SK), (k, k), (PDH, SDH), (DH, DH)
+InverseKeys = (PK, SK), (k, k)
 
 #Processes
 
@@ -61,7 +61,7 @@ RESPONDER(B, y) knows PDH, SDH, PK, SK(B)
 
 -- 2b. Dummy to give A an assignment clause, in which the DH maths is done.
 <k := DH(pdhR, SDH(x))>
-2b. A ->   : B
+2b. A -> A : A
 
 -- 2c. B sends challenge1.
 <k := DH(pdhI, SDH(y))>
@@ -81,8 +81,8 @@ forall x, y . DH(PDH(x), SDH(y)) = DH(PDH(y), SDH(x))
 #Specification
 
 -- k should be known only to A and B.
-Secret(A, k, [B])
-Secret(B, k, [A])
+StrongSecret(A, k, [B])
+StrongSecret(B, k, [A])
 
 -- A and B should derive the same k
 Agreement(B, A, [k])
@@ -95,7 +95,7 @@ symbolic PK, SK, PDH, SDH, DH
 
 #Actual variables
 
-Alice, Bob, Mallory : Agent
+Alice, Bob, Eve : Agent
 W, X, Y: Nonce
 
 #System
@@ -105,6 +105,6 @@ RESPONDER(Bob, Y)
 
 #Intruder Information
 
-Intruder = Mallory
-IntruderKnowledge = {Alice, Bob, Mallory, W, PK, SK(Mallory), PDH, SDH}
+Intruder = Eve
+IntruderKnowledge = {Alice, Bob, Eve, W, PK, SK(Eve), PDH, SDH}
 
