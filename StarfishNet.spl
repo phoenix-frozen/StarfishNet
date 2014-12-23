@@ -49,6 +49,7 @@ RESPONDER(B, y) knows DH, PDH, SDH, PK, SK(B)
 -- 1. Associate_Request  (A sends DHE public key.)
 <pdhI := PDH(x)>
 1.  A -> B : {pdhI}{SK(A)}
+[A != B]
 
 
 -- 2. Associate_Reply    (B sends DHE public key, and challenge1 == H(H(k)).)
@@ -61,7 +62,7 @@ RESPONDER(B, y) knows DH, PDH, SDH, PK, SK(B)
 
 -- 2b. Dummy to give A an assignment clause, in which the DH maths is done.
 <k := DH(pdhR, SDH(x))>
-2b. A -> A : {A}{PK(A)}
+2b. A ->   : A
 
 -- 2c. B sends challenge1.
 <k := DH(pdhI, SDH(y))>
@@ -71,6 +72,10 @@ RESPONDER(B, y) knows DH, PDH, SDH, PK, SK(B)
 -- 3. Associate_Finalise (A sends challenge2 == H(k).)
 --    Note that the key confirmation check is implied by HashFunction.
 3.  A -> B : SHA1(k)
+
+
+-- 0. End protocol.
+4.  B ->   : B
 
 
 #Equivalences
@@ -90,7 +95,7 @@ Agreement(A, B, [k])
 
 #Functions
 
--- Don't care what any of these functions actualy are.
+-- Don't care what any of these functions actually are.
 symbolic PK, SK, PDH, SDH, DH
 
 #Actual variables
