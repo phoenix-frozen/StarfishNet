@@ -1,0 +1,222 @@
+/*
+StarfishNet IoT network protocol.
+Authentication sequence.
+
+Author: Justin King-Lacroix
+Date:   January 2015
+*/
+
+theory StarfishNet
+begin
+
+builtins: hashing, signing, diffie-hellman
+
+//Base PKI rules
+rule Register_key:
+    [ Fr(~ltk) ]
+  -->
+    [ !Ltk($A, ~ltk), !Pk($A, pk(~ltk)), Out(pk(~ltk)) ]
+
+//Protocol description rules
+
+/* 1. Associate_Request  (A sends DHE public key.)
+Context: Initiator
+
+Casper:
+<pdhI := PDH(x)>
+1.  A -> B : {pdhI}{SK(A)}
+[A != B]
+*/
+rule Associate_Request:
+    let pdhI = 'g' ^ ~sdhI
+    in
+    [ !Ltk($I, ltkI) //initiator's signing key
+    , !Pk($I, pk(ltkI)) //initiator's public key
+    , !Pk($R, pk(ltkR)) //responder's public key
+    , Fr(~sdhI) //generate initiator's DHE keys
+    ]
+  -->
+    [ Associate_Request($I, $R, pk(ltkI), pk(ltkR), ~sdhI) //say A_Req has occurred
+    , Out(<pdhI, sign{pdhI}ltkI>) //tx A_Req
+    ]
+
+
+/* 2. Associate_Reply    (B sends DHE public key, and challenge1 == H(H(k)).)
+Context: Responder
+
+Casper:
+
+(Morally:
+<pdhR := PDH(y); k := DH(pdhI, SDH(y)); A::k := DH(pdhR, SDH(x))>
+2. B -> A {pdhR, SHA1(SHA1(k))}{SK(B)})
+)
+
+-- 2a. B sends DHE public key.
+<pdhR := PDH(y)>
+2a. B -> A : {pdhR}{SK(B)}
+
+-- 2b. Dummy to give A an assignment clause, in which the DH maths is done.
+<k := DH(pdhR, SDH(x))>
+2b. A ->   : A
+
+-- 2c. B sends challenge1.
+<k := DH(pdhI, SDH(y))>
+2c. B -> A : {SHA1(SHA1(k))}{SK(B)}
+*/
+rule Associate_Reply:
+    let pdhR = 'g' ^ ~sdhR
+        k = h(pdhI ^ ~sdhR) //generate session key
+        chal1 = h(h(k)) //generate chal1
+    in
+    [ !Ltk($R, ltkR) //responder's signing key
+    , !Pk($I, pk(ltkI)) //initiator's public key
+    , !Pk($R, pk(ltkR)) //responder's public key
+    , Fr(~sdhR) //generate responder's DHE keys
+    , In(<pdhI, sign{pdhI}ltkI>) //rx A_Req
+    ]
+  -->
+    [ Associate_Reply($I, $R, pk(ltkI), pk(ltkR), k) //say A_Rep has occurred
+    , Out(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //tx A_Rep
+    ]
+
+
+/* 3. Associate_Finalise (A sends challenge2 == H(k).)
+Context: Initiator
+
+Casper:
+3.  A -> B : SHA1(k)
+*/
+rule Associate_Finalise:
+    let k = h(pdhR ^ sdhI)
+        chal1 = h(h(k)) //check chal1
+        chal2 = h(k)    //generate chal2
+    in
+    [ !Pk($I, pk(ltkI)) //initiator's public key
+    , !Pk($R, pk(ltkR)) //responder's public key
+    , Associate_Request($I, $R, pk(ltkI), pk(ltkR), sdhI) //ensure A_Req has occurred
+    , In(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //rx A_Rep
+    ]
+  --[ SessionKeyI($I, $R, pk(ltkI), pk(ltkR), k) //assert that session key has been established
+    ]->
+    [ Out(chal2) //tx A_Fin
+    ]
+
+/* Final rule for reception of A_Fin:
+Context: Responder
+*/
+rule Associate_Finalise_Recv:
+    let chal2 = h(k) //check chal2
+    in
+    [ !Pk($I, pk(ltkI)) //initiator's public key
+    , !Pk($R, pk(ltkR)) //responder's public key
+    , Associate_Reply($I, $R, pk(ltkI), pk(ltkR), k) //ensure A_Rep has occurred
+    , In(chal2) //rx A_Req
+    ]
+  --[ SessionKeyR($I, $R, pk(ltkI), pk(ltkR), k) //assert that session key has been established
+    ]->
+    [
+    ]
+
+
+//Attack rules
+
+rule Ltk_reveal:
+    [ !Ltk($A, ltkA) ]
+  --[ LtkReveal($A) ]->
+    [ Out(ltkA) ]
+
+//Security lemmas
+
+lemma Key_Secrecy:
+    "(
+    All I R pkI pkR sessKey #i.
+        //if a session key has been established...
+        SessionKeyI(I, R, pkI, pkR, sessKey) @ i &
+
+        //... and the nodes' signing keys have not been revealed...
+        not
+            ( (Ex #r. LtkReveal(I) @ r)
+            | (Ex #r. LtkReveal(R) @ r)
+            )
+
+        //... then...
+        ==>
+
+        //... the attacker doesn't know the session key.
+        not (Ex #k. K(sessKey) @ k)
+    ) & (
+    All I R pkI pkR sessKey #i.
+        //if a session key has been established...
+        SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
+
+        //... and the nodes' signing keys have not been revealed...
+        not
+            ( (Ex #r. LtkReveal(I) @ r)
+            | (Ex #r. LtkReveal(R) @ r)
+            )
+
+        //... then...
+        ==>
+
+        //... the attacker doesn't know the session key.
+        not (Ex #k. K(sessKey) @ k)
+    )"
+
+lemma Perfect_Forward_Secrecy:
+    "(
+    All I R pkI pkR sessKey #i #k.
+        //if a session key has been established...
+        SessionKeyI(I, R, pkI, pkR, sessKey) @ i &
+
+        //... and the attacker knows the session key...
+        K(sessKey) @ k
+
+        //... then...
+        ==>
+
+        //... then one of the nodes' signing keys was revealed,
+        // AND this reveal happened *before* establishment of the
+        // session key.
+        ( (Ex #r. LtkReveal(I) @ r & r < i)
+        | (Ex #r. LtkReveal(R) @ r & r < i)
+        )
+    ) & (
+    All I R pkI pkR sessKey #i #k.
+        //if a session key has been established...
+        SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
+
+        //... and the attacker knows the session key...
+        K(sessKey) @ k
+
+        //... then...
+        ==>
+
+        //... then one of the nodes' signing keys was revealed,
+        // AND this reveal happened *before* establishment of the
+        // session key.
+        ( (Ex #r. LtkReveal(I) @ r & r < i)
+        | (Ex #r. LtkReveal(R) @ r & r < i)
+        )
+    )"
+
+lemma Key_Agreement:
+    "All I R pkI pkR sessKeyI sessKeyR #kr #ki.
+        //if I thinks it's established a session key with R...
+        SessionKeyI(I, R, pkI, pkR, sessKeyI) @ ki &
+
+        //... and R thinks it's established a session key with I...
+        SessionKeyR(I, R, pkI, pkR, sessKeyR) @ kr &
+
+        //... and neither node's signing key has been revealed...
+        not ( (Ex #r. LtkReveal(I) @ r)
+        | (Ex #r. LtkReveal(R) @ r)
+        )
+
+        //... then...
+        ==>
+
+        //... I and R agree on the value of the session key.
+        sessKeyI = sessKeyR
+    "
+
+end
