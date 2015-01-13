@@ -42,6 +42,7 @@ rule Associate_Request:
   -->
     [ Associate_Request($I, $R, ~sdhI) //say A_Req has occurred
     , Out(<pdhI, sign{pdhI}ltkI>) //tx A_Req
+    , !DHE($I, $R, ~sdhI) //and log an event that we now have a DHE private key
     ]
 
 
@@ -80,6 +81,7 @@ rule Associate_Reply:
   -->
     [ Associate_Reply($I, $R, k) //say A_Rep has occurred
     , Out(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //tx A_Rep
+    , !DHE($R, $I, ~sdhR) //and log an event that we now have a DHE private key
     ]
 
 
@@ -98,7 +100,7 @@ rule Associate_Finalise:
     , Associate_Request($I, $R, sdhI) //ensure A_Req has occurred
     , In(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //rx A_Rep
     ]
-  --[ SessionKeyI($I, $R, k) //assert that session key has been established
+  --[ SessionKeyI($I, $R, k) //I now thinks that a session key has been established
     ]->
     [ Out(<chal2, MAC(chal2, k)>) //tx A_Fin
     ]
@@ -112,9 +114,9 @@ rule Associate_Finalise_Recv:
     [ Associate_Reply($I, $R, k) //ensure A_Rep has occurred
     , In(<chal2, MAC(chal2, k)>) //rx A_Req
     ]
-  --[ SessionKeyR($I, $R, k) //assert that session key has been established
+  --[ SessionKeyR($I, $R, k) //R now thinks that a session key has been established
     ]->
-    [
+    [ !SessionKey($I, $R, k) //assert that session key has been established
     ]
 
 
@@ -125,6 +127,16 @@ rule Ltk_Reveal:
   --[ LtkReveal($A) ]->
     [ Out(ltkA) ]
 
+rule Session_Key_Reveal:
+    [ !SessionKey($A, $B, k) ]
+  --[ SessionKeyReveal($A, $B) ]->
+    [ Out(k) ]
+
+rule DHE_Reveal:
+    [ !DHE($A, $B, dhe) ]
+  --[ DHEReveal($A, $B) ]->
+    [ Out(dhe) ]
+
 //Security lemmas
 
 lemma Key_Agreement: "
@@ -132,7 +144,10 @@ lemma Key_Agreement: "
         //If R thinks it's established a session key with I...
         SessionKeyR(I, R, sessKey) @ i &
 
-        //... and I and R have neither lost their private keys, nor learned someone else's...
+        //... and I and R have neither lost their DHE private keys, nor learned anyone else's...
+        not (Ex A B #r. DHEReveal(A, B) @ r) &
+
+        //... and they have neither lost their signing keys, nor learned someone else's...
         not (Ex E #e. LtkReveal(E) @ e)
 
         //... then...
@@ -145,7 +160,8 @@ lemma Key_Agreement: "
 /* Key agreement establishes that if there's a SessionKeyR event, then there's
  * also a matching SessionKeyI event, which means I can just reason about
  * SessionKeyR events from here on in.
- * In other words, a SessionKeyR event now means "a session key has been established".
+ * That also means that !SessionKey events mean what they're supposed to mean.
+ * In other words, a SessionKeyR event now means "a shared secret has been established".
  */
 
 lemma Key_Secrecy: "
@@ -153,11 +169,17 @@ lemma Key_Secrecy: "
         //If a session key has been established...
         SessionKeyR(I, R, sessKey) @ i &
 
-        //... and the nodes' signing keys have not been revealed...
+        //... and I and R haven't lost their signing keys...
         not
             ( (Ex #r. LtkReveal(I) @ r)
             | (Ex #r. LtkReveal(R) @ r)
-            )
+            ) &
+
+        //... and they have neither lost their DHE private keys, nor learned anyone else's...
+        not (Ex A B #r. DHEReveal(A, B) @ r) &
+
+        //... and the session key itself hasn't been revealed...
+        not (Ex #r. SessionKeyReveal(I, R) @ r)
 
         //... then...
         ==>
@@ -171,18 +193,31 @@ lemma Perfect_Forward_Secrecy: "
         //If a session key has been established...
         SessionKeyR(I, R, sessKey) @ i &
 
-        //... and the attacker knows the session key...
-        K(sessKey) @ k
+        //... and the attacker knows it...
+        K(sessKey) @ k &
+
+        //... and neither I nor R is stealing someone else's keys...
+        not (Ex A #r. not (A = I) & not (A = R) & LtkReveal(A) @ r) &
+        not (Ex A #r. not (A = R) & DHEReveal(A, I) @ r) &
+        not (Ex A #r. not (A = I) & DHEReveal(A, R) @ r) &
+        not (Ex A #r. not (A = R) & DHEReveal(I, A) @ r) &
+        not (Ex A #r. not (A = I) & DHEReveal(R, A) @ r)
 
         //... then...
         ==>
 
-        //... then one of the nodes' signing keys was revealed,
+        //... either it's been explicitly revealed...
+        (Ex #r. SessionKeyReveal(I, R) @ r) |
+
+        //... or one of the nodes has leaked its DHE private key...
+        (Ex #r. DHEReveal(I, R) @ r) |
+        (Ex #r. DHEReveal(R, I) @ r) |
+
+        //... or one of the nodes' signing keys was revealed,
         // AND this reveal happened *before* establishment of the
         // session key.
-        ( (Ex #r. LtkReveal(I) @ r & r < i)
-        | (Ex #r. LtkReveal(R) @ r & r < i)
-        )
+        (Ex #r. LtkReveal(I) @ r & r < i) |
+        (Ex #r. LtkReveal(R) @ r & r < i)
 "
 
 end
