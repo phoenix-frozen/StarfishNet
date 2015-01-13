@@ -120,7 +120,7 @@ rule Associate_Finalise_Recv:
 
 //Attack rules
 
-rule Ltk_reveal:
+rule Ltk_Reveal:
     [ !Ltk($A, ltkA) ]
   --[ LtkReveal($A) ]->
     [ Out(ltkA) ]
