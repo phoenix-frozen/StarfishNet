@@ -127,26 +127,30 @@ rule Ltk_reveal:
 
 //Security lemmas
 
-lemma Key_Secrecy:
-    "(
+lemma Key_Agreement: "
     All I R pkI pkR sessKey #i.
-        //if a session key has been established...
-        SessionKeyI(I, R, pkI, pkR, sessKey) @ i &
+        //If R thinks it's established a session key with I...
+        SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
 
-        //... and the nodes' signing keys have not been revealed...
-        not
-            ( (Ex #r. LtkReveal(I) @ r)
-            | (Ex #r. LtkReveal(R) @ r)
-            )
+        //... and I and R have neither lost their private keys, nor learned someone else's...
+        not (Ex E #e. LtkReveal(E) @ e)
 
         //... then...
         ==>
 
-        //... the attacker doesn't know the session key.
-        not (Ex #k. K(sessKey) @ k)
-    ) & (
+        //... I thinks it's established the same session key with R.
+        (Ex #r. SessionKeyI(I, R, pkI, pkR, sessKey) @ r)
+"
+
+/* Key agreement establishes that if there's a SessionKeyR event, then there's
+ * also a matching SessionKeyI event, which means I can just reason about
+ * SessionKeyR events from here on in.
+ * In other words, a SessionKeyR event now means "a session key has been established".
+ */
+
+lemma Key_Secrecy: "
     All I R pkI pkR sessKey #i.
-        //if a session key has been established...
+        //If a session key has been established...
         SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
 
         //... and the nodes' signing keys have not been revealed...
@@ -160,29 +164,11 @@ lemma Key_Secrecy:
 
         //... the attacker doesn't know the session key.
         not (Ex #k. K(sessKey) @ k)
-    )"
+"
 
-lemma Perfect_Forward_Secrecy:
-    "(
+lemma Perfect_Forward_Secrecy: "
     All I R pkI pkR sessKey #i #k.
-        //if a session key has been established...
-        SessionKeyI(I, R, pkI, pkR, sessKey) @ i &
-
-        //... and the attacker knows the session key...
-        K(sessKey) @ k
-
-        //... then...
-        ==>
-
-        //... then one of the nodes' signing keys was revealed,
-        // AND this reveal happened *before* establishment of the
-        // session key.
-        ( (Ex #r. LtkReveal(I) @ r & r < i)
-        | (Ex #r. LtkReveal(R) @ r & r < i)
-        )
-    ) & (
-    All I R pkI pkR sessKey #i #k.
-        //if a session key has been established...
+        //If a session key has been established...
         SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
 
         //... and the attacker knows the session key...
@@ -197,26 +183,6 @@ lemma Perfect_Forward_Secrecy:
         ( (Ex #r. LtkReveal(I) @ r & r < i)
         | (Ex #r. LtkReveal(R) @ r & r < i)
         )
-    )"
-
-lemma Key_Agreement:
-    "All I R pkI pkR sessKeyI sessKeyR #kr #ki.
-        //if I thinks it's established a session key with R...
-        SessionKeyI(I, R, pkI, pkR, sessKeyI) @ ki &
-
-        //... and R thinks it's established a session key with I...
-        SessionKeyR(I, R, pkI, pkR, sessKeyR) @ kr &
-
-        //... and neither node's signing key has been revealed...
-        not ( (Ex #r. LtkReveal(I) @ r)
-        | (Ex #r. LtkReveal(R) @ r)
-        )
-
-        //... then...
-        ==>
-
-        //... I and R agree on the value of the session key.
-        sessKeyI = sessKeyR
-    "
+"
 
 end
