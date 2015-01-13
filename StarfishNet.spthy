@@ -31,12 +31,11 @@ rule Associate_Request:
     let pdhI = 'g' ^ ~sdhI
     in
     [ !Ltk($I, ltkI) //initiator's signing key
-    , !Pk($I, pk(ltkI)) //initiator's public key
     , !Pk($R, pk(ltkR)) //responder's public key
     , Fr(~sdhI) //generate initiator's DHE keys
     ]
   -->
-    [ Associate_Request($I, $R, pk(ltkI), pk(ltkR), ~sdhI) //say A_Req has occurred
+    [ Associate_Request($I, $R, ~sdhI) //say A_Req has occurred
     , Out(<pdhI, sign{pdhI}ltkI>) //tx A_Req
     ]
 
@@ -70,12 +69,11 @@ rule Associate_Reply:
     in
     [ !Ltk($R, ltkR) //responder's signing key
     , !Pk($I, pk(ltkI)) //initiator's public key
-    , !Pk($R, pk(ltkR)) //responder's public key
     , Fr(~sdhR) //generate responder's DHE keys
     , In(<pdhI, sign{pdhI}ltkI>) //rx A_Req
     ]
   -->
-    [ Associate_Reply($I, $R, pk(ltkI), pk(ltkR), k) //say A_Rep has occurred
+    [ Associate_Reply($I, $R, k) //say A_Rep has occurred
     , Out(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //tx A_Rep
     ]
 
@@ -91,12 +89,11 @@ rule Associate_Finalise:
         chal1 = h(h(k)) //check chal1
         chal2 = h(k)    //generate chal2
     in
-    [ !Pk($I, pk(ltkI)) //initiator's public key
-    , !Pk($R, pk(ltkR)) //responder's public key
-    , Associate_Request($I, $R, pk(ltkI), pk(ltkR), sdhI) //ensure A_Req has occurred
+    [ !Pk($R, pk(ltkR)) //responder's public key
+    , Associate_Request($I, $R, sdhI) //ensure A_Req has occurred
     , In(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //rx A_Rep
     ]
-  --[ SessionKeyI($I, $R, pk(ltkI), pk(ltkR), k) //assert that session key has been established
+  --[ SessionKeyI($I, $R, k) //assert that session key has been established
     ]->
     [ Out(chal2) //tx A_Fin
     ]
@@ -107,12 +104,10 @@ Context: Responder
 rule Associate_Finalise_Recv:
     let chal2 = h(k) //check chal2
     in
-    [ !Pk($I, pk(ltkI)) //initiator's public key
-    , !Pk($R, pk(ltkR)) //responder's public key
-    , Associate_Reply($I, $R, pk(ltkI), pk(ltkR), k) //ensure A_Rep has occurred
+    [ Associate_Reply($I, $R, k) //ensure A_Rep has occurred
     , In(chal2) //rx A_Req
     ]
-  --[ SessionKeyR($I, $R, pk(ltkI), pk(ltkR), k) //assert that session key has been established
+  --[ SessionKeyR($I, $R, k) //assert that session key has been established
     ]->
     [
     ]
@@ -128,9 +123,9 @@ rule Ltk_reveal:
 //Security lemmas
 
 lemma Key_Agreement: "
-    All I R pkI pkR sessKey #i.
+    All I R sessKey #i.
         //If R thinks it's established a session key with I...
-        SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
+        SessionKeyR(I, R, sessKey) @ i &
 
         //... and I and R have neither lost their private keys, nor learned someone else's...
         not (Ex E #e. LtkReveal(E) @ e)
@@ -139,7 +134,7 @@ lemma Key_Agreement: "
         ==>
 
         //... I thinks it's established the same session key with R.
-        (Ex #r. SessionKeyI(I, R, pkI, pkR, sessKey) @ r)
+        (Ex #r. SessionKeyI(I, R, sessKey) @ r)
 "
 
 /* Key agreement establishes that if there's a SessionKeyR event, then there's
@@ -149,9 +144,9 @@ lemma Key_Agreement: "
  */
 
 lemma Key_Secrecy: "
-    All I R pkI pkR sessKey #i.
+    All I R sessKey #i.
         //If a session key has been established...
-        SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
+        SessionKeyR(I, R, sessKey) @ i &
 
         //... and the nodes' signing keys have not been revealed...
         not
@@ -167,9 +162,9 @@ lemma Key_Secrecy: "
 "
 
 lemma Perfect_Forward_Secrecy: "
-    All I R pkI pkR sessKey #i #k.
+    All I R sessKey #i #k.
         //If a session key has been established...
-        SessionKeyR(I, R, pkI, pkR, sessKey) @ i &
+        SessionKeyR(I, R, sessKey) @ i &
 
         //... and the attacker knows the session key...
         K(sessKey) @ k
