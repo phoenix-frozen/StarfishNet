@@ -10,6 +10,11 @@ theory StarfishNet
 begin
 
 builtins: hashing, signing, diffie-hellman
+/* MAC is for modelling the integrity-protection we get on encrypted, unsigned packets.
+ * We don't actually model said encryption because none of the information we're modelling
+ * is actually encrypted.
+ */
+functions: MAC/2
 
 //Base PKI rules
 rule Register_key:
@@ -95,7 +100,7 @@ rule Associate_Finalise:
     ]
   --[ SessionKeyI($I, $R, k) //assert that session key has been established
     ]->
-    [ Out(chal2) //tx A_Fin
+    [ Out(<chal2, MAC(chal2, k)>) //tx A_Fin
     ]
 
 /* Final rule for reception of A_Fin:
@@ -105,7 +110,7 @@ rule Associate_Finalise_Recv:
     let chal2 = h(k) //check chal2
     in
     [ Associate_Reply($I, $R, k) //ensure A_Rep has occurred
-    , In(chal2) //rx A_Req
+    , In(<chal2, MAC(chal2, k)>) //rx A_Req
     ]
   --[ SessionKeyR($I, $R, k) //assert that session key has been established
     ]->
