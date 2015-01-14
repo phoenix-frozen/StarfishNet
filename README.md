@@ -56,7 +56,8 @@ should be acknowledged, but that functionality is so far unimplemented.
 
 StarfishNet does not use IEEE802.15.4 link-layer encryption, because such
 packets are not routable.  (This is a flaw in IEEE802.15.4; ZigBee exhibits the
-same behaviour.)  The IEEE802.15.4 AUX header (used by link-layer encryption)
+same behaviour.)  The IEEE802.15.4 AUX header (used by link-layer encryption, and
+reused by ZigBee for network-layer and application-layer encryption)
 is also larger than the StarfishNet encryption header.
 
 StarfishNet also does not implement broadcasts.
