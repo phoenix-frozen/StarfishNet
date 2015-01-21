@@ -718,17 +718,18 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     if(network_header->encrypt) {
         SN_InfoPrintf("doing decryption and integrity checking...\n");
-        uint32_t encryption_counter = table_entry.packet_rx_counter;
         bool pure_ack = 0;
 
         if(PACKET_ENTRY(packet, key_confirmation_header, indication) == NULL && PACKET_ENTRY(packet, encrypted_ack_header, indication) != NULL && PACKET_ENTRY(packet, payload_data, indication) == NULL) {
             //this is a pure-acknowledgement packet; don't change the counter
             pure_ack = 1;
-        } else {
-            table_entry.packet_rx_counter++;
         }
 
-        ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, encryption_counter, &packet, pure_ack);
+        if(pure_ack) {
+            ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, PACKET_ENTRY(packet, encrypted_ack_header, indication)->counter, &packet, 1);
+        } else {
+            ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, table_entry.packet_rx_counter++, &packet, 0);
+        }
         if(ret != SN_OK) {
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
             //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
