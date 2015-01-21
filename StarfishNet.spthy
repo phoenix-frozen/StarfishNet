@@ -77,7 +77,8 @@ rule Associate_Reply:
     , Fr(~sdhR) //generate responder's DHE keys
     , In(<pdhI, sign{pdhI}ltkI>) //rx A_Req
     ]
-  -->
+  --[ SessionKeyRProvisional($I, $R, k) //R has now calculated (but not confirmed) k
+    ]->
     [ Associate_Reply($I, $R, k) //say A_Rep has occurred
     , Out(<pdhR, chal1, sign{<pdhR, chal1>}ltkR>) //tx A_Rep
     ]
@@ -128,7 +129,26 @@ rule Ltk_Reveal:
 
 //Security lemmas
 
-lemma Key_Agreement: "
+lemma Key_Agreement_I: "
+    All I R sessKey #i.
+        //If I thinks it's established a session key with R...
+        SessionKeyI(I, R, sessKey) @ i &
+
+        //... and they have not lost their signing keys...
+        not (Ex sk #e. LtkReveal(I, sk) @ e) &
+        not (Ex sk #e. LtkReveal(R, sk) @ e)
+
+        //... then...
+        ==>
+
+        //... R has calculated the same session key when replying to I.
+        // (Note that we can't make a stronger guarantee than that,
+        // since we never actually know if the Associate_Finalise is
+        // received.)
+        (Ex #r. SessionKeyRProvisional(I, R, sessKey) @ r)
+"
+
+lemma Key_Agreement_R: "
     All I R sessKey #i.
         //If R thinks it's established a session key with I...
         SessionKeyR(I, R, sessKey) @ i &
@@ -189,18 +209,23 @@ lemma Perfect_Forward_Secrecy: "
 
 lemma Honest_I_And_R_Still_Work: exists-trace "
     //There exists a trace...
-    Ex I R sessKey #i #r.
-        //... in which I thinks it's established a key with R...
+    Ex I R sessKey #p #i #r.
+        //... in which R calculates a session key...
+        SessionKeyRProvisional(I, R, sessKey) @ p &
+
+        //... I thinks it's that key with R...
         SessionKeyI(I, R, sessKey) @ i &
 
         //... and R agrees...
         SessionKeyR(I, R, sessKey) @ r &
 
         //... and the protocol occurs in the correct order...
+        p < i &
         i < r &
 
         //... with no key leakage of any kind.
-        not (Ex #k. K(sessKey) @ k)
+        not (Ex #k. K(sessKey) @ k) &
+        not (Ex A sk #l. LtkReveal(A, sk) @ l)
 "
 
 end
