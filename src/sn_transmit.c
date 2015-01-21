@@ -600,6 +600,8 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
             //do ECDH math
             SN_Kex_result_t kex_result;
             if(SN_Crypto_key_agreement(
+                &table_entry.public_key,
+                &session->device_root_key.public_key,
                 &table_entry.remote_key_agreement_key,
                 &table_entry.local_key_agreement_keypair.private_key,
                 &kex_result

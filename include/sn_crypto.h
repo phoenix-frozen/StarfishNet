@@ -36,7 +36,9 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     SN_Signature_t*   signature
 );
 
-int SN_Crypto_key_agreement ( //do a key agreement into shared_secret
+int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_secret
+    SN_Public_key_t* identity_A,
+    SN_Public_key_t* identity_B,
     SN_Public_key_t*  public_key,
     SN_Private_key_t* private_key,
     SN_Kex_result_t*  shared_secret

@@ -231,7 +231,7 @@ static int do_security_checks(SN_Table_entry_t* table_entry, packet_t* packet) {
         return SN_OK;
 }
 
-static int do_public_key_operations(SN_Table_entry_t* table_entry, packet_t* packet) {
+static int do_public_key_operations(SN_Public_key_t* self, SN_Table_entry_t* table_entry, packet_t* packet) {
     /* at this point, security checks have passed, but no integrity-checking has happened.
      * if this packet is signed, we check the signature, and thus integrity-checking is done.
      * if not, it must be encrypted. we must therefore finish key-agreement so that we can
@@ -295,6 +295,8 @@ static int do_public_key_operations(SN_Table_entry_t* table_entry, packet_t* pac
         //finish the key agreement
         SN_Kex_result_t kex_result;
         ret = SN_Crypto_key_agreement(
+            self,
+            &table_entry->public_key,
             &PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key,
             &table_entry->local_key_agreement_keypair.private_key,
             &kex_result
@@ -710,7 +712,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     }
 
     SN_InfoPrintf("doing public-key operations...\n");
-    ret = do_public_key_operations(&table_entry, &packet);
+    ret = do_public_key_operations(&session->device_root_key.public_key, &table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in public-key operations. aborting\n", -ret);
         return ret;

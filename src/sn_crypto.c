@@ -96,12 +96,15 @@ int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, size_t data_len
 }
 
 
-int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* private_key, SN_Kex_result_t* shared_secret) {
+int SN_Crypto_key_agreement(SN_Public_key_t* identity_A, SN_Public_key_t* identity_B, SN_Public_key_t* public_key, SN_Private_key_t* private_key, SN_Kex_result_t* shared_secret) {
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || private_key == NULL || shared_secret == NULL) {
-        SN_ErrPrintf("public_key, private_key, and shared_secret must all be non-NULL\n");
+        SN_ErrPrintf("identity_A, identity_B, public_key, private_key, and shared_secret must all be non-NULL\n");
         return -SN_ERR_NULL;
+    }
+    if(identity_A == NULL || identity_B == NULL) {
+        SN_WarnPrintf("doing unauthenticated key agreement (no identity %s%s%s). ARE YOU SURE?\n", identity_A == NULL ? "A" : "", identity_A == NULL && identity_B == NULL ? " or " : "" , identity_B == NULL ? "B" : "");
     }
 
     //unpack public key
@@ -116,8 +119,21 @@ int SN_Crypto_key_agreement(SN_Public_key_t* public_key, SN_Private_key_t* priva
         return -SN_ERR_KEYGEN;
     }
 
-    //hash and output resultant secret
-    sha1(raw_shared_secret.data, sizeof(raw_shared_secret.data), shared_secret->raw.data);
+    //hash resultant secret together with identities of parties involved
+    sha1_context ctx;
+    sha1_init(&ctx);
+    sha1_starts(&ctx);
+    sha1_update(&ctx, raw_shared_secret.data, sizeof(raw_shared_secret.data) );
+    if(identity_A != NULL) {
+        sha1_update(&ctx, identity_A->data, sizeof(identity_A->data));
+    }
+    if(identity_B != NULL) {
+        sha1_update(&ctx, identity_B->data, sizeof(identity_B->data));
+    }
+
+    //output resultant link key
+    sha1_finish(&ctx, shared_secret->raw.data);
+    sha1_free(&ctx);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
