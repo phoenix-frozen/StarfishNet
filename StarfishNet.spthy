@@ -127,6 +127,11 @@ rule Ltk_Reveal:
   --[ LtkReveal($A, ltkA) ]->
     [ Out(ltkA) ]
 
+rule Session_Key_Reveal:
+    [ !SessionKey($A, $B, k) ]
+  --[ SessionKeyReveal($A, $B, k) ]->
+    [ Out(k) ]
+
 //Security lemmas
 
 lemma Key_Agreement_I: "
@@ -176,6 +181,9 @@ lemma Key_Secrecy: "
         //If a session key has been established...
         SessionKeyR(I, R, sessKey) @ i &
 
+        //... and it hasn't been disclosed...
+        not(Ex #r. SessionKeyReveal(I, R, sessKey) @ r) &
+
         //... and I and R haven't lost their signing keys...
         not
             ( (Ex sk #r. LtkReveal(I, sk) @ r)
@@ -200,7 +208,10 @@ lemma Perfect_Forward_Secrecy: "
         //... then...
         ==>
 
-        //... one of the nodes' signing keys was revealed,
+        //... either the session key itself was leaked...
+        (Ex #r. SessionKeyReveal(I, R, sessKey) @ r) |
+
+        //... or one of the nodes' signing keys was revealed,
         // AND this reveal happened *before* establishment of the
         // session key.
         (Ex sk #r. LtkReveal(I, sk) @ r & r < i) |
@@ -225,6 +236,7 @@ lemma Honest_I_And_R_Still_Work: exists-trace "
 
         //... with no key leakage of any kind.
         not (Ex #k. K(sessKey) @ k) &
+        not (Ex #r. SessionKeyReveal(I, R, sessKey) @ r) &
         not (Ex A sk #l. LtkReveal(A, sk) @ l)
 "
 
