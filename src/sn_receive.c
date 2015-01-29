@@ -735,7 +735,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         if(ret != SN_OK) {
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
             //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
-            SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission");
+            SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
             SN_Delayed_tick(0);
             if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
                 SN_Address_t ack_address = {

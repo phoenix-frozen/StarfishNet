@@ -472,8 +472,8 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     }
 
     if(pure_ack) {
-        assert(PACKET_ENTRY(packet, encrypted_ack_header, request)->counter == table_entry.packet_rx_counter);
-        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, table_entry.packet_rx_counter, &packet, 1);
+        assert(PACKET_ENTRY(packet, encrypted_ack_header, request)->counter + 1 == table_entry.packet_rx_counter);
+        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, PACKET_ENTRY(packet, encrypted_ack_header, request)->counter, &packet, 1);
     } else {
         ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet, 0);
     }
