@@ -242,7 +242,7 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         }
     }
 
-    //{encrypted,signed}_ack_header_t
+    //encrypted_ack_header_t
     if(network_header->ack) {
         if(network_header->encrypt) {
             //encrypted_ack_header_t
@@ -259,23 +259,8 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
 
             encrypted_ack_header->counter = table_entry->packet_rx_counter - 1;
         } else {
-            //signed_ack_header_t
-            SN_InfoPrintf("generating signed-ack header at %d\n", PACKET_SIZE(*packet, request));
-            if(PACKET_SIZE(*packet, request) + sizeof(signed_ack_header_t) > aMaxMACPayloadSize) {
-                SN_ErrPrintf("adding signed_ack header would make packet too large, aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            packet->layout.signed_ack_header = PACKET_SIZE(*packet, request);
-            packet->layout.present.signed_ack_header = 1;
-            PACKET_SIZE(*packet, request) += sizeof(signed_ack_header_t);
-            signed_ack_header_t* signed_ack_header = PACKET_ENTRY(*packet, signed_ack_header, request);
-            assert(signed_ack_header != NULL);
-
-            (void)signed_ack_header; //shut up CLion
-
-            //TODO: signed_ack_header_t
-            SN_ErrPrintf("signed_ack headers not implemented yet\n");
-            return -SN_ERR_UNIMPLEMENTED;
+            SN_ErrPrintf("acknowledgements can only be sent for encrypted packets\n");
+            return -SN_ERR_INVALID;
         }
     }
 

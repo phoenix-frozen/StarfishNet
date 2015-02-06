@@ -331,9 +331,15 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
         return ret;
     }
 
-    if(PACKET_ENTRY(*packet, key_confirmation_header, request) == NULL && (PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL || PACKET_ENTRY(*packet, signed_ack_header, request) != NULL) && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
+    if(PACKET_ENTRY(*packet, key_confirmation_header, request) == NULL && PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
         //this is a pure acknowledgement packet
         SN_InfoPrintf("just sent pure acknowledgement packet; not performing retransmissions\n");
+        slot_data->allocated = 0;
+    }
+
+    if(PACKET_ENTRY(*packet, encryption_header, request) == NULL && PACKET_ENTRY(*packet, association_header, request) == NULL) {
+        //this is a signed non-association packet; probably optimistic certificate transport
+        SN_InfoPrintf("just sent unencrypted non-association packet (probably optimistic certificate transport; not performing retransmissions\n");
         slot_data->allocated = 0;
     }
 
@@ -388,35 +394,6 @@ int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t cou
 
     SN_InfoPrintf("exit\n");
     return rv;
-}
-
-int SN_Delayed_acknowledge_signed(SN_Table_entry_t* table_entry, SN_Signature_t* signature) {
-    SN_InfoPrintf("enter\n");
-
-    if(table_entry == NULL || signature == NULL) {
-        SN_ErrPrintf("table_entry and signature must be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    //for each active slot...
-    FOR_EACH_ACTIVE_SLOT({
-        //... if it's in my session and its packet's destination is the one I'm talking about...
-        if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
-            //... and it's signed...
-            if(PACKET_ENTRY(slot->packet, signature_header, request) != NULL &&
-               memcmp(PACKET_ENTRY(slot->packet, signature_header, request)->signature.data, signature->data, sizeof(signature->data)) != 0) {
-
-                //... acknowledge it.
-                slot->allocated = 0;
-
-                SN_InfoPrintf("exit\n");
-                return SN_OK;
-            }
-        }
-    });
-
-    SN_ErrPrintf("acknowledgement entry not found\n");
-    return -SN_ERR_UNKNOWN;
 }
 
 int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* packet) {

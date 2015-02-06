@@ -16,9 +16,6 @@ int SN_Delayed_forward(SN_Session_t* session, uint16_t source, uint16_t destinat
 //notify the retransmission system that an encrypted packet has been acknowledged
 int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t counter);
 
-//notify the retransmission system that a signed packet has been acknowledged
-int SN_Delayed_acknowledge_signed(SN_Table_entry_t* table_entry, SN_Signature_t* signature);
-
 //acknowledgement notification function for special treatment of association packets
 int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* packet);
 

@@ -98,7 +98,7 @@ static int detect_packet_layout(packet_t* packet) {
         current_position += sizeof(key_confirmation_header_t);
     }
 
-    //encrypted_ack_header_t / signed_ack_header_t
+    //encrypted_ack_header_t
     if(network_header->ack && !network_header->associate) {
         if(network_header->encrypt) {
             //encrypted ack
@@ -111,15 +111,8 @@ static int detect_packet_layout(packet_t* packet) {
             packet->layout.present.encrypted_ack_header = 1;
             current_position += sizeof(encrypted_ack_header_t);
         } else {
-            //signed ack
-            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(signed_ack_header_t)) {
-                SN_ErrPrintf("packet indicates an acknowledgement (signed) header, but is too small. aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            SN_InfoPrintf("found acknowledgement (signed) header at %d\n", current_position);
-            packet->layout.signed_ack_header = current_position;
-            packet->layout.present.signed_ack_header = 1;
-            current_position += sizeof(signed_ack_header_t);
+            SN_ErrPrintf("acknowledgements only work for encrypted packets");
+            return -SN_ERR_INVALID;
         }
     }
 
@@ -493,12 +486,6 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
     if(PACKET_ENTRY(*packet, encrypted_ack_header, indication) != NULL) {
         SN_InfoPrintf("processing encrypted acknowledgement header...\n");
         SN_Delayed_acknowledge_encrypted(table_entry, PACKET_ENTRY(*packet, encrypted_ack_header, indication)->counter);
-    }
-
-    //signed_ack_header
-    if(PACKET_ENTRY(*packet, signed_ack_header, indication) != NULL) {
-        SN_InfoPrintf("processing signed acknowledgement header...\n");
-        SN_Delayed_acknowledge_signed(table_entry, &PACKET_ENTRY(*packet, signed_ack_header, indication)->signature);
     }
 
     return SN_OK;

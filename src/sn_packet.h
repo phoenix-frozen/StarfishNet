@@ -80,10 +80,6 @@ typedef struct __attribute__((packed)) encrypted_ack_header {
     uint32_t counter;
 } encrypted_ack_header_t;
 
-typedef struct __attribute__((packed)) signed_ack_header {
-    SN_Signature_t signature; //the signature of the packet we're acknowledging
-} signed_ack_header_t;
-
 typedef uint8_t payload_data_t;
 
 typedef struct packet {
