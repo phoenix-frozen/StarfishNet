@@ -7,3 +7,4 @@ cscope.*
 test/*test
 .idea/
 StarfishNet.csp
+build
