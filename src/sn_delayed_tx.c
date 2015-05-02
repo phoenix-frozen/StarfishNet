@@ -112,7 +112,7 @@ static int do_packet_transmission(int slot) {
             .session = session,
         };
 
-        ret = SN_Table_lookup_by_address(&slot_data->dst_address, &table_entry, NULL);
+        ret = SN_Table_lookup_by_address(&slot_data->dst_address, &table_entry);
         if(ret != SN_OK) {
             SN_WarnPrintf("transmitting packet to new node (lookup error %d)\n", -ret);
         } else if(table_entry.unavailable) {
@@ -467,7 +467,7 @@ void SN_Delayed_tick(bool count_towards_disconnection) {
             if(slot->retries >= slot->session->nib.tx_retry_limit) {
                 SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
                 SN_Table_entry_t table_entry = { .session = slot->session };
-                if(SN_Table_lookup_by_address(&slot->dst_address, &table_entry, NULL) == SN_OK) {
+                if(SN_Table_lookup_by_address(&slot->dst_address, &table_entry) == SN_OK) {
                     table_entry.unavailable = 1;
                     SN_Table_update(&table_entry);
                 }

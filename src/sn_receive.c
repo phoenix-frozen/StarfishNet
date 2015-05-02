@@ -653,8 +653,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         .session       = session,
         .short_address = SN_NO_SHORT_ADDRESS,
     };
-    SN_Certificate_storage_t* cert_storage = NULL;
-    ret = SN_Table_lookup_by_address(src_addr, &table_entry, &cert_storage);
+    ret = SN_Table_lookup_by_address(src_addr, &table_entry);
     if(ret != SN_OK) { //node isn't in node table, so insert it
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
@@ -788,9 +787,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
             //error-check the certificate, and add it to certificate storage
             SN_Certificate_t* evidence = (SN_Certificate_t*)payload_data;
-            ret = SN_Crypto_add_certificate(cert_storage, evidence);
-            if(ret == -SN_ERR_SIGNATURE ||
-               (ret == -SN_ERR_NULL && SN_Crypto_check_certificate(evidence) != SN_OK)) {
+            if(SN_Crypto_check_certificate(evidence) != SN_OK) {
                 SN_ErrPrintf("received evidence packet with invalid payload\n");
                 return -SN_ERR_SIGNATURE;
             }

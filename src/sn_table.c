@@ -8,16 +8,11 @@
 //implemented as 32-entry table with free bitmap
 #define TABLE_SIZE 32
 
-typedef struct internal_table_entry {
-    SN_Table_entry_t data;
-    SN_Certificate_storage_t* evidence;
-} internal_table_entry_t;
-
 #define BIT(x) (1UL << (x))
 
 typedef uint32_t table_bitmap_t;
 
-static internal_table_entry_t table[TABLE_SIZE] = {};
+static SN_Table_entry_t table[TABLE_SIZE] = {};
 
 static table_bitmap_t entry_bitmap = 0;
 
@@ -34,7 +29,7 @@ static int lookup_by_long_address(table_bitmap_t limit, mac_address_t* address) 
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++)
         if((entry_bitmap & limit & BIT(i)) &&
-           !memcmp(address, &table[i].data.long_address, sizeof(table[i].data.long_address))) {
+           !memcmp(address, &table[i].long_address, sizeof(table[i].long_address))) {
             return i;
         }
 
@@ -47,7 +42,7 @@ static int lookup_by_short_address(table_bitmap_t limit, uint16_t address) {
     }
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
-        if((entry_bitmap & limit & BIT(i)) && address == table[i].data.short_address) {
+        if((entry_bitmap & limit & BIT(i)) && address == table[i].short_address) {
             return i;
         }
     }
@@ -67,7 +62,7 @@ static int lookup_by_public_key(table_bitmap_t limit, SN_Public_key_t* public_ke
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
         if((entry_bitmap & limit & BIT(i)) &&
-           !memcmp(public_key->data, table[i].data.public_key.data, sizeof(public_key->data))) {
+           !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data))) {
             return i;
         }
     }
@@ -109,7 +104,7 @@ static int alloc_entry() {
 
             //clear its data
             memset(&table[i], 0, sizeof(table[i]));
-            table[i].data.short_address = SN_NO_SHORT_ADDRESS;
+            table[i].short_address = SN_NO_SHORT_ADDRESS;
 
             //we're done
             return i;
@@ -153,7 +148,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
     }
 
     //fill new entry with data, and mark in this sessions 'in-use' word
-    table[ret].data = *entry;
+    table[ret] = *entry;
     entry->session->table_entries |= BIT(ret);
 
     return SN_OK;
@@ -177,7 +172,7 @@ int SN_Table_update(SN_Table_entry_t* entry) {
      * There are no consistency checks here because the
      * expected usage pattern is insert(); lookup(); update();
      */
-    table[ret].data = *entry;
+    table[ret] = *entry;
 
     return SN_OK;
 }
@@ -203,27 +198,8 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-//(de)associate security metadata. also used to clear
-int SN_Table_associate_metadata(SN_Table_entry_t* entry, SN_Certificate_storage_t* storage) {
-    if(entry == NULL || entry->session == NULL) {
-        return -SN_ERR_NULL;
-    }
-
-    //see if entry already exists
-    int ret = find_entry(entry);
-    if(ret < 0) {
-        //it doesn't. return an error
-        return -SN_ERR_UNEXPECTED;
-    }
-
-    //associate certificate storage with entry
-    table[ret].evidence = storage;
-
-    return SN_OK;
-}
-
 //lookups can be by address or by public public_key. first parameter is input, second and third are output
-int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
+int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry) {
     if(address == NULL || entry == NULL || entry->session == NULL) {
         return -SN_ERR_NULL;
     }
@@ -239,16 +215,12 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry, S
         return -SN_ERR_UNKNOWN;
     }
 
-    *entry = table[ret].data;
-
-    if(evidence != NULL) {
-        *evidence = table[ret].evidence;
-    }
+    *entry = table[ret];
 
     return SN_OK;
 }
 
-int SN_Table_lookup_by_public_key(SN_Public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence) {
+int SN_Table_lookup_by_public_key(SN_Public_key_t* public_key, SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL) {
         return -SN_ERR_NULL;
     }
@@ -262,11 +234,7 @@ int SN_Table_lookup_by_public_key(SN_Public_key_t* public_key, SN_Table_entry_t*
         return -SN_ERR_UNKNOWN;
     }
 
-    *entry = table[ret].data;
-
-    if(evidence != NULL) {
-        *evidence = table[ret].evidence;
-    }
+    *entry = table[ret];
 
     return SN_OK;
 }
@@ -288,7 +256,7 @@ void SN_Table_clear_all_neighbors(SN_Session_t* session) {
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
         if((entry_bitmap & session->table_entries & BIT(i))) {
-            table[i].data.neighbor = 0;
+            table[i].neighbor = 0;
         }
     }
 }

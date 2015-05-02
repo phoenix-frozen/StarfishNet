@@ -248,28 +248,3 @@ int SN_Crypto_check_certificate(SN_Certificate_t* certificate) {
         SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) !=
         SN_OK;
 }
-
-int SN_Crypto_add_certificate(SN_Certificate_storage_t* storage, SN_Certificate_t* certificate) {
-    SN_InfoPrintf("enter\n");
-
-    if(storage == NULL || certificate == NULL) {
-        SN_ErrPrintf("storage and certificate must be non-NULL\n");
-        return -SN_ERR_NULL;
-    }
-
-    if(SN_Crypto_check_certificate(certificate) != SN_OK) {
-        SN_ErrPrintf("certificate signature verification failed. not adding to repository\n");
-        return -SN_ERR_SIGNATURE;
-    }
-
-    assert(storage->size <= storage->capacity);
-    if(storage->size == storage->capacity) {
-        SN_ErrPrintf("certificate repository is full\n");
-        return -SN_ERR_RESOURCES;
-    }
-
-    storage->contents[storage->size++] = *certificate;
-
-    SN_InfoPrintf("exit\n");
-    return SN_OK;
-}

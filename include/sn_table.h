@@ -53,13 +53,11 @@ int SN_Table_update (SN_Table_entry_t* entry);
 int SN_Table_delete (SN_Table_entry_t* entry);
 //delete all entries related to a session
 void SN_Table_clear (SN_Session_t* session);
-//add security metadata
-int SN_Table_associate_metadata (SN_Table_entry_t* entry, SN_Certificate_storage_t* storage);
 
 //lookups can be by address or by public key. first parameter is input, second and third are output
 //entry->session must be valid
-int SN_Table_lookup_by_address    (SN_Address_t*    address,    SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
-int SN_Table_lookup_by_public_key (SN_Public_key_t* public_key, SN_Table_entry_t* entry, SN_Certificate_storage_t** evidence);
+int SN_Table_lookup_by_address    (SN_Address_t*    address,    SN_Table_entry_t* entry);
+int SN_Table_lookup_by_public_key (SN_Public_key_t* public_key, SN_Table_entry_t* entry);
 
 //indicate that no entries belonging to this session should be considered neighbors anymore
 void SN_Table_clear_all_neighbors(SN_Session_t* session);

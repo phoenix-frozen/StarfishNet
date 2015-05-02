@@ -68,16 +68,6 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     bool             pure_ack
 );
 
-int SN_Crypto_add_certificate ( //add a certificate to a storage repository. implicitly calls SN_Crypto_check_certificate on it first
-    SN_Certificate_storage_t* storage,
-    SN_Certificate_t*         certificate
-);
-
-int SN_Crypto_remove_certificate ( //remove a certificate from a storage repository
-    SN_Certificate_storage_t* storage,
-    SN_Certificate_t*         certificate
-);
-
 int SN_Crypto_check_certificate ( //check the signature on a certificate
     SN_Certificate_t*         certificate
 );

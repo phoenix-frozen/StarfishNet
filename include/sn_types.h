@@ -61,12 +61,6 @@ typedef struct __attribute__((packed)) SN_Certificate {
     SN_Public_key_t endorser;
 } SN_Certificate_t;
 
-typedef struct SN_Certificate_storage {
-    unsigned int     capacity; //number of certificates that can be stored in this structure, in total
-    unsigned int     size;     //number of certificates that are currently stored in this structure
-    SN_Certificate_t contents[];
-} SN_Certificate_storage_t;
-
 /* Networking */
 
 typedef struct SN_Address {

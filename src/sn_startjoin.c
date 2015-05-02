@@ -342,9 +342,8 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
     //perform extra discovery step to fill in node table
     SN_Table_clear_all_neighbors(session);
-    //TODO: killed this discovery phase for testing
     ret = SN_OK;
-    //ret = SN_Discover(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
+    ret = SN_Discover(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
 
     //Fill NIB (and set parent)
     if(ret == SN_OK) {

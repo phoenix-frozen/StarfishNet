@@ -381,7 +381,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
         .session       = session,
         .short_address = SN_NO_SHORT_ADDRESS,
     };
-    int              ret         = SN_Table_lookup_by_address(dst_addr, &table_entry, NULL);
+    int              ret         = SN_Table_lookup_by_address(dst_addr, &table_entry);
     if(ret != SN_OK || table_entry.state < SN_Send_finalise) { //node isn't in node table, abort
         SN_ErrPrintf("no relationship with remote node. aborting\n");
         return -SN_ERR_SECURITY;
@@ -513,7 +513,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
         .session       = session,
         .short_address = SN_NO_SHORT_ADDRESS,
     };
-    int ret = SN_Table_lookup_by_address(dst_addr, &table_entry, NULL);
+    int ret = SN_Table_lookup_by_address(dst_addr, &table_entry);
     if(ret != SN_OK) {
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 

@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
     SN_Table_entry_t table_entry = {
         .session = &network_session,
     };
-    SN_Table_lookup_by_address(&address, &table_entry, NULL);
+    SN_Table_lookup_by_address(&address, &table_entry);
     printf("Relationship is in state %d (should be at least %d)\n", table_entry.state, SN_Send_finalise);
     if(table_entry.state < SN_Send_finalise) {
         goto main_exit;
