@@ -758,13 +758,8 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         //the association request will be the first of two message
         association_request = buffer;
 
-        //advance the buffer by one association message
-        buffer = (SN_Message_t*)((uint8_t*)buffer + sizeof(buffer->association_message));
-        buffer_size -= sizeof(buffer->association_message);
-
         //fill in the association message contents
         association_request->type                             = PACKET_ENTRY(packet, association_header, indication)->dissociate ? SN_Dissociation_request : SN_Association_request;
-        association_request->association_message.stapled_data = buffer_size == 0 ? NULL : buffer;
 
         SN_InfoPrintf("message synthesis done. output buffer has %zu bytes remaining.\n", buffer_size);
         if(buffer_size == 0) {
@@ -774,7 +769,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
 
     SN_InfoPrintf("processing packet...\n");
     uint8_t* payload_data = PACKET_ENTRY(packet, payload_data, indication);
-    if(packet.layout.payload_length != 0) {
+    if(packet.layout.payload_length != 0 && association_request != NULL) {
         assert(payload_data != NULL);
 
         table_entry.ack = (uint8_t)(PACKET_ENTRY(packet, encryption_header, indication) != NULL);
@@ -814,8 +809,6 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
                 memcpy(buffer->data_message.payload, payload_data, packet.layout.payload_length);
             }
         }
-    } else if(association_request != NULL) {
-        association_request->association_message.stapled_data = NULL;
     }
 
     SN_Table_update(&table_entry);

@@ -482,7 +482,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     return SN_OK;
 }
 
-int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message) {
+int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr) {
     //initial NULL-checks
     if(session == NULL || dst_addr == NULL) {
         SN_ErrPrintf("session, dst_addr, and buffer must all be valid\n");
@@ -549,7 +549,7 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     header->details                        = (uint8_t)!table_entry.knows_details;
     header->associate                      = 1;
     header->key_confirm                    = (uint8_t)(table_entry.state == SN_Associate_received);
-    header->evidence                       = (uint8_t)(message != NULL); //association packets are unencrypted. so if there's a payload, it must be evidence
+    header->evidence                       = 0;
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
 
@@ -612,26 +612,6 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* me
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in header generation\n", -ret);
         return ret;
-    }
-
-    //do data stapling
-    if(message != NULL) {
-        SN_InfoPrintf("generating stapled data...\n");
-
-        if(message->type == SN_Data_message) {
-            SN_ErrPrintf("cannot staple plain data to associate message\n");
-            return -SN_ERR_INVALID;
-        }
-
-        ret = generate_payload(message, &packet);
-        if(ret != SN_OK) {
-            SN_ErrPrintf("payload generation failed with %d\n", -ret);
-            return ret;
-        }
-
-        SN_InfoPrintf("stapled data generation complete\n");
-    } else {
-        SN_InfoPrintf("no data to staple\n");
     }
 
     uint32_t encryption_counter = 0;

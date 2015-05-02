@@ -50,32 +50,31 @@ typedef union SN_Message {
     struct {
         SN_Message_type_t type;
         SN_Certificate_t evidence;
-    } evidence_message;
+    } explicit_evidence_message;
+
+    //TODO: implicit_evidence_message
 
     struct {
         SN_Message_type_t type;
-        union SN_Message* stapled_data;
     } association_message;
 } SN_Message_t;
 #define SN_MAX_DATA_MESSAGE_LENGTH 127
 //TODO: make SN_MAX_DATA_MESSAGE_LENGTH right
 
-int SN_Send ( //transmit packet, containing one or more messages
+int SN_Send ( //transmit normal packet, containing either data or evidence
     SN_Session_t* session,
     SN_Address_t* dst_addr,
     SN_Message_t* message
 );
-int SN_Associate ( //transmit packet, containing one or more messages
+int SN_Associate ( //start an association transaction
     SN_Session_t* session,
-    SN_Address_t* dst_addr,
-    SN_Message_t* stapled_data
+    SN_Address_t* dst_addr
 );
-int SN_Dissociate ( //transmit packet, containing one or more messages
+int SN_Dissociate ( //start a dissociation
     SN_Session_t* session,
-    SN_Address_t* dst_addr,
-    SN_Message_t* stapled_data
+    SN_Address_t* dst_addr
 );
-int SN_Receive ( //receive a packet, containing one or more messages. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
+int SN_Receive ( //receive a packet containing a message. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
     SN_Session_t* session,
     SN_Address_t* src_addr,
     SN_Message_t* buffer,

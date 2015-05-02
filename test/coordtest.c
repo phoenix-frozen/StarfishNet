@@ -78,9 +78,8 @@ int main(int argc, char* argv[]) {
         }
 
         if(message->type == SN_Association_request) {
-            message = message->association_message.stapled_data;
             printf("Received association request. Transmitting association reply...\n");
-            ret = SN_Associate(&network_session, &remote_address, NULL);
+            ret = SN_Associate(&network_session, &remote_address);
 
             if(ret != SN_OK) {
                 printf("Associate reply transmission failed: %d\n", -ret);
@@ -88,12 +87,8 @@ int main(int argc, char* argv[]) {
                 printf("Associate reply transmission succeeded.\n");
             }
         } else if(message->type == SN_Dissociation_request) {
-            message = message->association_message.stapled_data;
             printf("Received dissociation request.\n");
         }
-
-        if(message == NULL)
-            continue;
 
         if(message->type == SN_Data_message && message->data_message.payload_length > 0) {
             printf("Received data message: \"%s\"\n", message->data_message.payload);

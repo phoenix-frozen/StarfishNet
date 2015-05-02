@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
     address.address.ShortAddress = test_node;
     SN_Message_t* assoc_reply_message = malloc(128);
 
-    ret = SN_Associate(&network_session, &address, NULL);
+    ret = SN_Associate(&network_session, &address);
 
     if(ret != SN_OK) {
         printf("Association failed: %d\n", -ret);

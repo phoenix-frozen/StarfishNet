@@ -391,7 +391,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
             .address.ShortAddress = network->router_address,
         };
         SN_InfoPrintf("sending association message...\n");
-        ret = SN_Associate(session, &parent_address, NULL);
+        ret = SN_Associate(session, &parent_address);
     }
 
     //make sure the association completes
