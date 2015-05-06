@@ -102,7 +102,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if(message->type == SN_Evidence_message) {
+        if(message->type == SN_Explicit_Evidence_message) {
             printf("Received certificate.\n");
 
             printf("Transmitting acknowledgement...\n");

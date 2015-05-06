@@ -151,6 +151,10 @@ static void struct_checks() {
         "SN_Message_t.data_message is misaligned");
     _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.association_message.type,
         "SN_Message_t.association_message is misaligned");
-    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.evidence_message.type,
+    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.explicit_evidence_message.type,
         "SN_Message_t.evidence_message is misaligned");
+    /*TODO:
+    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.implicit_evidence_message.type,
+                   "SN_Message_t.evidence_message is misaligned");
+    */
 }

@@ -302,6 +302,23 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         }
     }
 
+    //evidence_header_t
+    if(network_header->evidence) {
+        SN_InfoPrintf("generating evidence header at %d\n", PACKET_SIZE(*packet, request));
+
+        if(PACKET_SIZE(*packet, request) + sizeof(evidence_header_t) > aMaxMACPayloadSize) {
+            SN_ErrPrintf("adding evidence header would make packet too large, aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        packet->layout.evidence_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.evidence_header = 1;
+        PACKET_SIZE(*packet, request) += sizeof(evidence_header_t);
+        evidence_header_t* evidence_header = PACKET_ENTRY(*packet, evidence_header, request);
+        assert(evidence_header != NULL);
+
+        evidence_header->flags = 0;
+    }
+
     SN_DebugPrintf("exit\n");
     return SN_OK;
 }
@@ -318,10 +335,15 @@ static int generate_payload(SN_Message_t* message, packet_t* packet) {
             payload_length = message->data_message.payload_length;
             break;
 
-        case SN_Evidence_message:
-            payload = (uint8_t*)&message->evidence_message.evidence;
+        case SN_Explicit_Evidence_message:
+            payload = (uint8_t*)&message->explicit_evidence_message.evidence;
             payload_length = sizeof(SN_Certificate_t);
+            assert(PACKET_ENTRY(*packet, evidence_header, request) != NULL);
+            PACKET_ENTRY(*packet, evidence_header, request)->certificate = 1;
             break;
+
+        case SN_Implicit_Evidence_message:
+            //TODO: WRITEME
 
         default:
             SN_ErrPrintf("invalid message type %d, aborting\n", message->type);
@@ -412,7 +434,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     header->details                        = (uint8_t)!table_entry.knows_details;
     header->key_confirm                    = (uint8_t)(table_entry.state == SN_Send_finalise);
     if(message != NULL) {
-        header->evidence                   = (uint8_t)(message->type == SN_Evidence_message);
+        header->evidence                   = (uint8_t)(message->type != SN_Data_message);
     }
     header->ack                            = (uint8_t)((table_entry.ack && header->encrypt) || message == NULL);
     //update packet

@@ -139,6 +139,18 @@ static int detect_packet_layout(packet_t* packet) {
         current_position += sizeof(signature_header_t);
     }
 
+    //evidence_header
+    if(network_header->evidence) {
+        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(evidence_header_t)) {
+            SN_ErrPrintf("packet indicates an evidence header, but is too small. aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        SN_InfoPrintf("found evidence header at %d\n", current_position);
+        packet->layout.evidence_header = current_position;
+        packet->layout.present.evidence_header = 1;
+        current_position += sizeof(evidence_header_t);
+    }
+
     //payload
     packet->layout.payload_length = PACKET_SIZE(*packet, indication) - current_position;
     if(packet->layout.payload_length > 0) {
@@ -773,7 +785,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         assert(payload_data != NULL);
 
         table_entry.ack = (uint8_t)(PACKET_ENTRY(packet, encryption_header, indication) != NULL);
-        if(network_header->evidence) {
+        if(network_header->evidence && PACKET_ENTRY(packet, evidence_header, indication)->certificate) {
             //evidence packet
             if(packet.layout.payload_length != sizeof(SN_Certificate_t)) {
                 SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %zu)\n", packet.layout.payload_length, sizeof(SN_Certificate_t));
@@ -788,13 +800,18 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
             }
 
             //return to user
-            if(buffer_size < sizeof(buffer->evidence_message)) {
+            if(buffer_size < sizeof(buffer->explicit_evidence_message)) {
                 SN_ErrPrintf("output buffer is too small for incoming certificate\n");
                 return -SN_ERR_RESOURCES;
             }
-            buffer->type                      = SN_Evidence_message;
-            buffer->evidence_message.evidence = *evidence;
+            buffer->type                      = SN_Explicit_Evidence_message;
+            buffer->explicit_evidence_message.evidence = *evidence;
         } else {
+            if(PACKET_ENTRY(packet, evidence_header, indication) != NULL) {
+                SN_WarnPrintf("don't yet know how to handle implicit evidence packets");
+                //TODO: implicit evidence packets
+            }
+
             //data packet
             if(!network_header->encrypt) {
                 //stapled plain data on unencrypted packet. warn and ignore

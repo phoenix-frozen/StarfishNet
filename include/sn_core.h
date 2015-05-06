@@ -32,7 +32,8 @@ typedef enum SN_Association_state {
 
 typedef enum SN_Message_type {
     SN_Data_message,       //standard data message
-    SN_Evidence_message,   //send a certificates to a StarfishNet node, usually as evidence of an attribute
+    SN_Explicit_Evidence_message,   //send a certificate to a StarfishNet node
+    SN_Implicit_Evidence_message,   //send a partial certificate to a StarfishNet node. we are its implicit signer
     SN_Dissociation_request, //used by the network layer to signal a dissociation request from another node. implicitly invalidates any short address(es) we've taken from or given to it, forcing a recursive dissociation if needs be
     SN_Association_request,  //used by the network layer to signal an association request from another node
 } SN_Message_type_t;

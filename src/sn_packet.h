@@ -80,6 +80,18 @@ typedef struct __attribute__((packed)) encrypted_ack_header {
     uint32_t counter;
 } encrypted_ack_header_t;
 
+typedef struct __attribute__((packed)) evidence_header {
+    //some evidence-related metadata. at the moment only contains a type bit
+    union {
+        struct {
+            uint8_t certificate :1; //true: this is an SN_Certificate_t, signed as normal
+                                    //false: this is an assertion whose implicit signer is the sender
+            uint8_t mbz :7;
+        };
+        uint8_t flags;
+    };
+} evidence_header_t;
+
 typedef uint8_t payload_data_t;
 
 typedef struct packet {
@@ -107,7 +119,7 @@ typedef struct packet {
                 uint16_t key_confirmation_header         :1;
                 uint16_t signature_header                :1;
                 uint16_t encrypted_ack_header            :1;
-                uint16_t signed_ack_header               :1;
+                uint16_t evidence_header                 :1;
 
                 uint16_t payload_data                    :1;
             };
@@ -123,7 +135,7 @@ typedef struct packet {
         uint8_t key_confirmation_header;
         uint8_t signature_header;
         uint8_t encrypted_ack_header;
-        uint8_t signed_ack_header;
+        uint8_t evidence_header;
 
         uint8_t payload_data;
         uint8_t payload_length;
