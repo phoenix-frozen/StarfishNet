@@ -116,6 +116,24 @@ static int generate_packet_headers(SN_Session_t* session, SN_Table_entry_t* tabl
         return -SN_ERR_END_OF_DATA;
     }
 
+    //alt_stream_header_t
+    if(network_header->alt_stream) {
+        SN_InfoPrintf("generating alternate stream header at %d\n", PACKET_SIZE(*packet, request));
+        if(PACKET_SIZE(*packet, request) + sizeof(alt_stream_header_t) + table_entry->stream_idx_length > aMaxMACPayloadSize) {
+            SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+
+        packet->layout.alt_stream_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.alt_stream_header = 1;
+        PACKET_SIZE(*packet, request) += sizeof(alt_stream_header_t) + table_entry->stream_idx_length;
+        alt_stream_header_t* alt_stream_header = PACKET_ENTRY(*packet, alt_stream_header, request);
+        assert(alt_stream_header != NULL);
+
+        alt_stream_header->length = table_entry->stream_idx_length;
+        memcpy(alt_stream_header->stream_idx, table_entry->stream_idx, alt_stream_header->length);
+    }
+
     //node_details_header_t
     if(network_header->details) {
         SN_InfoPrintf("generating node details header at %d\n", PACKET_SIZE(*packet, request));
@@ -401,9 +419,16 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     SN_InfoPrintf("consulting neighbor table...\n");
     SN_Table_entry_t table_entry = {
         .session       = session,
-        .short_address = SN_NO_SHORT_ADDRESS,
+        .stream_idx_length = dst_addr->stream_idx_length,
     };
-    int              ret         = SN_Table_lookup_by_address(dst_addr, &table_entry);
+    memcpy(table_entry.stream_idx, dst_addr->stream_idx, dst_addr->stream_idx_length);
+    if(dst_addr->type == mac_short_address) {
+        table_entry.short_address = dst_addr->address.ShortAddress;
+    } else {
+        table_entry.short_address = SN_NO_SHORT_ADDRESS;
+        table_entry.long_address = dst_addr->address;
+    }
+    int              ret         = SN_Table_lookup_by_address(&table_entry, dst_addr->type);
     if(ret != SN_OK || table_entry.state < SN_Send_finalise) { //node isn't in node table, abort
         SN_ErrPrintf("no relationship with remote node. aborting\n");
         return -SN_ERR_SECURITY;
@@ -436,6 +461,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     if(message != NULL) {
         header->evidence                   = (uint8_t)(message->type != SN_Data_message);
     }
+    header->alt_stream                     = (uint8_t)(table_entry.stream_idx_length > 0);
     header->ack                            = (uint8_t)((table_entry.ack && header->encrypt) || message == NULL);
     //update packet
     PACKET_SIZE(packet, request) = sizeof(network_header_t);
@@ -533,9 +559,16 @@ int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr) {
     SN_InfoPrintf("consulting neighbor table...\n");
     SN_Table_entry_t table_entry = {
         .session       = session,
-        .short_address = SN_NO_SHORT_ADDRESS,
+        .stream_idx_length = dst_addr->stream_idx_length,
     };
-    int ret = SN_Table_lookup_by_address(dst_addr, &table_entry);
+    memcpy(table_entry.stream_idx, dst_addr->stream_idx, dst_addr->stream_idx_length);
+    if(dst_addr->type == mac_short_address) {
+        table_entry.short_address = dst_addr->address.ShortAddress;
+    } else {
+        table_entry.short_address = SN_NO_SHORT_ADDRESS;
+        table_entry.long_address = dst_addr->address;
+    }
+    int              ret         = SN_Table_lookup_by_address(&table_entry, dst_addr->type);
     if(ret != SN_OK) {
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 

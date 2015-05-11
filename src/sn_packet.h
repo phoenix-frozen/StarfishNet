@@ -30,11 +30,17 @@ typedef struct __attribute__((packed)) network_header {
             uint8_t key_confirm  :1; //flags the presence of a key confirmation header
             uint8_t evidence     :1; //indicates that the payload is a certificate, not plain data
             uint8_t ack          :1; //indicates the presence of a data acknowledgement header
-            uint8_t mbz          :1;
+            uint8_t alt_stream   :1; //indicates the presence of an alternate stream header
         };
         uint8_t attributes;
     };
 } network_header_t;
+
+typedef struct __attribute__((packed)) alt_stream_header {
+    //alternate stream
+    uint8_t length;
+    uint8_t stream_idx[];
+} alt_stream_header_t;
 
 typedef struct __attribute__((packed)) node_details_header {
     //node information
@@ -96,7 +102,7 @@ typedef uint8_t payload_data_t;
 
 typedef struct packet {
     /* This structure is a table of offsets in contents.MCPS_DATA_{indication,request}.msdu.
-     * It also contains a bitfield indicating which of thses offsets are valid.
+     * It also contains a bitfield indicating which of these offsets are valid.
      *
      * The PACKET_ENTRY macro does the appropriate pointer arithmetic and typecasts to make
      * use of them. In particular, it will generate a NULL pointer when looking up an entry
@@ -120,6 +126,7 @@ typedef struct packet {
                 uint16_t signature_header                :1;
                 uint16_t encrypted_ack_header            :1;
                 uint16_t evidence_header                 :1;
+                uint16_t alt_stream_header               :1;
 
                 uint16_t payload_data                    :1;
             };
@@ -136,6 +143,7 @@ typedef struct packet {
         uint8_t signature_header;
         uint8_t encrypted_ack_header;
         uint8_t evidence_header;
+        uint8_t alt_stream_header;
 
         uint8_t payload_data;
         uint8_t payload_length;

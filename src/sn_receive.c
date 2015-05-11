@@ -50,6 +50,26 @@ static int detect_packet_layout(packet_t* packet) {
     }
     current_position += sizeof(network_header_t);
 
+    //alt_stream_header_t
+    if(network_header->alt_stream) {
+        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(alt_stream_header_t)) {
+            SN_ErrPrintf("packet indicates an alternate stream header, but is too small. aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        SN_InfoPrintf("found alternate stream header at %d\n", current_position);
+        packet->layout.alt_stream_header = current_position;
+        packet->layout.present.alt_stream_header = 1;
+        current_position += sizeof(alt_stream_header_t);
+        if(PACKET_ENTRY(*packet, alt_stream_header, indication)->length > SN_MAX_ALT_STREAM_IDX_SIZE) {
+            SN_ErrPrintf("alternate stream header cannot be longer than %d (is %d). aborting\n", SN_MAX_ALT_STREAM_IDX_SIZE, PACKET_ENTRY(*packet, alt_stream_header, indication)->length);
+            return -SN_ERR_END_OF_DATA;
+        }
+        if(PACKET_SIZE(*packet, indication) < current_position + PACKET_ENTRY(*packet, alt_stream_header, indication)->length) {
+            SN_ErrPrintf("alternate stream header indicate stream index longer than remaining packet data. aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+    }
+
     //node_details_header_t
     if(network_header->details) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(node_details_header_t)) {
@@ -171,6 +191,15 @@ static int do_security_checks(SN_Table_entry_t* table_entry, packet_t* packet) {
     if(table_entry == NULL || packet == NULL) {
         SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
+    }
+
+    //alt-stream check: alt streams are only allowed for nodes using their short address
+    if(PACKET_ENTRY(*packet, network_header, indication)->src_addr == SN_NO_SHORT_ADDRESS &&
+        packet->contents.MCPS_DATA_indication.SrcAddrMode == mac_extended_address &&
+        PACKET_ENTRY(*packet, alt_stream_header, indication) != NULL &&
+        PACKET_ENTRY(*packet, alt_stream_header, indication)->length > 0) {
+        SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
+        return -SN_ERR_UNEXPECTED;
     }
 
     //relationship-state check: make sure the headers we see match the state the relationship is in
@@ -661,20 +690,22 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     }
 
     SN_InfoPrintf("consulting neighbor table...\n");
+
     SN_Table_entry_t table_entry = {
         .session       = session,
-        .short_address = SN_NO_SHORT_ADDRESS,
+        .stream_idx_length = src_addr->stream_idx_length,
     };
-    ret = SN_Table_lookup_by_address(src_addr, &table_entry);
+    memcpy(table_entry.stream_idx, src_addr->stream_idx, src_addr->stream_idx_length);
+    if(src_addr->type == mac_extended_address) {
+        table_entry.short_address = SN_NO_SHORT_ADDRESS;
+        table_entry.long_address = src_addr->address;
+    } else {
+        table_entry.short_address = src_addr->address.ShortAddress;
+    }
+
+    ret = SN_Table_lookup_by_address(&table_entry, src_addr->type);
     if(ret != SN_OK) { //node isn't in node table, so insert it
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
-
-        if(src_addr->type == mac_short_address) {
-            table_entry.short_address = src_addr->address.ShortAddress;
-        } else {
-            table_entry.long_address = src_addr->address;
-        }
-
         ret = SN_Table_insert(&table_entry);
         if(ret != SN_OK && ret != -SN_ERR_UNEXPECTED) {
             SN_ErrPrintf("cannot allocate entry in node table (error %d), aborting.\n", -ret);

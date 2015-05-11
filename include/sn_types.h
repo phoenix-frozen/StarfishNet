@@ -17,6 +17,11 @@
 #define SN_Hash_size      (SN_Hash_bits/8)
 #define SN_Tag_size       (SN_Tag_bits/8)
 
+/* Alternate streams */
+
+#define SN_MAX_ALT_STREAM_IDX_BITS (128 + 16) //sized to fit an IPv6 address + a UDP port number
+#define SN_MAX_ALT_STREAM_IDX_SIZE (SN_MAX_ALT_STREAM_IDX_BITS/8)
+
 typedef struct __attribute__((packed)) SN_Public_key {
     uint8_t data[SN_PK_key_size + 1]; //in packed format
 } SN_Public_key_t;
@@ -66,6 +71,8 @@ typedef struct __attribute__((packed)) SN_Certificate {
 typedef struct SN_Address {
     mac_address_t address;
     mac_address_mode_t type;
+    uint8_t stream_idx_length;
+    uint8_t stream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
 } SN_Address_t;
 #define SN_NO_SHORT_ADDRESS    0xFFFE
 #define SN_COORDINATOR_ADDRESS 0x0000

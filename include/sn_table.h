@@ -19,6 +19,10 @@ typedef struct SN_Table_entry {
     uint16_t         short_address;
     SN_Public_key_t  public_key;
 
+    //alternate stream information
+    uint8_t stream_idx_length;
+    uint8_t stream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
+
     //relationship metadata
     union {
         struct {
@@ -30,34 +34,34 @@ typedef struct SN_Table_entry {
             uint16_t router        :1; //only valid if child == 1. this node is a router (and thus possesses an address block)
             uint16_t ack           :1; //we've received new packets. send an acknowledgement in the next transmission
             uint16_t unavailable   :1;
-            uint16_t mbz           :6;
         };
-        uint16_t     relationship;
     };
 
     //cryptographic data
     SN_Keypair_t    local_key_agreement_keypair; //our ephemeral keypair
     SN_Public_key_t remote_key_agreement_key;    //remote party's ephemeral public key
     SN_AES_key_t    link_key;                    //shared secret for packet encryption
-    uint32_t        packet_tx_counter;           //packet transmission count
-
-    //packet reordering/retransmission information
-    uint32_t        packet_rx_counter;           //packet transmission count
+    uint32_t        packet_tx_counter;           //packet transmit count
+    uint32_t        packet_rx_counter;           //packet receive count
 } SN_Table_entry_t;
 
 //insert an entry into the table. entire data structure must be valid
-int SN_Table_insert (SN_Table_entry_t* entry);
+int SN_Table_insert(SN_Table_entry_t* entry);
 //update an existing entry. entire data structure must be valid
-int SN_Table_update (SN_Table_entry_t* entry);
+int SN_Table_update(SN_Table_entry_t* entry);
 //delete an entry. any one of: long address, short address, key, must be valid. note: you're responsible for any certificate storage you've assigned to this entry
-int SN_Table_delete (SN_Table_entry_t* entry);
+int SN_Table_delete(SN_Table_entry_t* entry);
 //delete all entries related to a session
-void SN_Table_clear (SN_Session_t* session);
+void SN_Table_clear(SN_Session_t* session);
 
-//lookups can be by address or by public key. first parameter is input, second and third are output
-//entry->session must be valid
-int SN_Table_lookup_by_address    (SN_Address_t*    address,    SN_Table_entry_t* entry);
-int SN_Table_lookup_by_public_key (SN_Public_key_t* public_key, SN_Table_entry_t* entry);
+/* lookups can be by address, by public key, or by implementation-specific
+ * heuristic based on available data. appropriate fields must be filled in entry,
+ * which will then be filled with information from the table.
+ * entry->session and entry->stream_idx[_length] must be valid
+ */
+int SN_Table_lookup_by_address   (SN_Table_entry_t* entry, mac_address_mode_t type);
+int SN_Table_lookup_by_public_key(SN_Table_entry_t* entry);
+int SN_Table_lookup              (SN_Table_entry_t* entry);
 
 //indicate that no entries belonging to this session should be considered neighbors anymore
 void SN_Table_clear_all_neighbors(SN_Session_t* session);

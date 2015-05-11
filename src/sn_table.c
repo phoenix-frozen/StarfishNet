@@ -16,7 +16,7 @@ static SN_Table_entry_t table[TABLE_SIZE] = {};
 
 static table_bitmap_t entry_bitmap = 0;
 
-static int lookup_by_long_address(table_bitmap_t limit, mac_address_t* address) {
+static int lookup_by_long_address(table_bitmap_t limit, mac_address_t* address, uint8_t stream_idx_len, uint8_t* stream_idx) {
     if(address == NULL) {
         return -1;
     }
@@ -29,20 +29,24 @@ static int lookup_by_long_address(table_bitmap_t limit, mac_address_t* address) 
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++)
         if((entry_bitmap & limit & BIT(i)) &&
-           !memcmp(address, &table[i].long_address, sizeof(table[i].long_address))) {
+           !memcmp(address, &table[i].long_address, sizeof(table[i].long_address)) &&
+           table[i].stream_idx_length == stream_idx_len &&
+            (stream_idx_len > 0 ? !memcmp(table[i].stream_idx, stream_idx, stream_idx_len) : 1)) {
             return i;
         }
 
     return -1;
 }
 
-static int lookup_by_short_address(table_bitmap_t limit, uint16_t address) {
+static int lookup_by_short_address(table_bitmap_t limit, uint16_t address, uint8_t stream_idx_len, uint8_t* stream_idx) {
     if(address == SN_NO_SHORT_ADDRESS) {
         return -1;
     }
 
     for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
-        if((entry_bitmap & limit & BIT(i)) && address == table[i].short_address) {
+        if((entry_bitmap & limit & BIT(i)) && address == table[i].short_address &&
+            table[i].stream_idx_length == stream_idx_len &&
+            (stream_idx_len > 0 ? !memcmp(table[i].stream_idx, stream_idx, stream_idx_len) : 1)) {
             return i;
         }
     }
@@ -70,6 +74,28 @@ static int lookup_by_public_key(table_bitmap_t limit, SN_Public_key_t* public_ke
     return -1;
 }
 
+static int lookup_by_public_key_and_stream(table_bitmap_t limit, SN_Public_key_t* public_key, uint8_t stream_idx_len, uint8_t* stream_idx) {
+    if(public_key == NULL) {
+        return -1;
+    }
+
+    SN_Public_key_t null_key = {};
+    if(!memcmp(&null_key, public_key, sizeof(null_key))) {
+        return -1;
+    }
+
+    for(table_bitmap_t i = 0; i < TABLE_SIZE; i++) {
+        if((entry_bitmap & limit & BIT(i)) &&
+           !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data)) &&
+            table[i].stream_idx_length == stream_idx_len &&
+            (stream_idx_len > 0 ? !memcmp(table[i].stream_idx, stream_idx, stream_idx_len) : 1)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 static int find_entry(SN_Table_entry_t* entry) {
     if(entry == NULL) {
         return -1;
@@ -78,7 +104,12 @@ static int find_entry(SN_Table_entry_t* entry) {
     table_bitmap_t limit = entry->session->table_entries;
     int            ret;
 
-    ret = lookup_by_long_address(limit, &entry->long_address);
+    ret = lookup_by_long_address(limit, &entry->long_address, entry->stream_idx_length, entry->stream_idx);
+    if(ret >= 0) {
+        return ret;
+    }
+
+    ret = lookup_by_public_key_and_stream(limit, &entry->public_key, entry->stream_idx_length, entry->stream_idx);
     if(ret >= 0) {
         return ret;
     }
@@ -88,7 +119,7 @@ static int find_entry(SN_Table_entry_t* entry) {
         return ret;
     }
 
-    ret = lookup_by_short_address(limit, entry->short_address);
+    ret = lookup_by_short_address(limit, entry->short_address, entry->stream_idx_length, entry->stream_idx);
     if(ret >= 0) {
         return ret;
     }
@@ -198,18 +229,39 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-//lookups can be by address or by public public_key. first parameter is input, second and third are output
-int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry) {
-    if(address == NULL || entry == NULL || entry->session == NULL) {
+int SN_Table_lookup(SN_Table_entry_t* entry) {
+    if(entry == NULL || entry->session == NULL) {
         return -SN_ERR_NULL;
+    }
+
+    //see if entry already exists
+    int ret = find_entry(entry);
+    if(ret < 0) {
+        //it doesn't. return an error
+        return -SN_ERR_UNEXPECTED;
+    }
+
+    //fill entry with data
+    *entry = table[ret];
+
+    return SN_OK;
+}
+
+//lookups can be by address or by public public_key. first parameter is input, second and third are output
+int SN_Table_lookup_by_address(SN_Table_entry_t* entry, mac_address_mode_t type) {
+    if(entry == NULL || entry->session == NULL) {
+        return -SN_ERR_NULL;
+    }
+    if(type != mac_short_address && type != mac_extended_address) {
+        return -SN_ERR_INVALID;
     }
 
     int ret;
 
-    if(address->type == mac_extended_address) {
-        ret = lookup_by_long_address(entry->session->table_entries, &address->address);
+    if(type == mac_extended_address) {
+        ret = lookup_by_long_address(entry->session->table_entries, &entry->long_address, entry->stream_idx_length, entry->stream_idx);
     } else {
-        ret = lookup_by_short_address(entry->session->table_entries, address->address.ShortAddress);
+        ret = lookup_by_short_address(entry->session->table_entries, entry->short_address, entry->stream_idx_length, entry->stream_idx);
     }
     if(ret < 0) {
         return -SN_ERR_UNKNOWN;
@@ -220,16 +272,18 @@ int SN_Table_lookup_by_address(SN_Address_t* address, SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-int SN_Table_lookup_by_public_key(SN_Public_key_t* public_key, SN_Table_entry_t* entry) {
+int SN_Table_lookup_by_public_key(SN_Table_entry_t* entry) {
     if(entry == NULL || entry->session == NULL) {
         return -SN_ERR_NULL;
     }
 
-    if(public_key == NULL) {
-        public_key = &entry->public_key;
+    int ret;
+    if(entry->stream_idx_length > 0) {
+        ret = lookup_by_public_key_and_stream(entry->session->table_entries, &entry->public_key, entry->stream_idx_length, entry->stream_idx);
+    } else {
+        ret = lookup_by_public_key(entry->session->table_entries, &entry->public_key);
     }
 
-    int ret = lookup_by_public_key(entry->session->table_entries, public_key);
     if(ret < 0) {
         return -SN_ERR_UNKNOWN;
     }

@@ -110,9 +110,17 @@ static int do_packet_transmission(int slot) {
         //non-routing slot
         SN_Table_entry_t table_entry = {
             .session = session,
+            .stream_idx_length = slot_data->dst_address.stream_idx_length,
         };
+        memcpy(table_entry.stream_idx, slot_data->dst_address.stream_idx, slot_data->dst_address.stream_idx_length);
+        if(slot_data->dst_address.type == mac_extended_address) {
+            table_entry.short_address = SN_NO_SHORT_ADDRESS;
+            table_entry.long_address = slot_data->dst_address.address;
+        } else {
+            table_entry.short_address = slot_data->dst_address.address.ShortAddress;
+        }
 
-        ret = SN_Table_lookup_by_address(&slot_data->dst_address, &table_entry);
+        ret = SN_Table_lookup_by_address(&table_entry, slot_data->dst_address.type);
         if(ret != SN_OK) {
             SN_WarnPrintf("transmitting packet to new node (lookup error %d)\n", -ret);
         } else if(table_entry.unavailable) {
@@ -466,8 +474,19 @@ void SN_Delayed_tick(bool count_towards_disconnection) {
             slot->retries++;
             if(slot->retries >= slot->session->nib.tx_retry_limit) {
                 SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
-                SN_Table_entry_t table_entry = { .session = slot->session };
-                if(SN_Table_lookup_by_address(&slot->dst_address, &table_entry) == SN_OK) {
+
+                SN_Table_entry_t table_entry = {};
+                table_entry.session = slot->session;
+                table_entry.stream_idx_length = slot->dst_address.stream_idx_length;
+                memcpy(table_entry.stream_idx, slot->dst_address.stream_idx, slot->dst_address.stream_idx_length);
+                if(slot->dst_address.type == mac_extended_address) {
+                    table_entry.short_address = SN_NO_SHORT_ADDRESS;
+                    table_entry.long_address = slot->dst_address.address;
+                } else {
+                    table_entry.short_address = slot->dst_address.address.ShortAddress;
+                }
+
+                if(SN_Table_lookup_by_address(&table_entry, slot->dst_address.type) == SN_OK) {
                     table_entry.unavailable = 1;
                     SN_Table_update(&table_entry);
                 }
