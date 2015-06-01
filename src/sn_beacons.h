@@ -5,7 +5,7 @@
 
 #define BEACON_HASH_LENGTH        sizeof(SN_Hash_t)
 
-typedef struct __attribute__((packed)) beacon_payload {
+typedef struct beacon_payload {
     //protocol ID information
     uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
     uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION

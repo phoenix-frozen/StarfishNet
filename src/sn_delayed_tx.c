@@ -8,7 +8,7 @@
 
 #include <assert.h>
 #include <string.h>
-#include <inttypes.h>
+#include <stdint.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT 8

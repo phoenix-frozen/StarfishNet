@@ -8,7 +8,7 @@
 
 #include <string.h>
 #include <assert.h>
-#include <inttypes.h>
+#include <stdint.h>
 
 #include "mac_util.h"
 #include "sn_constants.h"

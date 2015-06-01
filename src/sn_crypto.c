@@ -4,12 +4,13 @@
 
 #include <assert.h>
 
+#include <stdint.h>
+
 //setup uECC
-#include "uECC.h"
+#include <uECC.h>
 
 //polarssl sha1
-#include <polarssl/sha1.h>
-#include "aes-ccm.h"
+#include <libsha1.h>
 
 #if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"
@@ -140,10 +141,10 @@ int SN_Crypto_key_agreement(SN_Public_key_t* identity_A, SN_Public_key_t* identi
 }
 
 void SN_Crypto_hash(uint8_t* data, size_t data_len, SN_Hash_t* hash, size_t repeat_count) {
-    sha1(data, data_len, hash->data);
+    sha1(hash->data, data, data_len);
 
     while(repeat_count-- > 0) {
-        sha1(hash->data, sizeof(hash->data), hash->data);
+        sha1(hash->data, hash->data, sizeof(hash->data));
     }
 }
 
@@ -166,17 +167,16 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
     }
 
     SN_Hash_t iv;
-    sha1_context iv_ctx;
-    sha1_init( &iv_ctx );
-    sha1_starts( &iv_ctx );
-    sha1_update( &iv_ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
-    sha1_update( &iv_ctx, (uint8_t*)&counter, sizeof(counter));
+    sha1_ctx iv_ctx;
+    memset(&iv_ctx, 0, sizeof(iv_ctx));
+    sha1_begin(&iv_ctx);
+    sha1_hash(key_agreement_key->data, sizeof(key_agreement_key->data), &iv_ctx);
+    sha1_hash((uint8_t*)&counter, sizeof(counter), &iv_ctx);
     if(pure_ack) {
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
-        sha1_update( &iv_ctx, (uint8_t*)"ACK", 3);
+        sha1_hash((uint8_t*)"ACK", 3, &iv_ctx);
     }
-    sha1_finish( &iv_ctx, iv.data );
-    sha1_free( &iv_ctx );
+    sha1_finish(iv.data, &iv_ctx);
 
     //XXX assumption: CCM_MAX_IV_LENGTH < sizeof(SN_Hash_t)
     ret = aes_ccm_encrypt_and_tag(&ctx, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, data, data, tag, SN_Tag_size);

@@ -51,7 +51,7 @@ typedef union mac_address {
 typedef uint16_t mac_pan_id_t;
 
 /* PAN descriptor */
-typedef struct __attribute__((packed)) mac_pan_descriptor {
+typedef struct mac_pan_descriptor {
     uint32_t           TimeStamp;
     uint16_t           SuperframeSpec;
     mac_pan_id_t       CoordPANId; //2B
@@ -59,7 +59,7 @@ typedef struct __attribute__((packed)) mac_pan_descriptor {
     mac_address_mode_t CoordAddrMode;
     uint8_t            LogicalChannel;
     uint8_t            LinkQuality;
-    struct __attribute__((packed)) {
+    struct {
         uint8_t        SecurityFailure :1;
         uint8_t        SecurityUse     :1;
         uint8_t        GTSPermit       :1;

@@ -61,3 +61,5 @@ reused by ZigBee for network-layer and application-layer encryption)
 is also larger than the StarfishNet encryption header.
 
 StarfishNet also does not implement broadcasts.
+
+This codebase is the CC2530 implementation, designed to be compiled with SDCC.

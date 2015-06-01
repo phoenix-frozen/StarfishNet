@@ -1,56 +1,35 @@
 cmake_minimum_required(VERSION 2.8.4)
-project(StarfishNet)
+project(StarfishNet-CC2530 C)
 
-set(SRC_DIR src)
-set(TEST_DIR test)
+#Tell the build system we're building for the CC2530
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_C_COMPILER sdcc)
 
-add_definitions(-std=gnu99 -Wall -DuECC_CURVE=uECC_secp160r1 -DPOLARSSL_CONFIG_FILE=<config-starfishnet.h>)
+add_definitions(--std-c99 -DuECC_CURVE=uECC_secp160r1)
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSN_DEBUG")
+set(CMAKE_C_FLAGS_DEBUG "")
+set(CMAKE_C_FLAGS_RELEASE "")
+
+#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSN_DEBUG")
 #set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DSN_DEBUG -DSN_DEBUG_LEVEL=4 -DMAC_DEBUG")
 #set(CMAKE_C_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG")
 
 include_directories(include)
-include_directories(src/polarssl)
+include_directories(extern/libsha1)
 include_directories(extern/micro-ecc)
-include_directories(extern/polarssl/include)
 
-#begin core code
-file(GLOB HEADERS include/*.h)
+#headers
+file(GLOB HEADERS RELATIVE_PATH CMAKE_CURRENT_SOURCE_DIR include/*.h)
 list(APPEND HEADERS extern/micro-ecc/uECC.h)
-list(APPEND HEADERS extern/polarssl/include/polarssl/aes.h)
-list(APPEND HEADERS extern/polarssl/include/polarssl/aesni.h)
-list(APPEND HEADERS extern/polarssl/include/polarssl/sha1.h)
-list(APPEND HEADERS extern/polarssl/include/polarssl/check_config.h)
+list(APPEND HEADERS extern/libsha1/libsha1.h)
 
-file(GLOB_RECURSE LOCAL_HEADERS src/*.h)
+#headers with source
+file(GLOB LOCAL_HEADERS RELATIVE_PATH CMAKE_CURRENT_SOURCE_DIR src/*.h)
 list(APPEND HEADERS ${LOCAL_HEADERS})
 
-file(GLOB_RECURSE SOURCES src/*.c)
+#source
+file(GLOB SOURCES RELATIVE_PATH CMAKE_CURRENT_SOURCE_DIR src/*.c)
 list(APPEND SOURCES extern/micro-ecc/uECC.c)
-list(APPEND SOURCES extern/polarssl/library/aes.c)
-list(APPEND SOURCES extern/polarssl/library/aesni.c)
-list(APPEND SOURCES extern/polarssl/library/sha1.c)
+list(APPEND SOURCES extern/libsha1/sha1.c)
 
-add_library(StarfishNet STATIC ${SOURCES} ${HEADERS})
-
-#begin tests
-
-#routertest
-add_executable(routertest test/routertest.c)
-target_link_libraries(routertest StarfishNet)
-
-#coordtest
-add_executable(coordtest test/coordtest.c)
-target_link_libraries(coordtest StarfishNet)
-
-#leaftest
-add_executable(leaftest test/leaftest.c)
-target_link_libraries(leaftest StarfishNet)
-
-#routeleaftest
-add_executable(routeleaftest test/routeleaftest.c)
-target_link_libraries(routeleaftest StarfishNet)
-
-#hack for CLion
-add_custom_target(ALL DEPENDS StarfishNet routertest coordtest leaftest routeleaftest)
+add_executable(StarfishNet ${SOURCES} ${HEADERS})

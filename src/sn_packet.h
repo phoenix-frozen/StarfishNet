@@ -15,7 +15,7 @@
 
 //StarfishNet packet header
 //XXX: order of members is assumed by packet encryption routines
-typedef struct __attribute__((packed)) network_header {
+typedef struct network_header {
     uint8_t protocol_id;
     uint8_t protocol_ver;
 
@@ -36,18 +36,18 @@ typedef struct __attribute__((packed)) network_header {
     };
 } network_header_t;
 
-typedef struct __attribute__((packed)) alt_stream_header {
+typedef struct alt_stream_header {
     //alternate stream
     uint8_t length;
     uint8_t stream_idx[];
 } alt_stream_header_t;
 
-typedef struct __attribute__((packed)) node_details_header {
+typedef struct node_details_header {
     //node information
     SN_Public_key_t signing_key;
 } node_details_header_t;
 
-typedef struct __attribute__((packed)) association_header {
+typedef struct association_header {
     //flags
     union {
         struct {
@@ -66,27 +66,27 @@ typedef struct __attribute__((packed)) association_header {
     };
 } association_header_t;
 
-typedef struct __attribute__((packed)) key_agreement_header {
+typedef struct key_agreement_header {
     SN_Public_key_t key_agreement_key;
 } key_agreement_header_t;
 
-typedef struct __attribute__((packed)) key_confirmation_header {
+typedef struct key_confirmation_header {
     SN_Hash_t challenge;
 } key_confirmation_header_t;
 
-typedef struct __attribute__((packed)) encryption_header {
+typedef struct encryption_header {
     uint8_t  tag[SN_Tag_size];
 } encryption_header_t;
 
-typedef struct __attribute__((packed)) signature_header {
+typedef struct signature_header {
     SN_Signature_t signature;
 } signature_header_t;
 
-typedef struct __attribute__((packed)) encrypted_ack_header {
+typedef struct encrypted_ack_header {
     uint32_t counter;
 } encrypted_ack_header_t;
 
-typedef struct __attribute__((packed)) evidence_header {
+typedef struct evidence_header {
     //some evidence-related metadata. at the moment only contains a type bit
     union {
         struct {

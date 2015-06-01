@@ -1,8 +1,7 @@
 #ifndef __SN_TYPES_H__
 #define __SN_TYPES_H__
 
-#include <stdint.h>
-#include "mac802154_types.h"
+#include <mac802154_types.h>
 
 /* Crypto */
 
@@ -22,7 +21,7 @@
 #define SN_MAX_ALT_STREAM_IDX_BITS (128 + 16) //sized to fit an IPv6 address + a UDP port number
 #define SN_MAX_ALT_STREAM_IDX_SIZE (SN_MAX_ALT_STREAM_IDX_BITS/8)
 
-typedef struct __attribute__((packed)) SN_Public_key {
+typedef struct SN_Public_key {
     uint8_t data[SN_PK_key_size + 1]; //in packed format
 } SN_Public_key_t;
 
@@ -35,19 +34,19 @@ typedef struct SN_Keypair {
     SN_Private_key_t private_key;
 } SN_Keypair_t;
 
-typedef struct __attribute__((packed)) SN_Signature {
+typedef struct SN_Signature {
     uint8_t data[SN_PK_key_size * 2]; //size of ECDSA signature
 } SN_Signature_t;
 
-typedef struct __attribute__((packed)) SN_AES_key {
+typedef struct SN_AES_key {
     uint8_t data[SN_AES_key_size];
 } SN_AES_key_t;
 
-typedef struct __attribute__((packed)) SN_Hash {
+typedef struct SN_Hash {
     uint8_t data[SN_Hash_size];
 } SN_Hash_t;
 
-typedef struct __attribute__((packed)) SN_Kex_result {
+typedef struct SN_Kex_result {
     union {
         SN_Hash_t    raw;
 
@@ -55,8 +54,8 @@ typedef struct __attribute__((packed)) SN_Kex_result {
     };
 } SN_Kex_result_t;
 
-typedef struct __attribute__((packed)) SN_Certificate {
-    struct __attribute__((packed)) {
+typedef struct SN_Certificate {
+    struct {
         SN_Public_key_t subject;
         uint8_t         type;
         SN_Hash_t       assertion; //type indicates whether this is actually a hash, or a plain assertion

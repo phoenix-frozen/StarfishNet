@@ -1,8 +1,7 @@
 #ifndef __MAC802154_H__
 #define __MAC802154_H__
 
-#include "mac802154_types.h"
-#include <sys/time.h>
+#include <mac802154_types.h>
 
 /* MCPS-DATA.request TxOptions flags */
 #define MAC_TX_OPTION_ACKNOWLEDGED              0x01
@@ -182,7 +181,7 @@ typedef uint8_t mac_primitive_type_t;
 //TODO: what's the biggest size mac_primitive_t can actually be?
 //TODO: some kind of poll()-based isAPacketWaiting() call
 typedef union mac_primitive {
-    struct __attribute__((packed)) {
+    struct {
         mac_primitive_type_t type;
         union {
             struct MCPS_DATA_indication {
@@ -213,7 +212,7 @@ typedef union mac_primitive {
                 uint8_t       msdu[aMaxMACPayloadSize];
             } MCPS_DATA_request;
 
-            struct __attribute__((packed)) MCPS_DATA_confirm {
+            struct MCPS_DATA_confirm {
                 uint8_t      msduHandle;
                 mac_status_t status;
             } MCPS_DATA_confirm;
@@ -262,7 +261,7 @@ typedef union mac_primitive {
                 uint8_t       SecurityEnable;
             } MLME_ASSOCIATE_request;
 
-            struct __attribute__((packed)) MLME_ASSOCIATE_confirm {
+            struct MLME_ASSOCIATE_confirm {
                 uint16_t     AssocShortAddress;
                 mac_status_t status;
             } MLME_ASSOCIATE_confirm;
@@ -287,7 +286,7 @@ typedef union mac_primitive {
                 mac_status_t status;
             } MLME_DISASSOCIATE_confirm;
 
-            struct __attribute__((packed)) MLME_ORPHAN_indication {
+            struct MLME_ORPHAN_indication {
                 mac_address_t   OrphanAddress;
                 struct {
                     uint8_t     SecurityUse :1;
@@ -296,7 +295,7 @@ typedef union mac_primitive {
                 };
             } MLME_ORPHAN_indication;
 
-            struct __attribute__((packed)) MLME_ORPHAN_response {
+            struct MLME_ORPHAN_response {
                 mac_address_t OrphanAddress;
                 uint16_t      ShortAddress;
                 struct {
@@ -310,7 +309,7 @@ typedef union mac_primitive {
                 mac_pib_attribute_t PIBAttribute;
             } MLME_GET_request;
 
-            struct __attribute__((packed)) MLME_GET_confirm {
+            struct MLME_GET_confirm {
                 mac_status_t        status;
                 mac_pib_attribute_t PIBAttribute;
                 uint8_t             PIBAttributeValue[aMaxBeaconPayloadSize];
@@ -322,7 +321,7 @@ typedef union mac_primitive {
                 uint8_t             PIBAttributeValue[aMaxBeaconPayloadSize];
             } MLME_SET_request;
 
-            struct __attribute__((packed)) MLME_SET_confirm {
+            struct MLME_SET_confirm {
                 mac_status_t        status;
                 mac_pib_attribute_t PIBAttribute;
             } MLME_SET_confirm;
@@ -345,13 +344,13 @@ typedef union mac_primitive {
                 mac_status_t status;
             } MLME_RX_ENABLE_confirm;
 
-            struct __attribute__((packed)) MLME_SCAN_request {
+            struct MLME_SCAN_request {
                 mac_scan_type_t ScanType;
                 uint32_t        ScanChannels;
                 uint8_t         ScanDuration;
             } MLME_SCAN_request;
 
-            struct __attribute__((packed)) MLME_SCAN_confirm {
+            struct MLME_SCAN_confirm {
                 mac_status_t         status;
                 mac_scan_type_t      ScanType;
                 uint32_t             UnscannedChannels;
@@ -362,7 +361,7 @@ typedef union mac_primitive {
                 };
             } MLME_SCAN_confirm;
 
-            struct __attribute__((packed)) MLME_START_request {
+            struct MLME_START_request {
                 mac_pan_id_t PANId;
                 uint8_t      LogicalChannel;
                 struct {
@@ -406,7 +405,7 @@ typedef union mac_primitive {
                 uint8_t              BSN;
                 mac_pan_descriptor_t PANDescriptor;
                 union {
-                    struct __attribute__((packed)) {
+                    struct {
                         uint8_t        Short    :3;
                         uint8_t                 :1;
                         uint8_t        Extended :3;
@@ -450,8 +449,8 @@ typedef union mac_primitive {
     uint8_t raw_data[aMaxPHYPacketSize * 2]; //safe upper bound
 } mac_primitive_t;
 
-const mac_acl_entry_descriptor_t mac_default_ACLEntry;
-const mac_mib_t mac_default_MIB;
+extern const mac_acl_entry_descriptor_t mac_default_ACLEntry;
+extern const mac_mib_t mac_default_MIB;
 
 mac_session_handle_t mac_init(char* params);
 void                 mac_destroy(mac_session_handle_t session);
