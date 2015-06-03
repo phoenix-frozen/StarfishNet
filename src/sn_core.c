@@ -143,18 +143,3 @@ void SN_Destroy(SN_Session_t* session) { //bring down this session, resetting th
     SN_InfoPrintf("exit\n");
 }
 
-static void struct_checks() __attribute__((unused));
-static void struct_checks() {
-    SN_Message_t message;
-
-    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.data_message.type,
-        "SN_Message_t.data_message is misaligned");
-    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.association_message.type,
-        "SN_Message_t.association_message is misaligned");
-    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.explicit_evidence_message.type,
-        "SN_Message_t.evidence_message is misaligned");
-    /*TODO:
-    _Static_assert((uint8_t*)&message.type == (uint8_t*)&message.implicit_evidence_message.type,
-                   "SN_Message_t.evidence_message is misaligned");
-    */
-}

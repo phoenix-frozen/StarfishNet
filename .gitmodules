@@ -1,10 +1,7 @@
 [submodule "extern/micro-ecc"]
 	path = extern/micro-ecc
-	url = git@github.com:kmackay/micro-ecc.git
+	url = git@github.com:phoenix-frozen/micro-ecc.git
 	branch = master
 [submodule "extern/libsha1"]
 	path = extern/libsha1
 	url = git@github.com:dottedmag/libsha1.git
-[submodule "extern/polarssl"]
-	path = extern/polarssl
-	url = git@github.com:polarssl/polarssl.git
