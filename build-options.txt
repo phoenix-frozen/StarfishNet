@@ -1,0 +1,20 @@
+#uECC config
+-DuECC_CURVE=uECC_secp160r1
+-DuECC_PLATFORM=uECC_arch_other
+-DuECC_ASM=uECC_asm_none
+-DuECC_WORD_SIZE=1
+
+#Contiki config
+-DCC2530_RF_CONF_LEDS
+
+#StarfishNet debug options
+-DSN_DEBUG
+-DSN_DEBUG_LEVEL=4
+
+#Contiki debug options
+-DDEBUG
+-DCC2530_RF_CONF_HEXDUMP
+
+#Release options
+-DNDEBUG
+
