@@ -1,14 +1,11 @@
 #include "sn_delayed_tx.h"
 #include "sn_queued_rx.h"
-#include "mac_util.h"
 #include "sn_routing_tree.h"
-
-#include <sn_status.h>
-#include <sn_logging.h>
+#include "sn_status.h"
+#include "sn_logging.h"
 
 #include <assert.h>
 #include <string.h>
-#include <stdint.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT 8
@@ -281,13 +278,6 @@ int SN_Delayed_forward(SN_Session_t* session, uint16_t source, uint16_t destinat
     slot_data->src_address = source;
     slot_data->packet      = *packet;
     slot_data->valid       = 1;
-
-    /* XXX: ordinarily, we'd need to translate from an indication to a request,
-     *      but the 802.15.4 code I'm using puts all the relevant stuff in the same place,
-     *      so I don't have to.
-     *      Make the compiler guarantee this.
-     */
-    _Static_assert(slot_data->packet.contents.MCPS_DATA_request.msdu == slot_data->packet.contents.MCPS_DATA_indication.msdu, "Misaligned 802.15.4 primitives!");
 
     int ret = do_packet_transmission(slot);
 

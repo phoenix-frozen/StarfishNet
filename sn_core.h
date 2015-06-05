@@ -2,6 +2,7 @@
 #define __SN_CORE_H__
 
 #include "sn_types.h"
+
 #include <stddef.h>
 #include <stdbool.h>
 

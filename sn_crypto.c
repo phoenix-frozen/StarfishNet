@@ -1,15 +1,11 @@
-#include <sn_crypto.h>
-#include <sn_status.h>
-#include <sn_logging.h>
+#include "sn_crypto.h"
+#include "sn_status.h"
+#include "sn_logging.h"
 
 #include <assert.h>
-
 #include <stdint.h>
 
-//setup uECC
 #include <uECC.h>
-
-//polarssl sha1
 #include <libsha1.h>
 
 #if SN_PK_key_size != uECC_BYTES

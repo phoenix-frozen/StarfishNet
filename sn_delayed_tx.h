@@ -1,11 +1,10 @@
 #ifndef __SN_DELAYED_TX_H__
 #define __SN_DELAYED_TX_H__
 
-#include <sn_table.h>
-#include <stdbool.h>
-#include "mac802154.h"
-
+#include "sn_table.h"
 #include "sn_packet.h"
+
+#include <stdbool.h>
 
 //send a packet and then wait for acknowledgement
 int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter);

@@ -1,5 +1,6 @@
-#include <sn_status.h>
+#include "sn_status.h"
 #include "sn_queued_rx.h"
+
 #include <stddef.h>
 
 #ifndef SN_QUEUE_EXPONENT

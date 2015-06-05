@@ -1,7 +1,8 @@
-#include <sn_status.h>
-#include <sn_logging.h>
-#include <assert.h>
+#include "sn_status.h"
+#include "sn_logging.h"
 #include "sn_routing_tree.h"
+
+#include <assert.h>
 
 int SN_Tree_allocate_address(SN_Session_t* session, uint16_t* address, bool* block) {
     if(session == NULL || address == NULL || block == NULL) {

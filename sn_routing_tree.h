@@ -1,9 +1,10 @@
 #ifndef __SN_ADDRESSING_H__
 #define __SN_ADDRESSING_H__
 
-#include <sn_types.h>
+#include "sn_types.h"
+#include "sn_core.h"
+
 #include <stdbool.h>
-#include <sn_core.h>
 
 //block: IN: whether you want a block; OUT: whether you got one
 //address: OUT: if a block, the first address in it

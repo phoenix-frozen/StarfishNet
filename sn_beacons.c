@@ -1,12 +1,12 @@
 #include "sn_beacons.h"
-#include <sn_status.h>
-#include <sn_crypto.h>
-#include <string.h>
-
-#include "mac_util.h"
+#include "sn_status.h"
+#include "sn_crypto.h"
 #include "sn_constants.h"
 #include "sn_routing_tree.h"
 #include "sn_queued_rx.h"
+#include "sn_logging.h"
+
+#include <string.h>
 
 static MAC_CONFIRM(start);
 static MAC_SET_CONFIRM(macBeaconPayload);
@@ -84,7 +84,6 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     beacon_payload_t* proto_beacon = (beacon_payload_t*)session->mib.macBeaconPayload;
     SN_Hash_t beacon_hash;
     build_beacon_payload(session, proto_beacon, &beacon_hash); //no need to check error code, it only checks for nulls
-    _Static_assert(sizeof(beacon_payload_t) + BEACON_HASH_LENGTH < aMaxBeaconPayloadSize, "beacon payloads are too big!");
     memcpy(session->mib.macBeaconPayload + sizeof(beacon_payload_t), &beacon_hash, BEACON_HASH_LENGTH);
     session->mib.macBeaconPayloadLength = sizeof(beacon_payload_t) + BEACON_HASH_LENGTH;
 

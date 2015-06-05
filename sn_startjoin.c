@@ -1,17 +1,14 @@
-#include <sn_core.h>
-#include <sn_table.h>
-#include <sn_logging.h>
-#include <sn_status.h>
+#include "sn_core.h"
+#include "sn_table.h"
+#include "sn_logging.h"
+#include "sn_status.h"
+#include "sn_crypto.h"
+#include "sn_constants.h"
+#include "sn_routing_tree.h"
+#include "sn_beacons.h"
 
 #include <assert.h>
 #include <string.h>
-#include <inttypes.h>
-#include <sn_crypto.h>
-
-#include "sn_constants.h"
-#include "mac_util.h"
-#include "sn_routing_tree.h"
-#include "sn_beacons.h"
 
 static MAC_SET_CONFIRM(macAssociationPermit);
 

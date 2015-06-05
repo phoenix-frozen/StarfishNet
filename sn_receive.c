@@ -1,21 +1,19 @@
 //StarfishNet message transmission rules are in sn_transmit.c
 
-#include <sn_core.h>
-#include <sn_crypto.h>
-#include <sn_table.h>
-#include <sn_logging.h>
-#include <sn_status.h>
-
-#include <string.h>
-#include <assert.h>
-#include <stdint.h>
-
-#include "mac_util.h"
+#include "sn_core.h"
+#include "sn_crypto.h"
+#include "sn_table.h"
+#include "sn_logging.h"
+#include "sn_status.h"
 #include "sn_constants.h"
 #include "sn_packet.h"
 #include "sn_delayed_tx.h"
 #include "sn_beacons.h"
 #include "sn_queued_rx.h"
+
+#include <string.h>
+#include <assert.h>
+#include <stdint.h>
 
 //some templates for mac_receive_primitive
 static MAC_SET_CONFIRM(macShortAddress);

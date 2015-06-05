@@ -11,11 +11,9 @@
  * Crypto library: micro-ecc
  */
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
-
 #include "sn_types.h"
+
+#include <stdint.h>
 
 //API functions
 int SN_Crypto_generate_keypair ( //generate a new ECC keypair, storing it in the buffer provided

@@ -1,7 +1,7 @@
 #ifndef __SN_TYPES_H__
 #define __SN_TYPES_H__
 
-#include <mac802154_types.h>
+#include <stdint.h>
 
 /* Crypto */
 

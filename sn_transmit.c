@@ -45,23 +45,19 @@
  *   must be acknowledged.
  */
 
-#include <sn_core.h>
-#include <sn_crypto.h>
-#include <sn_table.h>
-#include <sn_logging.h>
-#include <sn_status.h>
-
-#include <string.h>
-
-#include <assert.h>
-#include <inttypes.h>
-
-#include "mac_util.h"
+#include "sn_core.h"
+#include "sn_crypto.h"
+#include "sn_table.h"
+#include "sn_logging.h"
+#include "sn_status.h"
 #include "sn_constants.h"
 #include "sn_packet.h"
 #include "sn_delayed_tx.h"
 #include "sn_routing_tree.h"
 #include "sn_beacons.h"
+
+#include <string.h>
+#include <assert.h>
 
 //some templates for mac_receive_primitive
 static MAC_SET_CONFIRM(macShortAddress);
