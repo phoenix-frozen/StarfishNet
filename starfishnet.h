@@ -13,6 +13,8 @@
 
 #include "net/netstack.h"
 
+//TODO: prototypes from sn_core.h will move in here as they're ported
+
 extern const struct network_driver starfishnet_driver;
 
 #endif //__STARFISHNET_H__
