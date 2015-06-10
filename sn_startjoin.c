@@ -1,5 +1,5 @@
 #include "sn_core.h"
-#include "sn_table.h"
+#include "node_table.h"
 #include "logging.h"
 #include "status.h"
 #include "crypto.h"
@@ -27,7 +27,7 @@ static MAC_SET_CONFIRM(macCoordExtendedAddress);
 static MAC_SET_CONFIRM(macPromiscuousMode);
 
 //start a new StarfishNet network as coordinator
-int starfishnet_start_network(SN_Session_t *session, SN_Network_descriptor_t *network) {
+int SN_Start(SN_Session_t *session, SN_Network_descriptor_t *network) {
     SN_InfoPrintf("enter\n");
 
     if(session == NULL || network == NULL) {
@@ -49,7 +49,7 @@ int starfishnet_start_network(SN_Session_t *session, SN_Network_descriptor_t *ne
     session->nib.parent_address      = SN_COORDINATOR_ADDRESS;
     session->nib.enable_routing      = 1;
 
-    int ret = SN_Tree_configure(session);
+    int ret = SN_Tree_init();
     if(ret != SN_OK) {
         SN_ErrPrintf("error in routing tree configuration: %d\n", -ret);
         return ret;
@@ -99,8 +99,8 @@ static inline uint8_t log2i(uint32_t n) {
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int starfishnet_discover_networks(SN_Session_t *session, uint32_t channel_mask, uint32_t timeout,
-                                  bool show_full_networks, starfishnet_discovery_callback_t *callback, void *extradata) {
+int SN_Discover(SN_Session_t *session, uint32_t channel_mask, uint32_t timeout,
+                bool show_full_networks, SN_Discovery_callback_t *callback, void *extradata) {
     SN_InfoPrintf("enter\n");
     SN_InfoPrintf("performing discovery over %#010"PRIx32", in %d ms\n", channel_mask, timeout);
 
@@ -319,7 +319,7 @@ int mac_join(SN_Session_t* session, SN_Network_descriptor_t* network) {
  *
  * Note that if routing is disabled, we don't transmit beacons.
  *
- * (fill_node_table is a callback for starfishnet_discover_networks)
+ * (fill_node_table is a callback for SN_Discover)
  */
 static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     SN_Table_entry_t router_table_entry = {
@@ -334,14 +334,14 @@ static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* netw
 
     (void)extradata;
 };
-int starfishnet_join_network(SN_Session_t *session, SN_Network_descriptor_t *network, bool disable_routing) {
+int SN_Join(SN_Session_t *session, SN_Network_descriptor_t *network, bool disable_routing) {
     SN_InfoPrintf("enter\n");
     int ret;
 
     //perform extra discovery step to fill in node table
     SN_Table_clear_all_neighbors(session);
     ret = SN_OK;
-    ret = starfishnet_discover_networks(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
+    ret = SN_Discover(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
 
     //Fill NIB (and set parent)
     if(ret == SN_OK) {
@@ -357,7 +357,7 @@ int starfishnet_join_network(SN_Session_t *session, SN_Network_descriptor_t *net
 
     //Do routing tree math and set up address allocation
     if(ret == SN_OK) {
-        ret = SN_Tree_configure(session);
+        ret = SN_Tree_init();
     }
 
     //tune radio
@@ -389,7 +389,7 @@ int starfishnet_join_network(SN_Session_t *session, SN_Network_descriptor_t *net
             .address.ShortAddress = network->router_address,
         };
         SN_InfoPrintf("sending association message...\n");
-        ret = starfishnet_associate(session, &parent_address);
+        ret = SN_Associate(session, &parent_address);
     }
 
     //make sure the association completes
@@ -402,7 +402,7 @@ int starfishnet_join_network(SN_Session_t *session, SN_Network_descriptor_t *net
         SN_InfoPrintf("waiting for association reply from %#06x...\n", network->router_address);
         do {
             //wait for data...
-            ret = starfishnet_receive_message(session, &address, message, sizeof(message_data));
+            ret = SN_Receive(session, &address, message, sizeof(message_data));
             if(ret == SN_OK) {
                 switch(address.type) {
                     case mac_extended_address:

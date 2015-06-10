@@ -96,7 +96,8 @@ static int do_packet_transmission(int slot) {
         assert(slot_data->src_address != SN_NO_SHORT_ADDRESS);
         //this is a routing slot
         packet->MCPS_DATA_request.DstAddrMode = mac_short_address;
-        ret = SN_Tree_route(session, slot_data->src_address, slot_data->dst_address.address.ShortAddress, &packet->MCPS_DATA_request.DstAddr.ShortAddress);
+        ret = SN_Tree_route(slot_data->src_address, slot_data->dst_address.address.ShortAddress,
+                            &packet->MCPS_DATA_request.DstAddr.ShortAddress);
         if(ret != SN_OK) {
             SN_ErrPrintf("routing failed with %d\n", -ret);
             return ret;
@@ -147,7 +148,8 @@ static int do_packet_transmission(int slot) {
                 //peer isn't a neighbor.
                 if(session->nib.enable_routing) {
                     //if we're a router, then route.
-                    ret = SN_Tree_route(session, session->mib.macShortAddress, table_entry.short_address, &packet->MCPS_DATA_request.DstAddr.ShortAddress);
+                    ret = SN_Tree_route(session->mib.macShortAddress, table_entry.short_address,
+                                        &packet->MCPS_DATA_request.DstAddr.ShortAddress);
                     if(ret != SN_OK) {
                         SN_ErrPrintf("routing failed with %d\n", -ret);
                         return ret;

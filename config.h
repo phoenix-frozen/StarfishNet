@@ -3,6 +3,17 @@
 
 #include "types.h"
 
+#define STARFISHNET_DEFAULT_TX_RETRY_LIMIT 5
+#define STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT 2500
+
+#ifndef STARFISHNET_TX_RETRY_LIMIT
+#define STARFISHNET_TX_RETRY_LIMIT STARFISHNET_DEFAULT_TX_RETRY_LIMIT
+#endif /* STARFISHNET_TX_RETRY_LIMIT */
+
+#ifndef STARFISHNET_TX_RETRY_TIMEOUT
+#define STARFISHNET_TX_RETRY_TIMEOUT STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT
+#endif /* STARFISHNET_TX_RETRY_TIMEOUT */
+
 typedef struct SN_Config {
     SN_Keypair_t device_root_key;
 
@@ -29,6 +40,7 @@ typedef struct SN_Config {
     } nib;
 
     struct {
+        uint16_t macShortAddress;
     } mib;
 
     struct {

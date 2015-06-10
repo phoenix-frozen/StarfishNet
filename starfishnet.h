@@ -1,18 +1,17 @@
+/* Algorithms used.
+ *
+ * Signature:     ECDSA (with hash)
+ * Key agreement: ECDH  (hashed)
+ * Hash:          SHA1
+ * ECC curve:     secp160r1
+ *
+ * Crypto libraries: micro-ecc, libsha1
+ */
+
 #ifndef __STARFISHNET_H__
 #define __STARFISHNET_H__
 
 #include "net/netstack.h"
-
-#define STARFISHNET_DEFAULT_TX_RETRY_LIMIT 5
-#define STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT 2500
-
-#ifndef STARFISHNET_TX_RETRY_LIMIT
-#define STARFISHNET_TX_RETRY_LIMIT STARFISHNET_DEFAULT_TX_RETRY_LIMIT
-#endif /* STARFISHNET_TX_RETRY_LIMIT */
-
-#ifndef STARFISHNET_TX_RETRY_TIMEOUT
-#define STARFISHNET_TX_RETRY_TIMEOUT STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT
-#endif /* STARFISHNET_TX_RETRY_TIMEOUT */
 
 extern const struct network_driver starfishnet_driver;
 

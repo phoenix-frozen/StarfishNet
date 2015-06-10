@@ -2,7 +2,7 @@
 
 #include "sn_core.h"
 #include "crypto.h"
-#include "sn_table.h"
+#include "node_table.h"
 #include "logging.h"
 #include "status.h"
 #include "constants.h"
@@ -569,8 +569,8 @@ static int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_ag
 }
 
 //receive packet, decoding into one or more messages
-int starfishnet_receive_message(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buffer,
-                                size_t buffer_size) {
+int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buffer,
+               size_t buffer_size) {
     SN_InfoPrintf("enter\n");
 
     if(session == NULL || src_addr == NULL || buffer == NULL || buffer_size == 0) {
@@ -620,7 +620,7 @@ int starfishnet_receive_message(SN_Session_t *session, SN_Endpoint_t *src_addr, 
     //just skip things that aren't packets
     if(ret < -1 || packet.contents.type != mac_mcps_data_indication) {
         //TODO: some kind of COMM-STATUS.indication / DATA.confirm processing here?
-        return starfishnet_receive_message(session, src_addr, buffer, buffer_size);
+        return SN_Receive(session, src_addr, buffer, buffer_size);
     }
 
     //print some debugging information
@@ -671,10 +671,10 @@ int starfishnet_receive_message(SN_Session_t *session, SN_Endpoint_t *src_addr, 
         SN_InfoPrintf("packet isn't for us. routing\n");
         if(session->nib.enable_routing) {
             SN_Delayed_forward(session, network_header->src_addr, network_header->dst_addr, &packet);
-            return starfishnet_receive_message(session, src_addr, buffer, buffer_size);
+            return SN_Receive(session, src_addr, buffer, buffer_size);
         } else {
             SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
-            return starfishnet_receive_message(session, src_addr, buffer, buffer_size);
+            return SN_Receive(session, src_addr, buffer, buffer_size);
         }
     }
 
@@ -732,7 +732,7 @@ int starfishnet_receive_message(SN_Session_t *session, SN_Endpoint_t *src_addr, 
                         .type = mac_short_address,
                         .address.ShortAddress = table_entry.short_address,
                     };
-                    starfishnet_send_message(session, &ack_address, NULL);
+                    SN_Send(session, &ack_address, NULL);
                 }
             }
         }
@@ -770,7 +770,7 @@ int starfishnet_receive_message(SN_Session_t *session, SN_Endpoint_t *src_addr, 
                     .type = mac_short_address,
                     .address.ShortAddress = table_entry.short_address,
                 };
-                starfishnet_send_message(session, &ack_address, NULL);
+                SN_Send(session, &ack_address, NULL);
             }
             return ret;
         }

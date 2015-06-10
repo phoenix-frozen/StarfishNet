@@ -1,4 +1,4 @@
-#include "sn_table.h"
+#include "node_table.h"
 #include "status.h"
 #include "logging.h"
 

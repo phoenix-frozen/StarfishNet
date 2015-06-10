@@ -1,7 +1,7 @@
 #ifndef __SN_DELAYED_TX_H__
 #define __SN_DELAYED_TX_H__
 
-#include "sn_table.h"
+#include "node_table.h"
 #include "packet_format.h"
 
 #include <stdbool.h>

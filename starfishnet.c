@@ -2,13 +2,15 @@
 #include "net/queuebuf.h"
 #include "net/netstack.h"
 #include "starfishnet.h"
+#include "config.h"
+#include "crypto.h"
 
 static void init(void) {
     queuebuf_init();
     packetbuf_clear();
-    
+
     //TODO: set uECC's RNG
-    
+
     /*TODO: (load configuration)
      * if (config in flash) then
      *      load config from flash
@@ -17,7 +19,10 @@ static void init(void) {
      *      save to flash
      * fi
      */
-    
+
+    //for the moment, we just generate a new default config
+    SN_Crypto_generate_keypair(&starfishnet_config.device_root_key);
+
     //TODO: other init stuff goes in here
 }
 

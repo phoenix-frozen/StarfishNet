@@ -47,7 +47,7 @@
 
 #include "sn_core.h"
 #include "crypto.h"
-#include "sn_table.h"
+#include "node_table.h"
 #include "logging.h"
 #include "status.h"
 #include "constants.h"
@@ -393,7 +393,7 @@ static int generate_payload(SN_Message_t* message, packet_t* packet) {
 }
 
 //transmit packet, containing one or more messages
-int starfishnet_send_message(SN_Session_t *session, SN_Endpoint_t *dst_addr, SN_Message_t *message) {
+int SN_Send(SN_Session_t *session, SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     //initial NULL-checks
     if(session == NULL || dst_addr == NULL) {
         SN_ErrPrintf("session, dst_addr, and buffer must all be valid\n");
@@ -527,7 +527,7 @@ int starfishnet_send_message(SN_Session_t *session, SN_Endpoint_t *dst_addr, SN_
     return SN_OK;
 }
 
-int starfishnet_associate(SN_Session_t *session, SN_Endpoint_t *dst_addr) {
+int SN_Associate(SN_Session_t *session, SN_Endpoint_t *dst_addr) {
     //initial NULL-checks
     if(session == NULL || dst_addr == NULL) {
         SN_ErrPrintf("session, dst_addr, and buffer must all be valid\n");

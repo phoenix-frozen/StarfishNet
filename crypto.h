@@ -1,16 +1,6 @@
 #ifndef __SN_CRYPTO_H__
 #define __SN_CRYPTO_H__
 
-/* Algorithms used.
- *
- * Signature:     ECDSA (with hash)
- * Key agreement: ECDH  (hashed)
- * Hash:          SHA1
- * ECC curve:     secp160r1
- *
- * Crypto library: micro-ecc
- */
-
 #include "types.h"
 
 #include "sys/cc.h"
