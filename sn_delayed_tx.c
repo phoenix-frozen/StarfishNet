@@ -1,8 +1,8 @@
 #include "sn_delayed_tx.h"
 #include "sn_queued_rx.h"
-#include "sn_routing_tree.h"
-#include "sn_status.h"
-#include "sn_logging.h"
+#include "routing_tree.h"
+#include "status.h"
+#include "logging.h"
 
 #include <assert.h>
 #include <string.h>
@@ -29,7 +29,7 @@ typedef struct transmission_slot {
 
     SN_Session_t* session;
 
-    SN_Address_t dst_address;
+    SN_Endpoint_t dst_address;
     uint16_t src_address; //only valid for routing packets
 
     uint32_t counter;
@@ -360,7 +360,7 @@ int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, pa
         }\
     }
 
-//convenience macro to determine whether a SN_Table_entry_t matches a SN_Address_t
+//convenience macro to determine whether a SN_Table_entry_t matches a SN_Endpoint_t
 #define TABLE_ENTRY_MATCHES_ADDRESS(table_entry, proto_address)\
     (((proto_address).type == mac_short_address && (proto_address).address.ShortAddress == (table_entry).short_address)\
      ||\

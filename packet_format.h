@@ -1,7 +1,7 @@
 #ifndef __SN_PACKET_H__
 #define __SN_PACKET_H__
 
-#include "sn_types.h"
+#include "types.h"
 
 /*StarfishNet header ordering:
  * network_header_t

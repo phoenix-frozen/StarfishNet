@@ -1,10 +1,10 @@
 #include "sn_core.h"
 #include "sn_table.h"
-#include "sn_logging.h"
-#include "sn_status.h"
-#include "sn_crypto.h"
-#include "sn_constants.h"
-#include "sn_routing_tree.h"
+#include "logging.h"
+#include "status.h"
+#include "crypto.h"
+#include "constants.h"
+#include "routing_tree.h"
 #include "sn_beacons.h"
 
 #include <assert.h>
@@ -27,7 +27,7 @@ static MAC_SET_CONFIRM(macCoordExtendedAddress);
 static MAC_SET_CONFIRM(macPromiscuousMode);
 
 //start a new StarfishNet network as coordinator
-int SN_Start(SN_Session_t* session, SN_Network_descriptor_t* network) {
+int starfishnet_start_network(SN_Session_t *session, SN_Network_descriptor_t *network) {
     SN_InfoPrintf("enter\n");
 
     if(session == NULL || network == NULL) {
@@ -99,7 +99,8 @@ static inline uint8_t log2i(uint32_t n) {
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int SN_Discover(SN_Session_t* session, uint32_t channel_mask, uint32_t timeout, bool show_full_networks, SN_Discovery_callback_t* callback, void* extradata) {
+int starfishnet_discover_networks(SN_Session_t *session, uint32_t channel_mask, uint32_t timeout,
+                                  bool show_full_networks, starfishnet_discovery_callback_t *callback, void *extradata) {
     SN_InfoPrintf("enter\n");
     SN_InfoPrintf("performing discovery over %#010"PRIx32", in %d ms\n", channel_mask, timeout);
 
@@ -318,7 +319,7 @@ int mac_join(SN_Session_t* session, SN_Network_descriptor_t* network) {
  *
  * Note that if routing is disabled, we don't transmit beacons.
  *
- * (fill_node_table is a callback for SN_Discover)
+ * (fill_node_table is a callback for starfishnet_discover_networks)
  */
 static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata) {
     SN_Table_entry_t router_table_entry = {
@@ -333,14 +334,14 @@ static void fill_node_table(SN_Session_t* session, SN_Network_descriptor_t* netw
 
     (void)extradata;
 };
-int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disable_routing) {
+int starfishnet_join_network(SN_Session_t *session, SN_Network_descriptor_t *network, bool disable_routing) {
     SN_InfoPrintf("enter\n");
     int ret;
 
     //perform extra discovery step to fill in node table
     SN_Table_clear_all_neighbors(session);
     ret = SN_OK;
-    ret = SN_Discover(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
+    ret = starfishnet_discover_networks(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
 
     //Fill NIB (and set parent)
     if(ret == SN_OK) {
@@ -383,17 +384,17 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
 
     //start security association (implicitly requesting an address)
     if(ret == SN_OK) {
-        SN_Address_t parent_address = {
+        SN_Endpoint_t parent_address = {
             .type = mac_short_address,
             .address.ShortAddress = network->router_address,
         };
         SN_InfoPrintf("sending association message...\n");
-        ret = SN_Associate(session, &parent_address);
+        ret = starfishnet_associate(session, &parent_address);
     }
 
     //make sure the association completes
     if(ret == SN_OK) {
-        SN_Address_t address;
+        SN_Endpoint_t address;
         SN_Message_t* message = NULL;
         uint8_t message_data[sizeof(message->data_message) + SN_MAX_DATA_MESSAGE_LENGTH]; //XXX: this won't segfault
         message = (SN_Message_t*)message_data;
@@ -401,7 +402,7 @@ int SN_Join(SN_Session_t* session, SN_Network_descriptor_t* network, bool disabl
         SN_InfoPrintf("waiting for association reply from %#06x...\n", network->router_address);
         do {
             //wait for data...
-            ret = SN_Receive(session, &address, message, sizeof(message_data));
+            ret = starfishnet_receive_message(session, &address, message, sizeof(message_data));
             if(ret == SN_OK) {
                 switch(address.type) {
                     case mac_extended_address:

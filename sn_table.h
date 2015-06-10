@@ -1,7 +1,7 @@
 #ifndef __SN_TABLE_H__
 #define __SN_TABLE_H__
 
-#include "sn_types.h"
+#include "types.h"
 
 /* Interface to StarfishNet's node table.
  *

@@ -46,21 +46,18 @@
  */
 
 #include "sn_core.h"
-#include "sn_crypto.h"
+#include "crypto.h"
 #include "sn_table.h"
-#include "sn_logging.h"
-#include "sn_status.h"
-#include "sn_constants.h"
-#include "sn_packet.h"
+#include "logging.h"
+#include "status.h"
+#include "constants.h"
+#include "packet_format.h"
 #include "sn_delayed_tx.h"
-#include "sn_routing_tree.h"
+#include "routing_tree.h"
 #include "sn_beacons.h"
 
 #include <string.h>
 #include <assert.h>
-
-//some templates for mac_receive_primitive
-static MAC_SET_CONFIRM(macShortAddress);
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
 static int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack) {
@@ -72,7 +69,11 @@ static int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* 
     }
 
     encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, request);
-    assert(encryption_header != NULL);
+    if(encryption_header == NULL) {
+        SN_ErrPrintf("Packet needs an encryption header before being encrypted.\n");
+        return -SN_ERR_INVALID;
+    }
+
     const size_t skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
     if(PACKET_SIZE(*packet, request) < skip_size) {
         SN_ErrPrintf("cannot encrypt packet of length %d with an encryption header at %d\n", PACKET_SIZE(*packet, request), packet->layout.encryption_header);
@@ -392,7 +393,7 @@ static int generate_payload(SN_Message_t* message, packet_t* packet) {
 }
 
 //transmit packet, containing one or more messages
-int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message) {
+int starfishnet_send_message(SN_Session_t *session, SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     //initial NULL-checks
     if(session == NULL || dst_addr == NULL) {
         SN_ErrPrintf("session, dst_addr, and buffer must all be valid\n");
@@ -526,7 +527,7 @@ int SN_Send(SN_Session_t* session, SN_Address_t* dst_addr, SN_Message_t* message
     return SN_OK;
 }
 
-int SN_Associate(SN_Session_t* session, SN_Address_t* dst_addr) {
+int starfishnet_associate(SN_Session_t *session, SN_Endpoint_t *dst_addr) {
     //initial NULL-checks
     if(session == NULL || dst_addr == NULL) {
         SN_ErrPrintf("session, dst_addr, and buffer must all be valid\n");

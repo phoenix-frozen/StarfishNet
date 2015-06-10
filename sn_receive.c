@@ -1,12 +1,12 @@
 //StarfishNet message transmission rules are in sn_transmit.c
 
 #include "sn_core.h"
-#include "sn_crypto.h"
+#include "crypto.h"
 #include "sn_table.h"
-#include "sn_logging.h"
-#include "sn_status.h"
-#include "sn_constants.h"
-#include "sn_packet.h"
+#include "logging.h"
+#include "status.h"
+#include "constants.h"
+#include "packet_format.h"
 #include "sn_delayed_tx.h"
 #include "sn_beacons.h"
 #include "sn_queued_rx.h"
@@ -569,7 +569,8 @@ static int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_ag
 }
 
 //receive packet, decoding into one or more messages
-int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buffer, size_t buffer_size) {
+int starfishnet_receive_message(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buffer,
+                                size_t buffer_size) {
     SN_InfoPrintf("enter\n");
 
     if(session == NULL || src_addr == NULL || buffer == NULL || buffer_size == 0) {
@@ -619,7 +620,7 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
     //just skip things that aren't packets
     if(ret < -1 || packet.contents.type != mac_mcps_data_indication) {
         //TODO: some kind of COMM-STATUS.indication / DATA.confirm processing here?
-        return SN_Receive(session, src_addr, buffer, buffer_size);
+        return starfishnet_receive_message(session, src_addr, buffer, buffer_size);
     }
 
     //print some debugging information
@@ -670,10 +671,10 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
         SN_InfoPrintf("packet isn't for us. routing\n");
         if(session->nib.enable_routing) {
             SN_Delayed_forward(session, network_header->src_addr, network_header->dst_addr, &packet);
-            return SN_Receive(session, src_addr, buffer, buffer_size);
+            return starfishnet_receive_message(session, src_addr, buffer, buffer_size);
         } else {
             SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
-            return SN_Receive(session, src_addr, buffer, buffer_size);
+            return starfishnet_receive_message(session, src_addr, buffer, buffer_size);
         }
     }
 
@@ -727,11 +728,11 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
             if(PACKET_ENTRY(packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(packet, association_header, indication) == NULL) {
                 SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
                 if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-                    SN_Address_t ack_address = {
+                    SN_Endpoint_t ack_address = {
                         .type = mac_short_address,
                         .address.ShortAddress = table_entry.short_address,
                     };
-                    SN_Send(session, &ack_address, NULL);
+                    starfishnet_send_message(session, &ack_address, NULL);
                 }
             }
         }
@@ -765,11 +766,11 @@ int SN_Receive(SN_Session_t* session, SN_Address_t* src_addr, SN_Message_t* buff
             SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
             SN_Delayed_tick(0);
             if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-                SN_Address_t ack_address = {
+                SN_Endpoint_t ack_address = {
                     .type = mac_short_address,
                     .address.ShortAddress = table_entry.short_address,
                 };
-                SN_Send(session, &ack_address, NULL);
+                starfishnet_send_message(session, &ack_address, NULL);
             }
             return ret;
         }

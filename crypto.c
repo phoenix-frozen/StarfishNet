@@ -1,9 +1,10 @@
-#include "sn_crypto.h"
-#include "sn_status.h"
-#include "sn_logging.h"
+#include "crypto.h"
+#include "status.h"
+#include "logging.h"
+
+#include "lib/ccm-star.h"
 
 #include <assert.h>
-#include <stdint.h>
 
 #include <uECC.h>
 #include <libsha1.h>
@@ -40,7 +41,12 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
 }
 
 
-int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, size_t data_len, SN_Signature_t* signature) {
+int SN_Crypto_sign ( //sign data into sigbuf
+    const SN_Private_key_t* private_key,
+    const uint8_t*          data,
+    size_t            data_len,
+    SN_Signature_t*   signature
+) {
     SN_InfoPrintf("enter\n");
 
     if(private_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -64,7 +70,12 @@ int SN_Crypto_sign(SN_Private_key_t* private_key, uint8_t* data, size_t data_len
     return SN_OK;
 }
 
-int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, size_t data_len, SN_Signature_t* signature) {
+int SN_Crypto_verify ( //verify signature of data in sigbuf
+    const SN_Public_key_t*  public_key,
+    const uint8_t*          data,
+    size_t            data_len,
+    const SN_Signature_t*   signature
+) {
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -93,7 +104,13 @@ int SN_Crypto_verify(SN_Public_key_t* public_key, uint8_t* data, size_t data_len
 }
 
 
-int SN_Crypto_key_agreement(SN_Public_key_t* identity_A, SN_Public_key_t* identity_B, SN_Public_key_t* public_key, SN_Private_key_t* private_key, SN_Kex_result_t* shared_secret) {
+int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_secret
+    const SN_Public_key_t* identity_A,
+    const SN_Public_key_t* identity_B,
+    const SN_Public_key_t*  public_key,
+    const SN_Private_key_t* private_key,
+    SN_Kex_result_t*  shared_secret
+) {
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || private_key == NULL || shared_secret == NULL) {
@@ -117,26 +134,30 @@ int SN_Crypto_key_agreement(SN_Public_key_t* identity_A, SN_Public_key_t* identi
     }
 
     //hash resultant secret together with identities of parties involved
-    sha1_context ctx;
-    sha1_init(&ctx);
-    sha1_starts(&ctx);
-    sha1_update(&ctx, raw_shared_secret.data, sizeof(raw_shared_secret.data) );
+    sha1_ctx ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    sha1_begin(&ctx);
+    sha1_hash(raw_shared_secret.data, sizeof(raw_shared_secret.data), &ctx);
     if(identity_A != NULL) {
-        sha1_update(&ctx, identity_A->data, sizeof(identity_A->data));
+        sha1_hash(identity_A->data, sizeof(identity_A->data), &ctx);
     }
     if(identity_B != NULL) {
-        sha1_update(&ctx, identity_B->data, sizeof(identity_B->data));
+        sha1_hash(identity_B->data, sizeof(identity_B->data), &ctx);
     }
 
     //output resultant link key
-    sha1_finish(&ctx, shared_secret->raw.data);
-    sha1_free(&ctx);
+    sha1_end(shared_secret->raw.data, &ctx);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
 
-void SN_Crypto_hash(uint8_t* data, size_t data_len, SN_Hash_t* hash, size_t repeat_count) {
+void SN_Crypto_hash (
+    const uint8_t*   data,
+    size_t     data_len,
+    SN_Hash_t* hash,
+    size_t     repeat_count
+) {
     sha1(hash->data, data, data_len);
 
     while(repeat_count-- > 0) {
@@ -146,7 +167,21 @@ void SN_Crypto_hash(uint8_t* data, size_t data_len, SN_Hash_t* hash, size_t repe
 
 #define CCM_MAX_IV_LENGTH 12
 
-int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag, bool pure_ack) {
+int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
+    const SN_AES_key_t*    key,
+    const SN_Public_key_t* key_agreement_key,
+    uint32_t         counter,
+    const uint8_t*   ad,
+    size_t           ad_len,
+    uint8_t*         data,
+    size_t           data_len,
+    uint8_t*         tag,
+    bool             pure_ack
+) {
+    int ret = 0;
+    SN_Hash_t iv;
+    sha1_ctx iv_ctx;
+
     SN_InfoPrintf("enter\n");
 
     if(key == NULL || key_agreement_key == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
@@ -154,16 +189,6 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
         return -SN_ERR_NULL;
     }
 
-    aes_ccm_context ctx;
-    int             ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
-
-    if(ret != 0) {
-        SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
-        return -SN_ERR_SECURITY;
-    }
-
-    SN_Hash_t iv;
-    sha1_ctx iv_ctx;
     memset(&iv_ctx, 0, sizeof(iv_ctx));
     sha1_begin(&iv_ctx);
     sha1_hash(key_agreement_key->data, sizeof(key_agreement_key->data), &iv_ctx);
@@ -172,23 +197,33 @@ int SN_Crypto_encrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
         sha1_hash((uint8_t*)"ACK", 3, &iv_ctx);
     }
-    sha1_finish(iv.data, &iv_ctx);
+    sha1_end(iv.data, &iv_ctx);
 
     //XXX assumption: CCM_MAX_IV_LENGTH < sizeof(SN_Hash_t)
-    ret = aes_ccm_encrypt_and_tag(&ctx, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, data, data, tag, SN_Tag_size);
-
-    aes_ccm_free(&ctx);
-
-    if(ret != 0) {
-        SN_ErrPrintf("CCM encryption failed with error %d\n", ret);
-        return -SN_ERR_SECURITY;
-    }
+    CCM_STAR.set_key(key->data);
+    CCM_STAR.mic(data, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, tag, SN_Tag_size);
+    CCM_STAR.ctr(data, data_len, iv.data, CCM_MAX_IV_LENGTH);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
 
-int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uint32_t counter, uint8_t* ad, size_t ad_len, uint8_t* data, size_t data_len, uint8_t* tag, bool pure_ack) {
+int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
+    const SN_AES_key_t*    key,
+    const SN_Public_key_t* key_agreement_key,
+    uint32_t         counter,
+    const uint8_t*   ad,
+    size_t           ad_len,
+    uint8_t*         data,
+    size_t           data_len,
+    const uint8_t*   tag,
+    bool             pure_ack
+) {
+    int ret = 0;
+    SN_Hash_t iv;
+    sha1_ctx iv_ctx;
+    uint8_t prototag[SN_Tag_size];
+
     SN_InfoPrintf("enter\n");
 
     if(key == NULL || key_agreement_key == NULL || (ad == NULL && ad_len > 0) || (data == NULL && data_len > 0) || tag == NULL) {
@@ -196,34 +231,24 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
         return -SN_ERR_NULL;
     }
 
-    aes_ccm_context ctx;
-    int             ret = aes_ccm_init(&ctx, key->data, SN_AES_key_bits);
-
-    if(ret != 0) {
-        SN_ErrPrintf("CCM initialisation failed with error %d\n", ret);
-        return -SN_ERR_SECURITY;
-    }
-
-    SN_Hash_t iv;
-    sha1_context iv_ctx;
-    sha1_init( &iv_ctx );
-    sha1_starts( &iv_ctx );
-    sha1_update( &iv_ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
-    sha1_update( &iv_ctx, (uint8_t*)&counter, sizeof(counter));
+    memset(&iv_ctx, 0, sizeof(iv_ctx));
+    sha1_begin(&iv_ctx);
+    sha1_hash(key_agreement_key->data, sizeof(key_agreement_key->data), &iv_ctx);
+    sha1_hash((uint8_t*)&counter, sizeof(counter), &iv_ctx);
     if(pure_ack) {
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
-        sha1_update( &iv_ctx, (uint8_t*)"ACK", 3);
+        sha1_hash((uint8_t*)"ACK", 3, &iv_ctx);
     }
-    sha1_finish( &iv_ctx, iv.data );
-    sha1_free( &iv_ctx );
+    sha1_end(iv.data, &iv_ctx);
 
     //XXX assumption: CCM_MAX_IV_LENGTH < sizeof(SN_Hash_t)
-    ret = aes_ccm_auth_decrypt(&ctx, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, data, data, tag, SN_Tag_size);
+    CCM_STAR.set_key(key->data);
+    CCM_STAR.ctr(data, data_len, iv.data, CCM_MAX_IV_LENGTH);
+    CCM_STAR.mic(data, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, prototag, SN_Tag_size);
 
-    aes_ccm_free(&ctx);
-
+    ret = memcmp(prototag, tag, SN_Tag_size);
     if(ret != 0) {
-        SN_ErrPrintf("CCM decryption failed with error %d\n", ret);
+        SN_ErrPrintf("CCM MIC verification failed.\n");
         return -SN_ERR_SECURITY;
     }
 
@@ -232,7 +257,7 @@ int SN_Crypto_decrypt(SN_AES_key_t* key, SN_Public_key_t* key_agreement_key, uin
 }
 
 
-int SN_Crypto_check_certificate(SN_Certificate_t* certificate) {
+int SN_Crypto_check_certificate(const SN_Certificate_t* certificate) {
     SN_InfoPrintf("enter\n");
 
     if(certificate == NULL) {

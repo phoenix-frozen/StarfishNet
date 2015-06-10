@@ -2,7 +2,7 @@
 #define __SN_DELAYED_TX_H__
 
 #include "sn_table.h"
-#include "sn_packet.h"
+#include "packet_format.h"
 
 #include <stdbool.h>
 

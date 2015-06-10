@@ -1,7 +1,7 @@
 #ifndef __SN_ADDRESSING_H__
 #define __SN_ADDRESSING_H__
 
-#include "sn_types.h"
+#include "types.h"
 #include "sn_core.h"
 
 #include <stdbool.h>

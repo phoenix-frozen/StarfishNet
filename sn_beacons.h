@@ -1,7 +1,7 @@
 #ifndef __SN_BEACONS_H__
 #define __SN_BEACONS_H__
 
-#include "sn_types.h"
+#include "types.h"
 
 #define BEACON_HASH_LENGTH        sizeof(SN_Hash_t)
 

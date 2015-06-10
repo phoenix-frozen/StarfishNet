@@ -1,10 +1,10 @@
 #include "sn_beacons.h"
-#include "sn_status.h"
-#include "sn_crypto.h"
-#include "sn_constants.h"
-#include "sn_routing_tree.h"
+#include "status.h"
+#include "crypto.h"
+#include "constants.h"
+#include "routing_tree.h"
 #include "sn_queued_rx.h"
-#include "sn_logging.h"
+#include "logging.h"
 
 #include <string.h>
 
