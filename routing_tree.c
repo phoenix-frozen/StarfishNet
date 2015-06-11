@@ -5,15 +5,15 @@
 
 #include <assert.h>
 
-int SN_Tree_allocate_address(uint16_t* address, bool* block) {
+int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
     if(address == NULL || block == NULL) {
         SN_ErrPrintf("address, and block must all be valid\n");
         return -SN_ERR_NULL;
     }
 
-    assert(starfishnet_config->nib.tree_branching_factor <= 16);
-    assert(starfishnet_config->nib.tree_position * starfishnet_config->nib.tree_branching_factor < 16);
-    assert(starfishnet_config->nib.enable_routing);
+    assert(starfishnet_config.nib.tree_branching_factor <= 16);
+    assert(starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor < 16);
+    assert(starfishnet_config.nib.enable_routing);
 
     uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
     uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);

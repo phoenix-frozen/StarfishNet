@@ -51,7 +51,7 @@
 #include "status.h"
 #include "constants.h"
 #include "packet.h"
-#include "sn_delayed_tx.h"
+#include "retransmission_queue.h"
 #include "util.h"
 #include "config.h"
 
@@ -62,7 +62,7 @@
 int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     SN_Table_entry_t table_entry;
     int ret;
-    packet_t packet; //TODO: allocate a packet
+    packet_t packet;
     uint32_t encryption_counter;
     network_header_t* header;
     bool pure_ack = 0;
@@ -189,7 +189,7 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     }
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Delayed_transmit(&table_entry, &packet, encryption_counter);
+    ret = SN_Transmission_enqueue(&table_entry, &packet, encryption_counter);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
@@ -367,7 +367,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     SN_Table_update(&table_entry);
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Delayed_transmit(&table_entry, &packet, sequence_number);
+    ret = SN_Transmission_enqueue(&table_entry, &packet, sequence_number);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;

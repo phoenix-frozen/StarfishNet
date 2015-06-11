@@ -7,342 +7,12 @@
 #include "status.h"
 #include "constants.h"
 #include "packet.h"
-#include "sn_delayed_tx.h"
+#include "retransmission_queue.h"
 #include "sn_beacons.h"
-#include "sn_queued_rx.h"
 
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
-
-//some templates for mac_receive_primitive
-static MAC_SET_CONFIRM(macShortAddress);
-
-//outputs crypto margin, and pointers to the key agreement header and payload data
-//also detects basic protocol failures
-static int detect_packet_layout(packet_t* packet) {
-    SN_DebugPrintf("enter\n");
-
-    if(packet == NULL) {
-        SN_ErrPrintf("packet must be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    uint8_t current_position = 0;
-    memset(&packet->layout, 0, sizeof(packet->layout));
-
-    //network_header_t is always present
-    packet->layout.network_header = 0;
-    packet->layout.present.network_header = 1;
-    network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
-    assert(network_header != NULL);
-    if(PACKET_SIZE(*packet, indication) < sizeof(network_header_t)) {
-        SN_ErrPrintf("packet doesn't appear to have a valid network header. aborting\n");
-        return -SN_ERR_END_OF_DATA;
-    }
-    if(!(network_header->protocol_id == STARFISHNET_PROTOCOL_ID &&
-         network_header->protocol_ver == STARFISHNET_PROTOCOL_VERSION
-    )) {
-        SN_ErrPrintf("packet has invalid protocol ID bytes. protocol is %x (should be %x), version is %x (should be %x)\n", network_header->protocol_id, STARFISHNET_PROTOCOL_ID, network_header->protocol_ver, STARFISHNET_PROTOCOL_VERSION);
-        return -SN_ERR_OLD_VERSION;
-    }
-    current_position += sizeof(network_header_t);
-
-    //alt_stream_header_t
-    if(network_header->alt_stream) {
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(alt_stream_header_t)) {
-            SN_ErrPrintf("packet indicates an alternate stream header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found alternate stream header at %d\n", current_position);
-        packet->layout.alt_stream_header = current_position;
-        packet->layout.present.alt_stream_header = 1;
-        current_position += sizeof(alt_stream_header_t);
-        if(PACKET_ENTRY(*packet, alt_stream_header, indication)->length > SN_MAX_ALT_STREAM_IDX_SIZE) {
-            SN_ErrPrintf("alternate stream header cannot be longer than %d (is %d). aborting\n", SN_MAX_ALT_STREAM_IDX_SIZE, PACKET_ENTRY(*packet, alt_stream_header, indication)->length);
-            return -SN_ERR_END_OF_DATA;
-        }
-        if(PACKET_SIZE(*packet, indication) < current_position + PACKET_ENTRY(*packet, alt_stream_header, indication)->length) {
-            SN_ErrPrintf("alternate stream header indicate stream index longer than remaining packet data. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-    }
-
-    //node_details_header_t
-    if(network_header->details) {
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(node_details_header_t)) {
-            SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found node details header at %d\n", current_position);
-        packet->layout.node_details_header = current_position;
-        packet->layout.present.node_details_header = 1;
-        current_position += sizeof(node_details_header_t);
-    }
-
-    //association_header_t
-    if(network_header->associate) {
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(association_header_t)) {
-            SN_ErrPrintf("packet indicates an association header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found association header at %d\n", current_position);
-        packet->layout.association_header = current_position;
-        packet->layout.present.association_header = 1;
-        current_position += sizeof(association_header_t);
-
-        //key_agreement_header_t
-        if(!PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
-            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(key_agreement_header_t)) {
-                SN_ErrPrintf("packet indicates a key agreement header, but is too small. aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            SN_InfoPrintf("found key agreement header at %d\n", current_position);
-            packet->layout.key_agreement_header = current_position;
-            packet->layout.present.key_agreement_header = 1;
-            current_position += sizeof(key_agreement_header_t);
-        }
-    }
-
-    //key_confirmation_header_t
-    if(network_header->key_confirm) {
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(key_confirmation_header_t)) {
-            SN_ErrPrintf("packet indicates a key confirmation header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found key confirmation header at %d\n", current_position);
-        packet->layout.key_confirmation_header = current_position;
-        packet->layout.present.key_confirmation_header = 1;
-        current_position += sizeof(key_confirmation_header_t);
-    }
-
-    //encrypted_ack_header_t
-    if(network_header->ack && !network_header->associate) {
-        if(network_header->encrypt) {
-            //encrypted ack
-            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encrypted_ack_header_t)) {
-                SN_ErrPrintf("packet indicates an acknowledgement (encrypted) header, but is too small. aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            SN_InfoPrintf("found acknowledgement (encrypted) header at %d\n", current_position);
-            packet->layout.encrypted_ack_header = current_position;
-            packet->layout.present.encrypted_ack_header = 1;
-            current_position += sizeof(encrypted_ack_header_t);
-        } else {
-            SN_ErrPrintf("acknowledgements only work for encrypted packets");
-            return -SN_ERR_INVALID;
-        }
-    }
-
-    //encryption_header_t / signature_header_t
-    if(network_header->encrypt) {
-        //encrypted packet
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encryption_header_t)) {
-            SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found encryption header at %d\n", current_position);
-        packet->layout.encryption_header = current_position;
-        packet->layout.present.encryption_header = 1;
-        current_position += sizeof(encryption_header_t);
-    } else {
-        //signed packet
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(signature_header_t)) {
-            SN_ErrPrintf("packet indicates a signature header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found signature header at %d\n", current_position);
-        packet->layout.signature_header = current_position;
-        packet->layout.present.signature_header = 1;
-        current_position += sizeof(signature_header_t);
-    }
-
-    //evidence_header
-    if(network_header->evidence) {
-        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(evidence_header_t)) {
-            SN_ErrPrintf("packet indicates an evidence header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found evidence header at %d\n", current_position);
-        packet->layout.evidence_header = current_position;
-        packet->layout.present.evidence_header = 1;
-        current_position += sizeof(evidence_header_t);
-    }
-
-    //payload
-    packet->layout.payload_length = PACKET_SIZE(*packet, indication) - current_position;
-    if(packet->layout.payload_length > 0) {
-        SN_InfoPrintf("found payload at %d (%d bytes)\n", current_position, packet->layout.payload_length);
-        packet->layout.payload_data = current_position;
-        packet->layout.present.payload_data = 1;
-    }
-
-    //some logic-checking assertions
-    assert(current_position <= PACKET_SIZE(*packet, indication));
-    assert(packet->layout.payload_length == PACKET_SIZE(*packet, indication) - current_position);
-
-    SN_DebugPrintf("exit\n");
-    return SN_OK;
-}
-
-static int do_security_checks(SN_Table_entry_t* table_entry, packet_t* packet) {
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    //alt-stream check: alt streams are only allowed for nodes using their short address
-    if(PACKET_ENTRY(*packet, network_header, indication)->src_addr == SN_NO_SHORT_ADDRESS &&
-        packet->contents.MCPS_DATA_indication.SrcAddrMode == mac_extended_address &&
-        PACKET_ENTRY(*packet, alt_stream_header, indication) != NULL &&
-        PACKET_ENTRY(*packet, alt_stream_header, indication)->length > 0) {
-        SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
-        return -SN_ERR_UNEXPECTED;
-    }
-
-    //relationship-state check: make sure the headers we see match the state the relationship is in
-    if(PACKET_ENTRY(*packet, association_header, indication) != NULL &&
-       (table_entry->state == SN_Associate_received || table_entry->state >= SN_Awaiting_finalise) &&
-       !PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
-        SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
-        return -SN_ERR_UNEXPECTED;
-    }
-    if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL && table_entry->state != SN_Awaiting_reply &&
-       table_entry->state != SN_Awaiting_finalise) {
-        SN_ErrPrintf("received key confirmation header when we're not waiting for one. this is an error\n");
-        return -SN_ERR_UNEXPECTED;
-    }
-
-    //assertions to double-check my logic.
-    if(PACKET_ENTRY(*packet, association_header, indication) != NULL && !PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
-        if(PACKET_ENTRY(*packet, key_confirmation_header, indication) == NULL) {
-            assert(table_entry->state == SN_Unassociated);
-        }
-        if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
-            assert(table_entry->state == SN_Awaiting_reply);
-        }
-    }
-    if(PACKET_ENTRY(*packet, association_header, indication) == NULL && PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
-        assert(table_entry->state == SN_Awaiting_finalise);
-    }
-
-    //packet security checks:
-    // 1. packets with plain data payloads must be encrypted
-    // 2. unencrypted packets must be signed
-    // 3. association (but not dissociation) packets must be signed
-    // 4. dissociation packets must be signed or encrypted
-    if(PACKET_ENTRY(*packet, encryption_header, indication) == NULL) {
-        //1.
-        if(PACKET_ENTRY(*packet, payload_data, indication) != NULL && !PACKET_ENTRY(*packet, network_header, indication)->evidence) {
-            SN_ErrPrintf("received unencrypted packet with plain data payload. this is an error.\n");
-            return -SN_ERR_SECURITY;
-        }
-
-        //2.
-        if(PACKET_ENTRY(*packet, signature_header, indication) == NULL) {
-            SN_ErrPrintf("received unencrypted, unsigned packet. this is an error.\n");
-            return -SN_ERR_SECURITY;
-        }
-    }
-    //3.
-    if(PACKET_ENTRY(*packet, signature_header, indication) == NULL &&
-       PACKET_ENTRY(*packet, association_header, indication) != NULL &&
-       !PACKET_ENTRY(*packet, association_header, indication)->dissociate) {
-        SN_ErrPrintf("received unsigned association packet. this is an error.\n");
-        return -SN_ERR_SECURITY;
-    }
-    //4.
-    if(PACKET_ENTRY(*packet, association_header, indication) != NULL &&
-       PACKET_ENTRY(*packet, association_header, indication)->dissociate &&
-       PACKET_ENTRY(*packet, encryption_header , indication) == NULL &&
-       PACKET_ENTRY(*packet, signature_header  , indication) == NULL) {
-        SN_ErrPrintf("received non-integrity-checked dissociation packet. this is an error.\n");
-        return -SN_ERR_SECURITY;
-    }
-
-        return SN_OK;
-}
-
-static int do_public_key_operations(SN_Public_key_t* self, SN_Table_entry_t* table_entry, packet_t* packet) {
-    /* at this point, security checks have passed, but no integrity-checking has happened.
-     * if this packet is signed, we check the signature, and thus integrity-checking is done.
-     * if not, it must be encrypted. we must therefore finish key-agreement so that we can
-     * do integrity-checking at decrypt time.
-     */
-
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    int ret;
-
-    SN_Public_key_t* remote_public_key = NULL;
-
-    //get the signing key from node_details_header, if we need it
-    if(table_entry->details_known) {
-        remote_public_key = &table_entry->public_key;
-    } else if(PACKET_ENTRY(*packet, node_details_header, indication) != NULL) {
-        //if we don't know the remote node's signing key, we use the one in the message
-        remote_public_key = &PACKET_ENTRY(*packet, node_details_header, indication)->signing_key;
-    }
-
-    //verify packet signature
-    if(PACKET_ENTRY(*packet, signature_header, indication) != NULL) {
-        SN_InfoPrintf("checking packet signature...\n");
-
-        if(remote_public_key == NULL) {
-            SN_ErrPrintf("we don't know their public key, and they haven't told us. aborting\n");
-            return -SN_ERR_SECURITY;
-        }
-
-        //signature covers everything before the signature header occurs
-        ret = SN_Crypto_verify(
-            remote_public_key,
-            packet->contents.MCPS_DATA_indication.msdu,
-            packet->layout.signature_header,
-            &PACKET_ENTRY(*packet, signature_header, indication)->signature
-        );
-        if(ret != SN_OK) {
-            SN_ErrPrintf("packet signature verification failed.\n");
-            return -SN_ERR_SIGNATURE;
-        }
-
-        SN_InfoPrintf("packet signature check successful\n");
-    } else {
-        assert(PACKET_ENTRY(*packet, encryption_header, indication) != NULL);
-        /* if the packet isn't signed, it's encrypted, which means integrity-checking
-         * during decrypt_and_verify will catch any problems
-         */
-    }
-
-    //if this is an associate_reply, finish the key agreement, so we can use the link key in decrypt_and_verify
-    if(PACKET_ENTRY(*packet, association_header, indication) != NULL &&
-       !PACKET_ENTRY(*packet, association_header, indication)->dissociate &&
-       PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
-        //associate_reply
-        assert(table_entry->state == SN_Awaiting_reply);
-        assert(PACKET_ENTRY(*packet, key_agreement_header, indication) != NULL);
-
-        //finish the key agreement
-        SN_Kex_result_t kex_result;
-        ret = SN_Crypto_key_agreement(
-            self,
-            &table_entry->public_key,
-            &PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key,
-            &table_entry->local_key_agreement_keypair.private_key,
-            &kex_result
-        );
-        if(ret != SN_OK) {
-            SN_ErrPrintf("key agreement failed with %d.\n", -ret);
-            return ret;
-        }
-        table_entry->link_key = kex_result.key;
-        table_entry->packet_rx_counter = table_entry->packet_tx_counter = 0;
-    }
-
-    return SN_OK;
-}
 
 static int do_queued_receive_exactly(SN_Session_t* session, const mac_primitive_t* primitive) {
     if(session == NULL || primitive == NULL) {
@@ -367,205 +37,6 @@ static int do_queued_receive_exactly(SN_Session_t* session, const mac_primitive_
             SN_Enqueue(session, &packet); //implicitly drops irrelevant primitives
         }
     }
-}
-
-static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet) {
-    //at this point, security and integrity checks are guaranteed to have passed
-
-    if(session == NULL || table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    //network_header
-    network_header_t* network_header = PACKET_ENTRY(*packet, network_header, indication);
-    assert(network_header != NULL);
-    if(network_header->req_details) {
-        SN_InfoPrintf("partner has requested our details\n");
-    }
-    table_entry->knows_details = (uint8_t)!PACKET_ENTRY(*packet, network_header, indication)->req_details;
-    if(network_header->src_addr != SN_NO_SHORT_ADDRESS) {
-        //if the remote node has a short address, we can erase its MAC address from memory
-        SN_InfoPrintf("short address is known; erasing long address\n");
-        memset(table_entry->long_address.ExtendedAddress, 0, sizeof(table_entry->long_address.ExtendedAddress));
-    }
-
-
-    //node_details_header
-    if(PACKET_ENTRY(*packet, node_details_header, indication) != NULL) {
-        SN_InfoPrintf("processing node details header...\n");
-        if(!table_entry->details_known) {
-            SN_InfoPrintf("storing public key...\n");
-            table_entry->details_known = 1;
-            table_entry->public_key    = PACKET_ENTRY(*packet, node_details_header, indication)->signing_key;
-        }
-    }
-
-    //association_header
-    if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
-        SN_InfoPrintf("processing association header...\n");
-        association_header_t* association_header = PACKET_ENTRY(*packet, association_header, indication);
-        //relationship state is checked in do_public_key_operations
-        //signature is checked in do_public_key_operations
-        if(!association_header->dissociate) {
-            //association processing
-            assert(PACKET_ENTRY(*packet, key_agreement_header, indication) != NULL);
-            SN_InfoPrintf("detected key agreement header\n");
-            table_entry->remote_key_agreement_key = PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key;
-
-            if(PACKET_ENTRY(*packet, key_confirmation_header, indication) == NULL) {
-                //associate_request
-                assert(table_entry->state == SN_Unassociated);
-
-                table_entry->child  = association_header->child;
-                table_entry->router = association_header->router;
-
-                SN_InfoPrintf("node is%s a %s child\n", (association_header->child ? "" : " not"), (association_header->router ? "router" : "leaf"));
-
-                table_entry->state = SN_Associate_received;
-            } else {
-                //associate_reply
-                assert(table_entry->state == SN_Awaiting_reply);
-                //key agreement processing in do_public_key_operations
-
-                //parent/child handling
-                if(association_header->child) {
-                    if(network_header->src_addr != session->nib.parent_address) {
-                        SN_ErrPrintf("received address delegation packet from someone not our parent\n");
-                        return -SN_ERR_SECURITY;
-                    }
-
-                    if(session->mib.macShortAddress != SN_NO_SHORT_ADDRESS) {
-                        SN_ErrPrintf("received address delegation when we already have a short address\n");
-                        return -SN_ERR_UNEXPECTED;
-                    }
-
-                    if(session->nib.enable_routing) {
-                        session->nib.enable_routing = association_header->router;
-                    }
-
-                    //set our short address to the one we were just given
-                    SN_InfoPrintf("setting our short address to %#06x...\n", network_header->dst_addr);
-                    mac_primitive_t set_primitive;
-                    set_primitive.type                              = mac_mlme_set_request;
-                    set_primitive.MLME_SET_request.PIBAttribute     = macShortAddress;
-                    set_primitive.MLME_SET_request.PIBAttributeSize = 2;
-                    memcpy(set_primitive.MLME_SET_request.PIBAttributeValue, &network_header->dst_addr, 2);
-                    MAC_CALL(mac_transmit, session->mac_session, &set_primitive);
-                    do_queued_receive_exactly(session, (mac_primitive_t*)macShortAddress_set_confirm);
-                    session->mib.macShortAddress             = network_header->dst_addr;
-
-                    if(session->nib.enable_routing) {
-                        int ret = SN_Beacon_update();
-                        if(ret != SN_OK) {
-                            SN_ErrPrintf("beacon update failed: %d\n", -ret);
-                            return ret;
-                        }
-                    }
-                }
-            }
-        } else {
-            //TODO: dissociation processing
-        }
-    }
-
-    //key_confirmation_header
-    if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
-        SN_InfoPrintf("processing key confirmation header...\n");
-        if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
-            //associate_reply
-            assert(table_entry->state == SN_Awaiting_reply);
-
-            //do the challenge1 check (double-hash)
-            SN_Hash_t hashbuf;
-            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf, 1);
-            SN_DebugPrintf("challenge1 (received)   = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
-                *(uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data,
-                *((uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 1),
-                *((uint32_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 4));
-            SN_DebugPrintf("challenge1 (calculated) = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
-                *(uint64_t*)hashbuf.data,
-                *((uint64_t*)hashbuf.data + 1),
-                *((uint32_t*)hashbuf.data + 4));
-            if(memcmp(hashbuf.data, PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data, sizeof(hashbuf.data)) != 0) {
-                SN_ErrPrintf("key confirmation (challenge1) failed.\n");
-                return -SN_ERR_KEYGEN;
-            }
-
-            //advance the relationship's state
-            table_entry->state = SN_Send_finalise;
-        } else {
-            //associate_finalise
-            assert(table_entry->state == SN_Awaiting_finalise);
-
-            //do challenge2 check (single-hash)
-            SN_Hash_t hashbuf;
-            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf, 0);
-            SN_DebugPrintf("challenge2 (received)   = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
-                *(uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data,
-                *((uint64_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 1),
-                *((uint32_t*)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 4));
-            SN_DebugPrintf("challenge2 (calculated) = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
-                *(uint64_t*)hashbuf.data,
-                *((uint64_t*)hashbuf.data + 1),
-                *((uint32_t*)hashbuf.data + 4));
-            if(memcmp(hashbuf.data, PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data, sizeof(hashbuf.data)) != 0) {
-                SN_ErrPrintf("key confirmation (challenge1) failed");
-                return -SN_ERR_KEYGEN;
-            }
-
-            //advance the relationship's state
-            table_entry->state = SN_Associated;
-        }
-
-        SN_Delayed_acknowledge_special(table_entry, packet);
-    }
-
-    //encrypted_ack_header
-    if(PACKET_ENTRY(*packet, encrypted_ack_header, indication) != NULL) {
-        SN_InfoPrintf("processing encrypted acknowledgement header...\n");
-        SN_Delayed_acknowledge_encrypted(table_entry, PACKET_ENTRY(*packet, encrypted_ack_header, indication)->counter);
-    }
-
-    return SN_OK;
-}
-
-/*argument notes:
- * margin: how much data to skip (after the network header, before the payload) for encryption
- * safe  : if true, arrange so that the original data is untouched on a decryption failure
- */
-static int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack) {
-    SN_DebugPrintf("enter\n");
-
-    if(link_key == NULL || key_agreement_key == NULL || packet == NULL) {
-        SN_ErrPrintf("link_key, key_agreement_key, and packet must all be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    encryption_header_t* encryption_header = PACKET_ENTRY(*packet, encryption_header, indication);
-    assert(encryption_header != NULL);
-    const size_t skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
-    SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header, encryption_counter);
-    if(PACKET_SIZE(*packet, indication) < skip_size) {
-        SN_ErrPrintf("packet is too small\n");
-        return -SN_ERR_END_OF_DATA;
-    }
-
-    int ret = SN_Crypto_decrypt(link_key, key_agreement_key,
-        encryption_counter,
-        packet->contents.MCPS_DATA_indication.msdu, packet->layout.encryption_header,
-        packet->contents.MCPS_DATA_indication.msdu + skip_size,
-        packet->contents.MCPS_DATA_indication.msduLength - skip_size,
-        encryption_header->tag, pure_ack);
-    if(ret != SN_OK) {
-        SN_ErrPrintf("Packet decryption failed with %d, aborting\n", -ret);
-        return -SN_ERR_SECURITY;
-    }
-
-    SN_InfoPrintf("payload decryption complete\n");
-
-    SN_DebugPrintf("exit\n");
-    return SN_OK;
 }
 
 //receive packet, decoding into one or more messages
@@ -606,7 +77,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
 
         //wait timed out. do retransmission processing
         SN_DebugPrintf("receive timed out; ticking...\n");
-        SN_Delayed_tick(1);
+        SN_Transmission_retry(1);
     }
 
     if(ret < 0) {
@@ -670,7 +141,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
         //packet was sent to our MAC address, but wasn't for our network address. that means we need to route it
         SN_InfoPrintf("packet isn't for us. routing\n");
         if(session->nib.enable_routing) {
-            SN_Delayed_forward(network_header->src_addr, network_header->dst_addr, &packet);
+            SN_Transmission_forward(network_header->src_addr, network_header->dst_addr, &packet);
             return SN_Receive(session, src_addr, buffer, buffer_size);
         } else {
             SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
@@ -716,13 +187,13 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
     SN_InfoPrintf("packet contains payload of length %d\n", packet.layout.payload_length);
 
     SN_InfoPrintf("doing packet security checks...\n");
-    ret = do_security_checks(&table_entry, &packet);
+    ret = packet_security_checks(&table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in packet security checks. aborting\n", -ret);
         //certain security check failures could come from a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
         if(-ret == SN_ERR_UNEXPECTED) {
             SN_WarnPrintf("possible retransmission bug; triggering retransmission\n");
-            SN_Delayed_tick(0);
+            SN_Transmission_retry(0);
 
             //special case: if the security check failure is because this is a finalise, and we've already received one, it's probably an acknowledgement drop. send acknowledgements
             if(PACKET_ENTRY(packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(packet, association_header, indication) == NULL) {
@@ -740,7 +211,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
     }
 
     SN_InfoPrintf("doing public-key operations...\n");
-    ret = do_public_key_operations(&session->device_root_key.public_key, &table_entry, &packet);
+    ret = packet_public_key_operations(&session->device_root_key.public_key, &table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in public-key operations. aborting\n", -ret);
         return ret;
@@ -764,7 +235,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
             //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
             SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
-            SN_Delayed_tick(0);
+            SN_Transmission_retry(0);
             if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
                 SN_Endpoint_t ack_address = {
                     .type = mac_short_address,
@@ -777,7 +248,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
     }
 
     SN_InfoPrintf("processing packet headers...\n");
-    ret = process_packet_headers(session, &table_entry, &packet);
+    ret = process_packet_headers(&table_entry, &packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d processing packet headers. aborting\n", -ret);
         return ret;

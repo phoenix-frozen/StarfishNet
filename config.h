@@ -42,6 +42,7 @@ typedef struct SN_Config {
 
     struct {
         uint16_t macShortAddress;
+        uint16_t macPANId;
     } mib;
 
     /*struct {

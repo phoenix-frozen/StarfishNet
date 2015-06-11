@@ -1,8 +1,8 @@
-#include "sn_delayed_tx.h"
-#include "sn_queued_rx.h"
+#include "retransmission_queue.h"
 #include "routing_tree.h"
 #include "status.h"
 #include "logging.h"
+#include "config.h"
 
 #include <assert.h>
 #include <string.h>
@@ -10,10 +10,6 @@
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT 8
 #endif /* SN_TRANSMISSION_SLOT_COUNT */
-
-#if SN_TRANSMISSION_SLOT_COUNT > 255
-#error "Transmission queue may be at most 255 slots in length."
-#endif /* SN_TRANSMISSION_SLOT_COUNT > 255 */
 
 typedef struct transmission_slot {
     union {
@@ -27,10 +23,10 @@ typedef struct transmission_slot {
 
     unsigned int retries;
 
-    SN_Session_t* session;
-
     SN_Endpoint_t dst_address;
     uint16_t src_address; //only valid for routing packets
+
+    int transmit_status;
 
     uint32_t counter;
 
@@ -43,30 +39,23 @@ static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
 //send out a datagram
 //packet should only have msduLength and msdu filled; everything else is my problem
 static int do_packet_transmission(int slot) {
+    int ret;
+    const transmission_slot_t* slot_data = &transmission_queue[slot];
+    packet_t* packet = &slot_data->packet;
+    uint8_t max_payload_size = SN_MAXIMUM_PACKET_SIZE;
+
     SN_InfoPrintf("enter\n");
 
-    transmission_slot_t* slot_data = &transmission_queue[slot];
-
-    if(slot >= 255 || slot < 0 || !slot_data->allocated || !slot_data->valid) {
+    if(slot < 0 || !slot_data->allocated || !slot_data->valid) {
         SN_ErrPrintf("cannot use slot %d\n", slot);
         return -SN_ERR_INVALID;
     }
 
-    SN_Session_t* session = slot_data->session;
-    mac_primitive_t* packet = &slot_data->packet.contents;
-
-    int ret;
-
-    uint8_t max_payload_size = aMaxMACPayloadSize - 2;
-    /* aMaxMACPayloadSize is for a packet with a short destination address, and no source addressing
-     * information. we always send a source address, which is at least 2 byte long
-     */
-
     packet->type                         = mac_mcps_data_request;
-    packet->MCPS_DATA_request.SrcPANId   = session->mib.macPANId;
+    packet->MCPS_DATA_request.SrcPANId   = starfishnet_config.mib.macPANId;
     //packet->MCPS_DATA_request.SrcAddr     is filled below
     //packet->MCPS_DATA_request.SrcAddrMode is filled below
-    packet->MCPS_DATA_request.DstPANId   = session->mib.macPANId;
+    packet->MCPS_DATA_request.DstPANId   = starfishnet_config.mib.macPANId;
     //packet->MCPS_DATA_request.DstAddr     is filled below
     //packet->MCPS_DATA_request.DstAddrMode is filled below
     packet->MCPS_DATA_request.msduHandle = (uint8_t)(slot + 1);
@@ -196,47 +185,16 @@ static int do_packet_transmission(int slot) {
         return -SN_ERR_RADIO;
     }
 
-    SN_InfoPrintf("waiting for transmission status report from radio...\n");
-    mac_primitive_t status_report;
-    while(1) {
-        MAC_CALL(mac_receive, session->mac_session, &status_report);
-
-        if(status_report.type == mac_mcps_data_confirm) {
-            if(status_report.MCPS_DATA_confirm.msduHandle == (uint8_t)(slot + 1)) {
-                SN_InfoPrintf("got transmission report\n");
-                if(status_report.MCPS_DATA_confirm.status == mac_success) {
-                    ret = SN_OK;
-                } else {
-                    ret = -SN_ERR_TXRXFAIL;
-                }
-                break;
-            } else {
-                SN_WarnPrintf("dropping MCPS-DATA.confirm for invalid handle %d\n", status_report.MCPS_DATA_confirm.msduHandle);
-            }
-        } else {
-            /* we don't consider MLME-COMM-STATUS.indication, because it's only generated as a result of
-             * either transmission via a .response primitive, or reception of an invalid frame
-             */
-            SN_WarnPrintf("got irrelevant primitive; banishing to the queue\n");
-            SN_Enqueue(session, &status_report); //implicitly drops irrelevant primitives
-        }
-    }
-    if(ret != SN_OK) {
-        SN_ErrPrintf("received transmission status report. transmission failed with %d\n", status_report.MCPS_DATA_confirm.status);
-    } else {
-        SN_InfoPrintf("received transmission status report. transmission succeeded\n");
-    }
-
     SN_InfoPrintf("exit\n");
     return ret;
 }
 
 int allocate_slot() {
     static int next_free_slot = 0;
-
+    int i;
     int slot = -1;
 
-    for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT && slot < 0; i++) {
+    for(i = 0; i < SN_TRANSMISSION_SLOT_COUNT && slot < 0; i++) {
         if(next_free_slot >= SN_TRANSMISSION_SLOT_COUNT) {
             next_free_slot -= SN_TRANSMISSION_SLOT_COUNT;
         }
@@ -254,34 +212,37 @@ int allocate_slot() {
     return slot;
 }
 
-int SN_Delayed_forward(uint16_t source, uint16_t destination, packet_t *packet) {
-    if(session == NULL || packet == NULL) {
-        SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
+int SN_Transmission_forward(uint16_t source, uint16_t destination, packet_t *packet) {
+    int ret;
+    int slot;
+    transmission_slot_t* slot_data;
+
+    if(packet == NULL) {
+        SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
     }
 
-    assert(session->nib.enable_routing);
+    assert(starfishnet_config.nib.enable_routing);
 
-    int slot = allocate_slot();
+    slot = allocate_slot();
 
     if(slot < 0) {
         SN_ErrPrintf("no free transmission slots\n");
         return -SN_ERR_RESOURCES;
     }
 
-    transmission_slot_t* slot_data = &transmission_queue[slot];
+    slot_data = &transmission_queue[slot];
 
     assert(slot_data->allocated);
 
-    slot_data->session     = session;
     slot_data->routing = true;
-    slot_data->dst_address.type = mac_short_address;
-    slot_data->dst_address.address.ShortAddress = destination;
+    slot_data->dst_address.type = SN_ENDPOINT_SHORT_ADDRESS;
+    slot_data->dst_address.short_address = destination;
     slot_data->src_address = source;
-    slot_data->packet      = *packet;
+    memcpy(&slot_data->packet, packet, sizeof(*packet));
     slot_data->valid       = 1;
 
-    int ret = do_packet_transmission(slot);
+    ret = do_packet_transmission(slot);
 
     slot_data->allocated = 0;
 
@@ -292,38 +253,41 @@ int SN_Delayed_forward(uint16_t source, uint16_t destination, packet_t *packet) 
     return ret;
 }
 
-int SN_Delayed_transmit(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter) {
-    if(session == NULL || table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
+int SN_Transmission_enqueue(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter) {
+    int slot;
+    transmission_slot_t* slot_data;
+    int ret;
+
+    if(table_entry == NULL || packet == NULL) {
+        SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
     }
 
-    int slot = allocate_slot();
+    slot = allocate_slot();
 
     if(slot < 0) {
         SN_ErrPrintf("no free transmission slots\n");
         return -SN_ERR_RESOURCES;
     }
 
-    transmission_slot_t* slot_data = &transmission_queue[slot];
+    slot_data = &transmission_queue[slot];
 
     assert(slot_data->allocated);
 
-    slot_data->session     = session;
-    slot_data->routing     = false;
+    slot_data->routing = false;
     if(table_entry->short_address == SN_NO_SHORT_ADDRESS) {
-        slot_data->dst_address.type = mac_extended_address;
-        slot_data->dst_address.address = table_entry->long_address;
+        slot_data->dst_address.type = SN_ENDPOINT_LONG_ADDRESS;
+        memcpy(slot_data->dst_address.long_address, table_entry->long_address, 8);
     } else {
-        slot_data->dst_address.type = mac_short_address;
-        slot_data->dst_address.address.ShortAddress = table_entry->short_address;
+        slot_data->dst_address.type = SN_ENDPOINT_SHORT_ADDRESS;
+        slot_data->dst_address.short_address = table_entry->short_address;
     }
-    slot_data->packet      = *packet;
-    slot_data->valid       = 1;
-    slot_data->counter     = counter;
-    slot_data->retries     = 0;
+    memcpy(&slot_data->packet, packet, sizeof(*packet));
+    slot_data->valid   = 1;
+    slot_data->counter = counter;
+    slot_data->retries = 0;
 
-    int ret = do_packet_transmission(slot);
+    ret = do_packet_transmission(slot);
 
     if(ret != SN_OK) {
         SN_ErrPrintf("packet transmission failed with %d\n", -ret);
@@ -353,7 +317,7 @@ int SN_Delayed_transmit(SN_Table_entry_t *table_entry, packet_t *packet, uint32_
  */
 #define FOR_EACH_ACTIVE_SLOT(x)\
     /* for each transmission slot... */\
-    for(int slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {\
+    for(slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {\
         transmission_slot_t* slot = &transmission_queue[slot_idx];\
         /* ... if the slot is allocated, valid, not a routing slot, and in my session... */\
         if(slot->allocated && slot->valid && !slot->routing) {\
@@ -364,11 +328,15 @@ int SN_Delayed_transmit(SN_Table_entry_t *table_entry, packet_t *packet, uint32_
 
 //convenience macro to determine whether a SN_Table_entry_t matches a SN_Endpoint_t
 #define TABLE_ENTRY_MATCHES_ADDRESS(table_entry, proto_address)\
-    (((proto_address).type == mac_short_address && (proto_address).address.ShortAddress == (table_entry).short_address)\
+    (((proto_address).type == SN_ENDPOINT_SHORT_ADDRESS && (proto_address).short_address == (table_entry).short_address)\
      ||\
-     ((proto_address).type == mac_extended_address && memcmp(&(proto_address).address, &(table_entry).long_address, sizeof(mac_address_t)) == 0))
+     ((proto_address).type == SN_ENDPOINT_LONG_ADDRESS && memcmp((proto_address).long_address, (table_entry).long_address, 8) == 0))
 
-int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t counter) {
+int SN_Transmission_acknowledge(SN_Table_entry_t *table_entry, uint32_t counter) {
+    int slot_idx;
+    int rv = -SN_ERR_UNKNOWN;
+
+
     SN_InfoPrintf("enter\n");
 
     if(table_entry == NULL) {
@@ -376,12 +344,10 @@ int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t cou
         return -SN_ERR_NULL;
     }
 
-    int rv = -SN_ERR_UNKNOWN;
-
     //for each active slot...
     FOR_EACH_ACTIVE_SLOT({
         //... if it's in my session and its packet's destination is the one I'm talking about...
-        if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+        if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
             //... and it's encrypted with the right counter...
             if(PACKET_ENTRY(slot->packet, encryption_header, request) != NULL && slot->counter <= counter) {
                 //... acknowledge it.
@@ -396,7 +362,9 @@ int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t cou
     return rv;
 }
 
-int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* packet) {
+int SN_Transmission_acknowledge_special(SN_Table_entry_t *table_entry, packet_t *packet) {
+    int slot_idx;
+
     SN_InfoPrintf("enter\n");
 
     if(table_entry == NULL || packet == NULL) {
@@ -413,7 +381,7 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
             //for each active slot...
             FOR_EACH_ACTIVE_SLOT({
                 //... if it's in my session and its packet's destination is the one I'm talking about...
-                if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+                if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
                     //... and it's an association request...
                     if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
                        PACKET_ENTRY(slot->packet, key_confirmation_header, request) == NULL) {
@@ -432,7 +400,7 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
             //for each active slot...
             FOR_EACH_ACTIVE_SLOT({
                 //... if it's in my session and its packet's destination is the one I'm talking about...
-                if(table_entry->session == slot->session && TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
+                if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
                     //... and it's an association reply...
                     if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
                        PACKET_ENTRY(slot->packet, key_confirmation_header, request) != NULL) {
@@ -452,33 +420,26 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
     return -SN_ERR_UNKNOWN;
 }
 
-void SN_Delayed_tick(bool count_towards_disconnection) {
+void SN_Transmission_retry(bool count_towards_disconnection) {
+    int slot_idx;
+
     SN_InfoPrintf("enter\n");
 
     FOR_EACH_ACTIVE_SLOT({
         SN_InfoPrintf("doing retransmission processing for slot %d\n", slot_idx);
 
-        if(count_towards_disconnection ? slot->retries < slot->session->nib.tx_retry_limit : 1) {
+        if(count_towards_disconnection ? slot->retries < starfishnet_config.nib.tx_retry_limit : 1) {
             do_packet_transmission(slot_idx);
         }
 
         if(count_towards_disconnection) {
             slot->retries++;
-            if(slot->retries >= slot->session->nib.tx_retry_limit) {
+            if(slot->retries >= starfishnet_config.nib.tx_retry_limit) {
+                SN_Table_entry_t table_entry;
+
                 SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
 
-                SN_Table_entry_t table_entry = {};
-                table_entry.session = slot->session;
-                table_entry.stream_idx_length = slot->dst_address.stream_idx_length;
-                memcpy(table_entry.stream_idx, slot->dst_address.stream_idx, slot->dst_address.stream_idx_length);
-                if(slot->dst_address.type == mac_extended_address) {
-                    table_entry.short_address = SN_NO_SHORT_ADDRESS;
-                    table_entry.long_address = slot->dst_address.address;
-                } else {
-                    table_entry.short_address = slot->dst_address.address.ShortAddress;
-                }
-
-                if(SN_Table_lookup_by_address(&table_entry, slot->dst_address.type) == SN_OK) {
+                if(SN_Table_lookup(&slot->dst_address, &table_entry) == SN_OK) {
                     table_entry.unavailable = 1;
                     SN_Table_update(&table_entry);
                 }
@@ -493,20 +454,14 @@ void SN_Delayed_tick(bool count_towards_disconnection) {
     SN_InfoPrintf("exit\n");
 }
 
-void SN_Delayed_clear() {
-    if(session == NULL) {
-        SN_ErrPrintf("session must be valid\n");
-        return;
-    }
-
-    for(int i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
+void SN_Transmission_clear() {
+    int i;
+    for(i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
         transmission_slot_t* slot = &transmission_queue[i];
 
         if(slot->allocated && slot->valid) {
-            if(slot->session == session) {
-                slot->valid = 0;
-                slot->allocated = 0;
-            }
+            slot->valid = 0;
+            slot->allocated = 0;
         }
     }
 }

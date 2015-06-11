@@ -99,6 +99,8 @@ typedef struct evidence_header {
 
 typedef uint8_t payload_data_t;
 
+#define SN_MAXIMUM_PACKET_SIZE (127 - 9 - 2) /* PHY_max is 127 bytes. Then 9 for minimum MAC header size, 2 because we always have two addresses */
+
 typedef struct packet {
     /* This structure is a table of offsets in contents.MCPS_DATA_{indication,request}.msdu.
      * It also contains a bitfield indicating which of these offsets are valid.
@@ -150,7 +152,7 @@ typedef struct packet {
 
     uint8_t length;
 
-    uint8_t* data;
+    uint8_t data[SN_MAXIMUM_PACKET_SIZE];
 } packet_t;
 
 /*argument type notes:
@@ -159,16 +161,20 @@ typedef struct packet {
  *  "request", if this is an outgoing packet
  *  "indication", if this is an incoming packet
  */
-#define PACKET_ENTRY(packet, header, req_type) ((header##_t*)((packet).layout.present.header ? (packet).data + (packet).layout.header : NULL))
+#define PACKET_ENTRY(packet, entry, req_type) ((entry##_t*)((packet).layout.present.entry ? (packet).data + (packet).layout.entry : NULL))
 #define PACKET_SIZE(packet, req_type) ((packet).length)
 
-packet_t* packet_allocate();
-void packet_free(packet_t* packet);
-
+/* transmit side */
 int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack);
 int generate_packet_headers(SN_Table_entry_t *table_entry, bool dissociate, packet_t *packet);
 int generate_payload(SN_Message_t* message, packet_t* packet);
 
-#define aMaxMACPayloadSize (127 - 9)
+/* receive side */
+int detect_packet_layout(packet_t* packet);
+int packet_security_checks(SN_Table_entry_t *table_entry, packet_t *packet);
+int packet_public_key_operations(SN_Public_key_t *self, SN_Table_entry_t *table_entry, packet_t *packet);
+int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet);
+int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack);
+
 
 #endif /* __SN_PACKET_H__ */
