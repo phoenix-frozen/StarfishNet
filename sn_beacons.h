@@ -25,6 +25,6 @@ typedef struct beacon_payload {
     SN_Public_key_t public_key;
 } beacon_payload_t;
 
-int SN_Beacon_update(SN_Session_t* session);
+int SN_Beacon_update();
 
 #endif /* __SN_BEACONS_H__ */

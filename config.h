@@ -16,6 +16,7 @@
 
 typedef struct SN_Config {
     SN_Keypair_t device_root_key;
+    uint8_t device_root_key_valid; //boolean value; whether the root key has been loaded/generated yet
 
     struct {
         //routing tree config
@@ -43,8 +44,8 @@ typedef struct SN_Config {
         uint16_t macShortAddress;
     } mib;
 
-    struct {
-    } pib;
+    /*struct {
+    } pib;*/
 } SN_Config_t;
 
 extern SN_Config_t starfishnet_config;

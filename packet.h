@@ -2,6 +2,7 @@
 #define __SN_PACKET_H__
 
 #include "types.h"
+#include "node_table.h"
 
 /*StarfishNet header ordering:
  * network_header_t
@@ -112,7 +113,7 @@ typedef struct packet {
      * * table    entry is called [name]
      * * structure type is called [name]_t
      */
-    struct packet_layout {
+    struct {
         union {
             struct {
                 uint16_t network_header                  :1;
@@ -147,7 +148,9 @@ typedef struct packet {
         uint8_t payload_length;
     } layout;
 
-    mac_primitive_t contents;
+    uint8_t length;
+
+    uint8_t* data;
 } packet_t;
 
 /*argument type notes:
@@ -156,10 +159,16 @@ typedef struct packet {
  *  "request", if this is an outgoing packet
  *  "indication", if this is an incoming packet
  */
-#define PACKET_ENTRY(packet, header, req_type) ((header##_t*)((packet).layout.present.header ? (packet).contents.MCPS_DATA_##req_type.msdu + (packet).layout.header : NULL))
-#define PACKET_SIZE(packet, req_type) ((packet).contents.MCPS_DATA_##req_type.msduLength)
+#define PACKET_ENTRY(packet, header, req_type) ((header##_t*)((packet).layout.present.header ? (packet).data + (packet).layout.header : NULL))
+#define PACKET_SIZE(packet, req_type) ((packet).length)
 
 packet_t* packet_allocate();
 void packet_free(packet_t* packet);
+
+int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack);
+int generate_packet_headers(SN_Table_entry_t *table_entry, bool dissociate, packet_t *packet);
+int generate_payload(SN_Message_t* message, packet_t* packet);
+
+#define aMaxMACPayloadSize (127 - 9)
 
 #endif /* __SN_PACKET_H__ */

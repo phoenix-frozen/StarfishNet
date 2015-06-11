@@ -6,15 +6,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-int SN_Send( //transmit normal packet, containing either data or evidence
-    SN_Session_t *session,
-    SN_Endpoint_t *dst_addr,
-    SN_Message_t *message
-);
-int SN_Associate( //start an association transaction
-    SN_Session_t *session,
-    SN_Endpoint_t *dst_addr
-);
 int SN_Dissociate( //start a dissociation
     SN_Session_t *session,
     SN_Endpoint_t *dst_addr

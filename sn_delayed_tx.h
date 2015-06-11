@@ -2,15 +2,15 @@
 #define __SN_DELAYED_TX_H__
 
 #include "node_table.h"
-#include "packet_format.h"
+#include "packet.h"
 
 #include <stdbool.h>
 
 //send a packet and then wait for acknowledgement
-int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter);
+int SN_Delayed_transmit(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter);
 
 //special hook for routing. does not invoke the retransmission/acknowledgement subsystem
-int SN_Delayed_forward(SN_Session_t* session, uint16_t source, uint16_t destination, packet_t* packet);
+int SN_Delayed_forward(uint16_t source, uint16_t destination, packet_t *packet);
 
 //notify the retransmission system that an encrypted packet has been acknowledged
 int SN_Delayed_acknowledge_encrypted(SN_Table_entry_t* table_entry, uint32_t counter);
@@ -22,6 +22,6 @@ int SN_Delayed_acknowledge_special(SN_Table_entry_t* table_entry, packet_t* pack
 void SN_Delayed_tick(bool count_towards_disconnection);
 
 //inform the retransmission subsystem that a session is being cleared
-void SN_Delayed_clear(SN_Session_t* session);
+void SN_Delayed_clear();
 
 #endif /*  __SN_DELAYED_TX_H__ */

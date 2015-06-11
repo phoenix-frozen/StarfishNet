@@ -12,6 +12,6 @@ SN_Config_t starfishnet_config = {
         .macShortAddress = SN_NO_SHORT_ADDRESS,
     },
 
-    .pib = {
-    },
+    /*.pib = {
+    },*/
 };

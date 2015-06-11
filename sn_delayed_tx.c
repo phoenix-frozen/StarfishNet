@@ -254,7 +254,7 @@ int allocate_slot() {
     return slot;
 }
 
-int SN_Delayed_forward(SN_Session_t* session, uint16_t source, uint16_t destination, packet_t* packet) {
+int SN_Delayed_forward(uint16_t source, uint16_t destination, packet_t *packet) {
     if(session == NULL || packet == NULL) {
         SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
         return -SN_ERR_NULL;
@@ -292,7 +292,7 @@ int SN_Delayed_forward(SN_Session_t* session, uint16_t source, uint16_t destinat
     return ret;
 }
 
-int SN_Delayed_transmit(SN_Session_t* session, SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter) {
+int SN_Delayed_transmit(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter) {
     if(session == NULL || table_entry == NULL || packet == NULL) {
         SN_ErrPrintf("session, table_entry, and packet must all be valid\n");
         return -SN_ERR_NULL;
@@ -493,7 +493,7 @@ void SN_Delayed_tick(bool count_towards_disconnection) {
     SN_InfoPrintf("exit\n");
 }
 
-void SN_Delayed_clear(SN_Session_t* session) {
+void SN_Delayed_clear() {
     if(session == NULL) {
         SN_ErrPrintf("session must be valid\n");
         return;

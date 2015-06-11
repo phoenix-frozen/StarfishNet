@@ -129,7 +129,7 @@ static int do_network_start(SN_Session_t* session, mac_primitive_t* packet, bool
     return SN_OK;
 }
 
-int SN_Beacon_update(SN_Session_t* session) {
+int SN_Beacon_update() {
     mac_primitive_t packet;
 
     return do_network_start(session, &packet, session->mib.macShortAddress == SN_COORDINATOR_ADDRESS);

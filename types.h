@@ -3,6 +3,7 @@
 
 #include "lib/aes-128.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 /* Crypto */
 
@@ -105,19 +106,6 @@ typedef struct SN_Network_descriptor {
     uint16_t        router_address;
     SN_Public_key_t router_public_key;
 } SN_Network_descriptor_t;
-
-/* Associations */
-//TODO: candidate for removal to an internal API file
-
-//StarfishNet node association states
-typedef enum SN_Association_state {
-    SN_Unassociated,
-    SN_Associate_received,
-    SN_Awaiting_reply,
-    SN_Awaiting_finalise,
-    SN_Send_finalise,
-    SN_Associated
-} SN_Association_state_t;
 
 /* Messages */
 

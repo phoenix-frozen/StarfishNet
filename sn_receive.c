@@ -6,7 +6,7 @@
 #include "logging.h"
 #include "status.h"
 #include "constants.h"
-#include "packet_format.h"
+#include "packet.h"
 #include "sn_delayed_tx.h"
 #include "sn_beacons.h"
 #include "sn_queued_rx.h"
@@ -456,7 +456,7 @@ static int process_packet_headers(SN_Session_t* session, SN_Table_entry_t* table
                     session->mib.macShortAddress             = network_header->dst_addr;
 
                     if(session->nib.enable_routing) {
-                        int ret = SN_Beacon_update(session);
+                        int ret = SN_Beacon_update();
                         if(ret != SN_OK) {
                             SN_ErrPrintf("beacon update failed: %d\n", -ret);
                             return ret;
@@ -670,7 +670,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
         //packet was sent to our MAC address, but wasn't for our network address. that means we need to route it
         SN_InfoPrintf("packet isn't for us. routing\n");
         if(session->nib.enable_routing) {
-            SN_Delayed_forward(session, network_header->src_addr, network_header->dst_addr, &packet);
+            SN_Delayed_forward(network_header->src_addr, network_header->dst_addr, &packet);
             return SN_Receive(session, src_addr, buffer, buffer_size);
         } else {
             SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
@@ -732,7 +732,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
                         .type = mac_short_address,
                         .address.ShortAddress = table_entry.short_address,
                     };
-                    SN_Send(session, &ack_address, NULL);
+                    SN_Send(&ack_address, NULL);
                 }
             }
         }
@@ -770,7 +770,7 @@ int SN_Receive(SN_Session_t *session, SN_Endpoint_t *src_addr, SN_Message_t *buf
                     .type = mac_short_address,
                     .address.ShortAddress = table_entry.short_address,
                 };
-                SN_Send(session, &ack_address, NULL);
+                SN_Send(&ack_address, NULL);
             }
             return ret;
         }

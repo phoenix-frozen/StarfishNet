@@ -39,7 +39,7 @@ int SN_Start(SN_Session_t *session, SN_Network_descriptor_t *network) {
 
     //reinit node table
     SN_InfoPrintf("clearing node table\n");
-    SN_Table_clear(session);
+    SN_Table_clear();
 
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
@@ -85,7 +85,7 @@ int SN_Start(SN_Session_t *session, SN_Network_descriptor_t *network) {
 
     //configure the radio
     SN_InfoPrintf("setting up beacon transmission, PAN ID, and radio channel...\n");
-    return SN_Beacon_update(session);
+    return SN_Beacon_update();
 }
 
 static inline uint8_t log2i(uint32_t n) {
@@ -339,7 +339,7 @@ int SN_Join(SN_Session_t *session, SN_Network_descriptor_t *network, bool disabl
     int ret;
 
     //perform extra discovery step to fill in node table
-    SN_Table_clear_all_neighbors(session);
+    SN_Table_clear_all_neighbors();
     ret = SN_OK;
     ret = SN_Discover(session, 1u << network->radio_channel, 2000, 1, &fill_node_table, NULL);
 
@@ -389,7 +389,7 @@ int SN_Join(SN_Session_t *session, SN_Network_descriptor_t *network, bool disabl
             .address.ShortAddress = network->router_address,
         };
         SN_InfoPrintf("sending association message...\n");
-        ret = SN_Associate(session, &parent_address);
+        ret = SN_Associate(&parent_address);
     }
 
     //make sure the association completes
