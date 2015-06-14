@@ -4,10 +4,8 @@
 
 #include "lib/ccm-star.h"
 
-#include <assert.h>
-
-#include <uECC.h>
-#include <libsha1.h>
+#include "uECC.h"
+#include "libsha1.h"
 
 #if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"
@@ -18,6 +16,9 @@ typedef struct SN_ECC_unpacked_public_key {
 } SN_ECC_unpacked_public_key_t;
 
 int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
+    int ret;
+    SN_ECC_unpacked_public_key_t unpacked_public_key;
+
     SN_InfoPrintf("enter\n");
 
     if(keypair == NULL) {
@@ -26,8 +27,7 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
     }
 
     //generate keypair
-    SN_ECC_unpacked_public_key_t unpacked_public_key;
-    int                          ret = uECC_make_key(unpacked_public_key.data, keypair->private_key.data);
+    ret = uECC_make_key(unpacked_public_key.data, keypair->private_key.data);
     if(ret != 1) {
         SN_ErrPrintf("key generation failed\n");
         return -SN_ERR_KEYGEN;
@@ -47,6 +47,9 @@ int SN_Crypto_sign ( //sign data into sigbuf
     size_t            data_len,
     SN_Signature_t*   signature
 ) {
+    SN_Hash_t hashbuf;
+    int ret;
+
     SN_InfoPrintf("enter\n");
 
     if(private_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -55,12 +58,11 @@ int SN_Crypto_sign ( //sign data into sigbuf
     }
 
     //hash data
-    SN_Hash_t hashbuf;
-    sha1(data, data_len, hashbuf.data);
+    sha1(hashbuf.data, data, data_len);
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
-    int ret = uECC_sign(private_key->data, hashbuf.data, signature->data);
+    ret = uECC_sign(private_key->data, hashbuf.data, signature->data);
     if(ret == 0) {
         SN_ErrPrintf("error generating digital signature\n");
         return -SN_ERR_SIGNATURE;
@@ -76,6 +78,10 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     size_t            data_len,
     const SN_Signature_t*   signature
 ) {
+    SN_ECC_unpacked_public_key_t unpacked_public_key;
+    SN_Hash_t hashbuf;
+    int ret;
+
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
@@ -84,16 +90,14 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     }
 
     //unpack public key
-    SN_ECC_unpacked_public_key_t unpacked_public_key;
     uECC_decompress(public_key->data, unpacked_public_key.data);
 
     //hash data
-    SN_Hash_t hashbuf;
-    sha1(data, data_len, hashbuf.data);
+    sha1(hashbuf.data, data, data_len);
 
     //verify signature
     //XXX: this works because the hash and keys are the same length
-    int ret = uECC_verify(unpacked_public_key.data, hashbuf.data, signature->data);
+    ret = uECC_verify(unpacked_public_key.data, hashbuf.data, signature->data);
     if(ret == 0) {
         SN_ErrPrintf("error verifying digital signature\n");
         return -SN_ERR_SIGNATURE;
@@ -111,6 +115,11 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     const SN_Private_key_t* private_key,
     SN_Kex_result_t*  shared_secret
 ) {
+    SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
+    SN_ECC_unpacked_public_key_t unpacked_public_key;
+    sha1_ctx ctx;
+    int ret;
+
     SN_InfoPrintf("enter\n");
 
     if(public_key == NULL || private_key == NULL || shared_secret == NULL) {
@@ -122,19 +131,16 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     }
 
     //unpack public key
-    SN_ECC_unpacked_public_key_t unpacked_public_key;
     uECC_decompress(public_key->data, unpacked_public_key.data);
 
     //do ECDH
-    SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
-    int              ret = uECC_shared_secret(unpacked_public_key.data, private_key->data, raw_shared_secret.data);
+    ret = uECC_shared_secret(unpacked_public_key.data, private_key->data, raw_shared_secret.data);
     if(ret == 0) {
         SN_ErrPrintf("error performing key agreement\n");
         return -SN_ERR_KEYGEN;
     }
 
     //hash resultant secret together with identities of parties involved
-    sha1_ctx ctx;
     memset(&ctx, 0, sizeof(ctx));
     sha1_begin(&ctx);
     sha1_hash(raw_shared_secret.data, sizeof(raw_shared_secret.data), &ctx);
@@ -178,7 +184,6 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     uint8_t*         tag,
     bool             pure_ack
 ) {
-    int ret = 0;
     SN_Hash_t iv;
     sha1_ctx iv_ctx;
 
@@ -219,10 +224,10 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     const uint8_t*   tag,
     bool             pure_ack
 ) {
-    int ret = 0;
     SN_Hash_t iv;
     sha1_ctx iv_ctx;
     uint8_t prototag[SN_Tag_size];
+    int ret;
 
     SN_InfoPrintf("enter\n");
 
@@ -265,7 +270,10 @@ int SN_Crypto_check_certificate(const SN_Certificate_t* certificate) {
         return -SN_ERR_NULL;
     }
 
-    return
-        SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature) !=
-        SN_OK;
+    return SN_Crypto_verify(
+        &certificate->endorser,
+        (void*)&certificate->protected_data,
+        sizeof(certificate->protected_data),
+        &certificate->signature
+    ) != SN_OK;
 }
