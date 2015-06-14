@@ -11,6 +11,10 @@
 #error "uECC and StarfishNet disagree on ECC key size!"
 #endif //SN_PK_key_size != uECC_BYTES
 
+#if SN_Hash_size != SHA1_DIGEST_SIZE
+#error "libsha1 and StarfishNet disagree on hash size!"
+#endif //SN_Hash_size != SHA1_DIGEST_SIZE
+
 typedef struct SN_ECC_unpacked_public_key {
     uint8_t data[SN_PK_key_size * 2];
 } SN_ECC_unpacked_public_key_t;
