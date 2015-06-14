@@ -7,9 +7,6 @@ project(StarfishNet C)
 #uECC configuration
 add_definitions(-DuECC_CURVE=uECC_secp160r1 -DuECC_PLATFORM=uECC_arch_other -DuECC_ASM=uECC_asm_none -DuECC_WORD_SIZE=1)
 
-include_directories(include)
-include_directories(extern/libsha1)
-include_directories(extern/micro-ecc)
 include_directories(../contiki/platform/cc2530dk)
 include_directories(../contiki/cpu/cc253x)
 include_directories(../contiki/core)
