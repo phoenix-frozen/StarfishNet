@@ -35,7 +35,6 @@ typedef struct transmission_slot {
 
 static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
 
-
 //send out a datagram
 //packet should only have msduLength and msdu filled; everything else is my problem
 static int do_packet_transmission(int slot) {

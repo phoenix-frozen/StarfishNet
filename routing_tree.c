@@ -6,6 +6,13 @@
 #include <assert.h>
 
 int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
+    uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
+    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
+    uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
+    uint16_t block_size           = (uint16_t)(1 << block_exponent);
+    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
+    uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
+
     if(address == NULL || block == NULL) {
         SN_ErrPrintf("address, and block must all be valid\n");
         return -SN_ERR_NULL;
@@ -14,13 +21,6 @@ int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
     assert(starfishnet_config.nib.tree_branching_factor <= 16);
     assert(starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor < 16);
     assert(starfishnet_config.nib.enable_routing);
-
-    uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
-    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
-    uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
-    uint16_t block_size           = (uint16_t)(1 << block_exponent);
-    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
-    uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
 
     if(*block) {
         if(starfishnet_config.nib.router_blocks_allocated < total_blocks - total_leaf_blocks) {
@@ -54,17 +54,17 @@ int SN_Tree_free_address(uint16_t address) {
 }
 
 int SN_Tree_determine_capacity(uint16_t* leaf, uint16_t* block) {
-    if(leaf == NULL || block == NULL) {
-        SN_ErrPrintf("leaf and block must be valid\n");
-        return -SN_ERR_NULL;
-    }
-
     uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
     uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
     uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
     uint16_t block_size           = (uint16_t)(1 << block_exponent);
     uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
     uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
+
+    if(leaf == NULL || block == NULL) {
+        SN_ErrPrintf("leaf and block must be valid\n");
+        return -SN_ERR_NULL;
+    }
 
     *leaf  = total_leaf_addresses - starfishnet_config.nib.leaf_addresses_allocated;
     *block = total_blocks - total_leaf_blocks - starfishnet_config.nib.router_blocks_allocated;
@@ -131,13 +131,6 @@ int SN_Tree_check_join(uint8_t tree_position, uint8_t tree_branching_factor) {
  */
 
 int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
-    if(next_hop == NULL) {
-        SN_ErrPrintf("next_hop must be valid\n");
-        return -SN_ERR_NULL;
-    }
-
-    assert(starfishnet_config.nib.tree_branching_factor < 16);
-
     uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
     uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
 
@@ -151,6 +144,13 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
 
     uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
     uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
+
+    if(next_hop == NULL) {
+        SN_ErrPrintf("next_hop must be valid\n");
+        return -SN_ERR_NULL;
+    }
+
+    assert(starfishnet_config.nib.tree_branching_factor < 16);
 
 #ifdef SN_MESH_SHORTCUT_ROUTING
 #error Mesh-shortcut routing not yet implemented.
