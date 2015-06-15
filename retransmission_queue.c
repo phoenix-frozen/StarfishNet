@@ -222,6 +222,8 @@ int SN_Transmission_forward(uint16_t source, uint16_t destination, packet_t *pac
     }
 
     assert(starfishnet_config.nib.enable_routing);
+    if(!starfishnet_config.nib.enable_routing)
+        return -SN_ERR_INVALID;
 
     slot = allocate_slot();
 

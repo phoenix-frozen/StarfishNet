@@ -1,1 +1,0 @@
-extern/libsha1/libsha1.h
