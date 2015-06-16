@@ -40,7 +40,7 @@ static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
 static int do_packet_transmission(int slot) {
     int ret;
     const transmission_slot_t* slot_data = &transmission_queue[slot];
-    packet_t* packet = &slot_data->packet;
+    const packet_t* packet = &slot_data->packet;
     uint8_t max_payload_size = SN_MAXIMUM_PACKET_SIZE;
 
     SN_InfoPrintf("enter\n");

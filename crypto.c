@@ -5,6 +5,7 @@
 #include "logging.h"
 
 #include "lib/ccm-star.h"
+#include "sha1.h"
 
 #include "uECC.h"
 #include "util.h"
@@ -119,7 +120,7 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
 ) {
     SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
     SN_ECC_unpacked_public_key_t unpacked_public_key;
-    uint8_t hashbuf[sizeof(private_key->data) + sizeof(identity_A->data) + sizeof(identity_B->data)];
+    sha1_context_t ctx;
     int ret;
 
     SN_InfoPrintf("enter\n");
@@ -143,61 +144,21 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     }
 
     //hash resultant secret together with identities of parties involved
-    memcpy(hashbuf, raw_shared_secret.data, sizeof(raw_shared_secret.data));
+    sha1_starts(&ctx);
+    sha1_update(&ctx, raw_shared_secret.data, sizeof(raw_shared_secret.data));
     if(identity_A != NULL) {
-        memcpy(hashbuf + sizeof(raw_shared_secret.data), identity_A->data, sizeof(identity_A->data));
-    } else {
-        memset(hashbuf + sizeof(raw_shared_secret.data), 0, sizeof(identity_A->data));
+        sha1_update(&ctx, identity_A->data, sizeof(identity_A->data));
     }
     if(identity_B != NULL) {
-        memcpy(hashbuf + sizeof(raw_shared_secret.data) + sizeof(identity_A->data), identity_B->data, sizeof(identity_B->data));
-    } else {
-        memset(hashbuf + sizeof(raw_shared_secret.data) + sizeof(identity_A->data), 0, sizeof(identity_B->data));
-    };
+        sha1_update(&ctx, identity_B->data, sizeof(identity_B->data));
+    }
 
     //output resultant link key
-    SN_Crypto_hash(hashbuf, sizeof(hashbuf), &shared_secret->raw, 0);
+    sha1_finish(&ctx, shared_secret->raw.data);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
 }
-
-//This is an AES128-based Merkle-Damgaard construction.
-//It isn't a good hash function, but we don't have space for SHA1.
-#define MD_ITERATE(key, crypt_data) {\
-    AES_128.set_key(key);            \
-    AES_128.encrypt(crypt_data);     \
-}
-
-static void aes128_merkle_damgaard(
-    const uint8_t*   data,
-    size_t     data_len,
-    SN_Hash_t* hash
-) {
-    SN_Hash_t padding;
-
-    assert(hash != NULL);
-    assert(data != NULL);
-
-    //slightly modified M-D construction that prepends the length of the message
-    memset(hash->data, 0, sizeof(hash->data));
-    memcpy(hash->data, &data_len, sizeof(data_len)); //XXX: assumes little-endian architecture!
-    MD_ITERATE(hash->data, hash->data);
-
-    //M-D chain
-    for(memset(hash->data, 0, sizeof(hash->data)); data_len >= SN_Hash_size; data_len -= SN_Hash_size, data += SN_Hash_size) {
-        MD_ITERATE(data, hash->data)
-    }
-
-    //padding
-    memcpy(padding.data, data, data_len); //copy the data in...
-    padding.data[data_len] = 1; //... next byte is a 1...
-    memset(padding.data + data_len + 1, 0, SN_Hash_size - (data_len + 1)); //... and the rest are zeros
-    MD_ITERATE(padding.data, hash->data);
-
-}
-#undef MD_ITERATE
-
 
 void SN_Crypto_hash (
     const uint8_t*   data,
@@ -205,10 +166,10 @@ void SN_Crypto_hash (
     SN_Hash_t* hash,
     size_t     repeat_count
 ) {
-    aes128_merkle_damgaard(data, data_len, hash);
+    sha1(data, data_len, hash->data);
 
     while(repeat_count-- > 0) {
-        aes128_merkle_damgaard(hash->data, sizeof(hash->data), hash);
+        sha1(hash->data, sizeof(hash->data), hash->data);
     }
 }
 
@@ -226,8 +187,7 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     bool             pure_ack
 ) {
     SN_Hash_t iv;
-    uint8_t hashbuf[sizeof(key_agreement_key->data) + sizeof(counter) + 3];
-    uint8_t hashlen = sizeof(key_agreement_key->data) + sizeof(counter);
+    sha1_context_t ctx;
 
     SN_InfoPrintf("enter\n");
 
@@ -236,14 +196,14 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
         return -SN_ERR_NULL;
     }
 
-    memcpy(hashbuf, key_agreement_key->data, sizeof(key_agreement_key->data));
-    memcpy(hashbuf + sizeof(key_agreement_key->data), (uint8_t*)&counter, sizeof(counter));
+    sha1_starts(&ctx);
+    sha1_update(&ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
+    sha1_update(&ctx, (uint8_t*)&counter, sizeof(counter));
     if(pure_ack) {
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
-        memcpy(hashbuf + hashlen, (uint8_t*)"ACK", 3);
-        hashlen += 3;
+        sha1_update(&ctx, "ACK", 3);
     }
-    SN_Crypto_hash(hashbuf, hashlen, &iv, 0);
+    sha1_finish(&ctx, iv.data);
 
     //XXX assumption: CCM_MAX_IV_LENGTH <= SN_Hash_size
     CCM_STAR.set_key(key->data);
@@ -266,8 +226,7 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     bool             pure_ack
 ) {
     SN_Hash_t iv;
-    uint8_t hashbuf[sizeof(key_agreement_key->data) + sizeof(counter) + 3];
-    uint8_t hashlen = sizeof(key_agreement_key->data) + sizeof(counter);
+    sha1_context_t ctx;
     uint8_t prototag[SN_Tag_size];
     int ret;
 
@@ -278,14 +237,14 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
         return -SN_ERR_NULL;
     }
 
-    memcpy(hashbuf, key_agreement_key->data, sizeof(key_agreement_key->data));
-    memcpy(hashbuf + sizeof(key_agreement_key->data), (uint8_t*)&counter, sizeof(counter));
+    sha1_starts(&ctx);
+    sha1_update(&ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
+    sha1_update(&ctx, (uint8_t*)&counter, sizeof(counter));
     if(pure_ack) {
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
-        memcpy(hashbuf + hashlen, (uint8_t*)"ACK", 3);
-        hashlen += 3;
+        sha1_update(&ctx, "ACK", 3);
     }
-    SN_Crypto_hash(hashbuf, hashlen, &iv, 0);
+    sha1_finish(&ctx, iv.data);
 
     //XXX assumption: CCM_MAX_IV_LENGTH <= SN_Hash_size
     CCM_STAR.set_key(key->data);

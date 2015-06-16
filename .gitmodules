@@ -1,4 +1,0 @@
-[submodule "extern/micro-ecc"]
-	path = extern/micro-ecc
-	url = git@github.com:phoenix-frozen/micro-ecc.git
-	branch = master
