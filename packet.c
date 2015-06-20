@@ -821,13 +821,13 @@ int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet) {
         //advance the relationship's state
         table_entry->state = challengenumber == 2 ? SN_Associated : SN_Send_finalise;
 
-        SN_Transmission_acknowledge_special(table_entry, packet);
+        SN_Retransmission_acknowledge_implicit(table_entry, packet);
     }
 
     //encrypted_ack_header
     if(PACKET_ENTRY(*packet, encrypted_ack_header, indication) != NULL) {
         SN_InfoPrintf("processing encrypted acknowledgement header...\n");
-        SN_Transmission_acknowledge(table_entry, PACKET_ENTRY(*packet, encrypted_ack_header, indication)->counter);
+        SN_Retransmission_acknowledge_data(table_entry, PACKET_ENTRY(*packet, encrypted_ack_header, indication)->counter);
     }
 
     return SN_OK;

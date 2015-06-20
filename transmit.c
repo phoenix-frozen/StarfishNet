@@ -189,7 +189,7 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     }
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Transmission_enqueue(&table_entry, &packet, encryption_counter);
+    ret = SN_Retransmission_register(&table_entry, &packet, encryption_counter);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
@@ -367,7 +367,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     SN_Table_update(&table_entry);
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Transmission_enqueue(&table_entry, &packet, sequence_number);
+    ret = SN_Retransmission_register(&table_entry, &packet, sequence_number);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;

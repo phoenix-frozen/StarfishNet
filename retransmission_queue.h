@@ -6,22 +6,34 @@
 
 #include <stdbool.h>
 
-//send a packet and then wait for acknowledgement
-int SN_Transmission_enqueue(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter);
+/* Engage the transmission subsystem on a packet.
+ *
+ * This function will transmit it once, and wait for acknowledgement.
+ * Further retransmissions will be handled automatically.
+ */
+int SN_Retransmission_register(SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter);
 
-//special hook for routing. does not invoke the retransmission/acknowledgement subsystem
-int SN_Transmission_forward(uint16_t source, uint16_t destination, packet_t *packet);
+/* Low-level hook for transmitting the packet in the packetbuf, using
+ * the routing subsystem to calculate the next hop address.
+ */
+int SN_TX_Packetbuf(uint16_t source, uint16_t destination);
 
-//notify the retransmission system that an encrypted packet has been acknowledged
-int SN_Transmission_acknowledge(SN_Table_entry_t *table_entry, uint32_t counter);
+/* Notify the retransmission system that a data packet has been acknowledged,
+ * and should no longer be retransmitted.
+ */
+int SN_Retransmission_acknowledge_data(SN_Table_entry_t* table_entry, uint32_t counter);
 
-//acknowledgement notification function for special treatment of association packets
-int SN_Transmission_acknowledge_special(SN_Table_entry_t *table_entry, packet_t *packet);
+/* Notify the retransmission system that a non-data packet has been acknowledged,
+ * and should no longer be retransmitted.
+ *
+ * (This is primarily for association packets, which are implicitly acknowledged.)
+ */
+int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet_t* packet);
 
 //tell the retransmission subsystem that a time tick has elapsed
-void SN_Transmission_retry(bool count_towards_disconnection);
+void SN_Retransmission_retry(bool count_towards_disconnection);
 
 //inform the retransmission subsystem that a session is being cleared
-void SN_Transmission_clear();
+void SN_Retransmission_clear();
 
 #endif /*  __SN_DELAYED_TX_H__ */
