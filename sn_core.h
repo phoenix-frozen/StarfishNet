@@ -6,17 +6,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-int SN_Dissociate( //start a dissociation
-    SN_Session_t *session,
-    SN_Endpoint_t *dst_addr
-);
-int SN_Receive( //receive a packet containing a message. Note, StarfishNet may also do some internal housekeeping (including additional packet transmissions) in the context of this function
-    SN_Session_t *session,
-    SN_Endpoint_t *src_addr,
-    SN_Message_t *buffer,
-    size_t buffer_size
-);
-
 typedef void (SN_Discovery_callback_t) (SN_Session_t* session, SN_Network_descriptor_t* network, void* extradata);
 int SN_Discover( //scan for StarfishNet networks. also serves as a nearest-neighbor scan
     SN_Session_t *session,

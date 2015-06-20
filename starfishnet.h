@@ -20,5 +20,9 @@ extern const struct network_driver starfishnet_driver;
 
 int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message);
 int SN_Associate(SN_Endpoint_t *dst_addr);
+int SN_Dissociate(SN_Endpoint_t *dst_addr);
+
+typedef void (* SN_Receive_callback_t)(SN_Endpoint_t* src_addr, SN_Message_t* message);
+void SN_Receive(SN_Receive_callback_t callback);
 
 #endif //__STARFISHNET_H__

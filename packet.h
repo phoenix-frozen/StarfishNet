@@ -152,7 +152,7 @@ typedef struct packet {
 
     uint8_t length;
 
-    uint8_t data[SN_MAXIMUM_PACKET_SIZE];
+    uint8_t* data;
 } packet_t;
 
 /*argument type notes:

@@ -26,7 +26,10 @@ typedef struct SN_Table_entry {
     uint16_t         short_address;
     SN_Public_key_t  public_key; //TODO: store this in ROM, and put a pointer here
 
-    SN_Altstream_t altstream;
+    struct {
+        uint8_t stream_idx_length;
+        uint8_t stream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
+    } altstream;
 
     //relationship metadata
     union {

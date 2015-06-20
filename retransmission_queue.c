@@ -37,6 +37,7 @@ typedef struct transmission_slot {
     uint32_t counter;
 
     packet_t packet;
+    uint8_t  packet_data[SN_MAXIMUM_PACKET_SIZE];
 } transmission_slot_t;
 
 static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
@@ -57,6 +58,7 @@ int allocate_slot() {
             memset(&transmission_queue[next_free_slot], 0, sizeof(transmission_slot_t));
             transmission_queue[next_free_slot].allocated = 1;
             transmission_queue[next_free_slot].valid = 0;
+            transmission_queue[next_free_slot].packet.data = transmission_queue[next_free_slot].packet_data;
         }
 
         next_free_slot++;
@@ -206,7 +208,7 @@ int SN_Retransmission_register(SN_Table_entry_t* table_entry, packet_t* packet, 
 
         //fill slot with packet data
 
-        packetbuf_copyto(slot_data->packet.data);
+        packet->length = packetbuf_copyto(slot_data->packet.data);
         detect_packet_layout(&slot_data->packet);
         slot_data->counter = counter;
         slot_data->retries = 0;

@@ -67,8 +67,8 @@ typedef struct SN_Certificate {
 #define SN_MAX_ALT_STREAM_IDX_SIZE (SN_MAX_ALT_STREAM_IDX_BITS/8)
 
 typedef struct SN_Altstream {
-    uint8_t stream_idx_length;
-    uint8_t stream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
+    uint8_t  stream_idx_length;
+    uint8_t* stream_idx;
 } SN_Altstream_t;
 
 /* Networking */
@@ -110,6 +110,7 @@ typedef struct SN_Network_descriptor {
 /* Messages */
 
 typedef enum SN_Message_type {
+    SN_No_message,         //NULL marker
     SN_Data_message,       //standard data message
     SN_Explicit_Evidence_message,   //send a certificate to a StarfishNet node
     SN_Implicit_Evidence_message,   //send a partial certificate to a StarfishNet node. we are its implicit signer
@@ -123,13 +124,13 @@ typedef union SN_Message {
 
     struct {
         SN_Message_type_t type;
+        uint8_t*          payload;
         uint8_t           payload_length;
-        uint8_t           payload[];
     } data_message;
 
     struct {
         SN_Message_type_t type;
-        SN_Certificate_t evidence;
+        SN_Certificate_t* evidence;
     } explicit_evidence_message;
 
     //TODO: implicit_evidence_message
