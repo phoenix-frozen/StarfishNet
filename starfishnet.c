@@ -70,7 +70,7 @@ static void input(void) {
     SN_Endpoint_t src_addr = {.altstream = &altstream};
     SN_Message_t message;
     network_header_t* network_header;
-    SN_Table_entry_t table_entry;
+    static SN_Table_entry_t table_entry;
 
     SN_InfoPrintf("enter\n");
 
@@ -164,17 +164,17 @@ static void input(void) {
             if(PACKET_ENTRY(packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(packet, association_header, indication) == NULL) {
                 SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
                 if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-                    uint8_t ack_altstream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
-                    SN_Altstream_t ack_altstream = {
-                        .stream_idx = ack_altstream_idx,
-                        .stream_idx_length = table_entry.altstream.stream_idx_length,
-                    };
+                    SN_Altstream_t ack_altstream;
                     SN_Endpoint_t ack_address = {
                         .type = SN_ENDPOINT_SHORT_ADDRESS,
                         .short_address = table_entry.short_address,
                         .altstream = &ack_altstream,
                     };
-                    memcpy(ack_altstream_idx, table_entry.altstream.stream_idx, ack_altstream.stream_idx_length);
+
+                    //this should be an initialiser, but SDCC freaks out
+                    ack_altstream.stream_idx        = table_entry.altstream.stream_idx;
+                    ack_altstream.stream_idx_length = table_entry.altstream.stream_idx_length;
+
                     SN_Send(&ack_address, NULL);
                 }
             }
@@ -209,17 +209,17 @@ static void input(void) {
             SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
             SN_Retransmission_retry(0);
             if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-                uint8_t ack_altstream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
-                SN_Altstream_t ack_altstream = {
-                    .stream_idx = ack_altstream_idx,
-                    .stream_idx_length = table_entry.altstream.stream_idx_length,
-                };
+                SN_Altstream_t ack_altstream;
                 SN_Endpoint_t ack_address = {
                     .type = SN_ENDPOINT_SHORT_ADDRESS,
                     .short_address = table_entry.short_address,
                     .altstream = &ack_altstream,
                 };
-                memcpy(ack_altstream_idx, table_entry.altstream.stream_idx, ack_altstream.stream_idx_length);
+
+                //this should be an initialiser, but SDCC freaks out
+                ack_altstream.stream_idx        = table_entry.altstream.stream_idx;
+                ack_altstream.stream_idx_length = table_entry.altstream.stream_idx_length;
+
                 SN_Send(&ack_address, NULL);
             }
             return;
