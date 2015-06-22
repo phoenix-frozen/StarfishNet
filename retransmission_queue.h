@@ -10,13 +10,10 @@
  *
  * This function will transmit it once, and wait for acknowledgement.
  * Further retransmissions will be handled automatically.
+ *
+ * It is assumed that the packet's data is in the packetbuf.
  */
-int SN_Retransmission_register(SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter);
-
-/* Low-level hook for transmitting the packet in the packetbuf, using
- * the routing subsystem to calculate the next hop address.
- */
-int SN_TX_Packetbuf(uint16_t source, uint16_t destination);
+int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter);
 
 /* Notify the retransmission system that a data packet has been acknowledged,
  * and should no longer be retransmitted.

@@ -24,7 +24,7 @@ typedef struct SN_Table_entry {
     //addressing information
     uint8_t          long_address[8];
     uint16_t         short_address;
-    SN_Public_key_t  public_key; //TODO: store this in ROM, and put a pointer here
+    SN_Public_key_t  public_key;
 
     struct {
         uint8_t stream_idx_length;
@@ -46,13 +46,13 @@ typedef struct SN_Table_entry {
     };
 
     //cryptographic data
-    //TODO: put all this in ROM?
     SN_Keypair_t    local_key_agreement_keypair; //our ephemeral keypair
     SN_Public_key_t remote_key_agreement_key;    //remote party's ephemeral public key
     SN_AES_key_t    link_key;                    //shared secret for packet encryption
     uint32_t        packet_tx_counter;           //packet transmit count
     uint32_t        packet_rx_counter;           //packet receive count
 } SN_Table_entry_t;
+//TODO: we can't put stuff in ROM, sadly. introduce another table, with dynamically allocated entries?
 
 //insert an entry into the table. entire data structure must be valid
 int SN_Table_insert(SN_Table_entry_t* entry);

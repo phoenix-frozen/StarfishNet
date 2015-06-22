@@ -12,6 +12,7 @@
 typedef uint32_t table_bitmap_t;
 
 static SN_Table_entry_t table[TABLE_SIZE];
+//TODO: reimplement this in terms of nbr-table?
 static table_bitmap_t entry_bitmap = 0;
 
 static int lookup_by_long_address(uint8_t* address, uint8_t stream_idx_len, uint8_t* stream_idx) {

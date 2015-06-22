@@ -55,6 +55,8 @@
 #include "util.h"
 #include "config.h"
 
+#include "net/packetbuf.h"
+
 #include <string.h>
 #include <assert.h>
 
@@ -189,7 +191,7 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     }
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Retransmission_register(&table_entry, &packet, encryption_counter);
+    ret = SN_Retransmission_send(&table_entry, &packet, encryption_counter);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;
@@ -269,8 +271,12 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
         }
     }
 
-    //actual packet buffer
+    //initialise the packet data structure...
     memset(&packet.layout, 0, sizeof(packet.layout));
+    //... and the packetbuf, setting up pointers as necessary
+    packetbuf_clear();
+    packet.length = 0;
+    packet.data = packetbuf_hdrptr();
 
     //network header
     SN_InfoPrintf("generating network header...\n");
@@ -367,7 +373,8 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     SN_Table_update(&table_entry);
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    ret = SN_Retransmission_register(&table_entry, &packet, sequence_number);
+    packetbuf_set_datalen(PACKET_SIZE(packet, indication));
+    ret = SN_Retransmission_send(&table_entry, &packet, sequence_number);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);
         return ret;

@@ -8,12 +8,13 @@
 
 #include "net/netstack.h"
 #include "net/packetbuf.h"
+#include "net/queuebuf.h"
 
 #include <assert.h>
 #include <string.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
-#define SN_TRANSMISSION_SLOT_COUNT 8
+#define SN_TRANSMISSION_SLOT_COUNT QUEUEBUF_NUM
 #endif /* SN_TRANSMISSION_SLOT_COUNT */
 
 typedef struct transmission_slot {
@@ -25,23 +26,16 @@ typedef struct transmission_slot {
         uint8_t flags;
     };
 
-    unsigned int retries;
-
     SN_Endpoint_t dst_address;
-
-    uint8_t next_hop_size;
-    linkaddr_t next_hop;
-
-    int transmit_status;
-
     uint32_t counter;
-
     packet_t packet;
-    uint8_t  packet_data[SN_MAXIMUM_PACKET_SIZE];
+    struct queuebuf* queuebuf;
+
+    uint8_t retries;
+    int transmit_status;
 } transmission_slot_t;
 
 static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
-//TODO: reimplement this using queuebufs
 
 int allocate_slot() {
     static int next_free_slot = 0;
@@ -55,10 +49,8 @@ int allocate_slot() {
 
         if(!transmission_queue[next_free_slot].allocated) {
             slot = next_free_slot;
-            memset(&transmission_queue[next_free_slot], 0, sizeof(transmission_slot_t));
             transmission_queue[next_free_slot].allocated = 1;
             transmission_queue[next_free_slot].valid = 0;
-            transmission_queue[next_free_slot].packet.data = transmission_queue[next_free_slot].packet_data;
         }
 
         next_free_slot++;
@@ -76,20 +68,20 @@ static void setup_packetbuf_for_transmission() {
     //figure out which address type we're using
     if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
         SN_InfoPrintf("sending from our short address, %#06x\n", starfishnet_config.mib.macShortAddress);
-        packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
+        packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
         src_address.u16 = starfishnet_config.mib.macShortAddress;
     } else {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_InfoPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
-        packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 8);
-        memcpy(src_address.u8, starfishnet_config.mib.macExtendedAddress, sizeof(starfishnet_config.mib.macExtendedAddress));
+        packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
+        memcpy(src_address.u8, starfishnet_config.mib.macExtendedAddress, 8);
     }
 
     //set addresses in packetbuf
     packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
 }
 
-static int determine_destination_address(SN_Table_entry_t* table_entry, transmission_slot_t* slot) {
+static int determine_destination_address(SN_Table_entry_t* table_entry) {
     linkaddr_t dst_addr;
     uint8_t dst_addr_size;
 
@@ -127,37 +119,8 @@ static int determine_destination_address(SN_Table_entry_t* table_entry, transmis
     packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, dst_addr_size);
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &dst_addr);
 
-    if(slot != NULL) {
-        memcpy(&slot->next_hop, &dst_addr, sizeof(dst_addr));
-        slot->next_hop_size = dst_addr_size;
-    }
-
     return SN_OK;
 }
-
-int SN_TX_Packetbuf(uint16_t source, uint16_t destination) {
-    linkaddr_t next_hop;
-    int ret;
-
-    assert(starfishnet_config.nib.enable_routing);
-    if(!starfishnet_config.nib.enable_routing) {
-        return -SN_ERR_INVALID;
-    }
-
-    ret = SN_Tree_route(source, destination, &next_hop.u16);
-    if(ret != SN_OK) {
-        return ret;
-    }
-
-    setup_packetbuf_for_transmission();
-    packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
-    packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &next_hop);
-
-    NETSTACK_LLSEC.send(NULL, NULL);
-
-    return SN_OK;
-}
-
 
 static void retransmission_mac_callback(void *ptr, int status, int transmissions) {
     (void)transmissions; //shut up CC
@@ -169,7 +132,7 @@ static void retransmission_mac_callback(void *ptr, int status, int transmissions
     }
 }
 
-int SN_Retransmission_register(SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter) {
+int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter) {
     transmission_slot_t* slot_data;
     int ret;
 
@@ -208,12 +171,9 @@ int SN_Retransmission_register(SN_Table_entry_t* table_entry, packet_t* packet, 
 
         //fill slot with packet data
 
-        packet->length = packetbuf_copyto(slot_data->packet.data);
-        detect_packet_layout(&slot_data->packet);
         slot_data->counter = counter;
         slot_data->retries = 0;
         slot_data->transmit_status = MAC_TX_DEFERRED;
-        slot_data->valid = 1;
         if(table_entry->short_address == SN_NO_SHORT_ADDRESS) {
             slot_data->dst_address.type = SN_ENDPOINT_LONG_ADDRESS;
             memcpy(slot_data->dst_address.long_address, table_entry->long_address, 8);
@@ -221,13 +181,24 @@ int SN_Retransmission_register(SN_Table_entry_t* table_entry, packet_t* packet, 
             slot_data->dst_address.type = SN_ENDPOINT_SHORT_ADDRESS;
             slot_data->dst_address.short_address = table_entry->short_address;
         }
+        memcpy(&slot_data->packet, packet, sizeof(slot_data->packet));
     }
 
-    //2. Address calculations and finish filling in the packetbuf
+    //2. Address calculations, finish filling in the packetbuf, and allocate the queuebuf
     setup_packetbuf_for_transmission();
-    ret = determine_destination_address(table_entry, slot_data);
+    ret = determine_destination_address(table_entry);
     if(ret < 0) {
         return ret;
+    }
+    if(slot_data != NULL) {
+        slot_data->queuebuf = queuebuf_new_from_packetbuf();
+        if(slot_data->queuebuf == NULL) {
+            SN_ErrPrintf("no free queuebuf entries\n");
+            slot_data->allocated = 0;
+            return -SN_ERR_RESOURCES;
+        }
+        slot_data->packet.data = queuebuf_dataptr(slot_data->queuebuf); //XXX: assumes queuebuf doesn't use swapping
+        slot_data->valid = 1;
     }
 
     //3. TX the packet
@@ -277,6 +248,7 @@ int SN_Retransmission_acknowledge_data(SN_Table_entry_t* table_entry, uint32_t c
             if(PACKET_ENTRY(slot->packet, encryption_header, request) != NULL && slot->counter <= counter) {
                 //... acknowledge it.
                 slot->allocated = 0;
+                queuebuf_free(slot->queuebuf);
 
                 rv = SN_OK;
             }
@@ -311,6 +283,7 @@ int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet
 
                         //... acknowledge it.
                         slot->allocated = 0;
+                        queuebuf_free(slot->queuebuf);
 
                         SN_InfoPrintf("exit\n");
                         return SN_OK;
@@ -330,6 +303,7 @@ int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet
 
                         //... acknowledge it.
                         slot->allocated = 0;
+                        queuebuf_free(slot->queuebuf);
 
                         SN_InfoPrintf("exit\n");
                         return SN_OK;
@@ -344,38 +318,45 @@ int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet
 }
 
 void SN_Retransmission_retry(bool count_towards_disconnection) {
+    static SN_Table_entry_t table_entry;
+
     SN_InfoPrintf("enter\n");
 
     FOR_EACH_ACTIVE_SLOT({
         SN_InfoPrintf("doing retransmission processing for slot %d\n", slot_idx);
 
-        if(count_towards_disconnection ? slot->retries < starfishnet_config.nib.tx_retry_limit : 1) {
-            setup_packetbuf_for_transmission();
-            packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, slot->next_hop_size);
-            packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &slot->next_hop);
-
-            packetbuf_copyfrom(slot->packet.data, PACKET_SIZE(slot->packet, request));
-
-            NETSTACK_LLSEC.send(retransmission_mac_callback, slot);
-            //TODO: BUG!!! I can't get the tx status from here, because there's no obvious way to wait for transmission
+        //look up the destination's entry in the node table
+        if(SN_Table_lookup(&slot->dst_address, &table_entry) != SN_OK) {
+            SN_WarnPrintf("trying to retransmit to an unknown partner. dropping\n");
+            slot->allocated = 0;
+            queuebuf_free(slot->queuebuf);
+            continue;
         }
 
+        //if we're not ignoring the disconnection counter, and we still have retries left, tx the packet
+        if(count_towards_disconnection ? slot->retries < starfishnet_config.nib.tx_retry_limit : 1) {
+            queuebuf_to_packetbuf(slot->queuebuf);
+            if(determine_destination_address(&table_entry) != SN_OK) {
+                table_entry.unavailable = 1;
+            } else {
+                NETSTACK_LLSEC.send(retransmission_mac_callback, slot);
+                //TODO: BUG!!! I can't get the tx status from here, because there's no obvious way to wait for transmission
+            }
+        }
 
+        //update the disconnection counter, and mark as disconnected if it's been reached
         if(count_towards_disconnection) {
             slot->retries++;
             if(slot->retries >= starfishnet_config.nib.tx_retry_limit) {
-                SN_Table_entry_t table_entry;
-
                 SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
 
-                if(SN_Table_lookup(&slot->dst_address, &table_entry) == SN_OK) {
-                    table_entry.unavailable = 1;
-                    SN_Table_update(&table_entry);
-                }
+                table_entry.unavailable = 1;
             }
         } else {
             slot->retries = 1;
         }
+
+        SN_Table_update(&table_entry);
 
         SN_InfoPrintf("retransmission processing for slot %d done\n", slot_idx);
     });
@@ -387,6 +368,9 @@ void SN_Retransmission_clear() {
     int i;
     for(i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
         transmission_slot_t* slot = &transmission_queue[i];
-        slot->allocated = 0;
+        if(slot->allocated) {
+            queuebuf_free(slot->queuebuf);
+            slot->allocated = 0;
+        }
     }
 }

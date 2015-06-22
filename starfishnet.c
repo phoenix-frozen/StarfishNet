@@ -14,6 +14,7 @@
 #include "packet.h"
 #include "status.h"
 #include "retransmission_queue.h"
+#include "nonqueued_transmission.h"
 
 static int generate_random_number(uint8_t *dest, unsigned size) {
     uint16_t rand;
