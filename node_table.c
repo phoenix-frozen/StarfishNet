@@ -5,13 +5,15 @@
 #include <string.h>
 
 //implemented as 32-entry table with free bitmap
-#define TABLE_SIZE 32
+#ifndef SN_TABLE_SIZE
+#define SN_TABLE_SIZE 8
+#endif //SN_TABLE_SIZE
 
 #define BIT(x) (1UL << (x))
 
 typedef uint32_t table_bitmap_t;
 
-static SN_Table_entry_t table[TABLE_SIZE];
+static SN_Table_entry_t table[SN_TABLE_SIZE];
 //TODO: reimplement this in terms of nbr-table?
 static table_bitmap_t entry_bitmap = 0;
 
@@ -22,7 +24,7 @@ static int lookup_by_long_address(uint8_t* address, uint8_t stream_idx_len, uint
         return -1;
     }
 
-    for(i = 0; i < TABLE_SIZE; i++)
+    for(i = 0; i < SN_TABLE_SIZE; i++)
         if((entry_bitmap & BIT(i)) &&
            !memcmp(address, &table[i].long_address, sizeof(table[i].long_address)) &&
            table[i].altstream.stream_idx_length == stream_idx_len &&
@@ -40,7 +42,7 @@ static int lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, uin
         return -1;
     }
 
-    for(i = 0; i < TABLE_SIZE; i++) {
+    for(i = 0; i < SN_TABLE_SIZE; i++) {
         if((entry_bitmap & BIT(i)) && address == table[i].short_address &&
             table[i].altstream.stream_idx_length == stream_idx_len &&
             (stream_idx_len > 0 ? !memcmp(table[i].altstream.stream_idx, stream_idx, stream_idx_len) : 1)) {
@@ -62,7 +64,7 @@ static int lookup_by_public_key(SN_Public_key_t* public_key) {
         return -1;
     }
 
-    for(i = 0; i < TABLE_SIZE; i++) {
+    for(i = 0; i < SN_TABLE_SIZE; i++) {
         if((entry_bitmap & BIT(i)) &&
            !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data))) {
             return i;
@@ -83,7 +85,7 @@ static int lookup_by_public_key_and_stream(SN_Public_key_t* public_key, uint8_t 
         return -1;
     }
 
-    for(i = 0; i < TABLE_SIZE; i++) {
+    for(i = 0; i < SN_TABLE_SIZE; i++) {
         if((entry_bitmap & BIT(i)) &&
            !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data)) &&
             table[i].altstream.stream_idx_length == stream_idx_len &&
@@ -128,7 +130,7 @@ static int find_entry(SN_Table_entry_t* entry) {
 static int alloc_entry() {
     table_bitmap_t i;
 
-    for(i = 0; i < TABLE_SIZE; i++) {
+    for(i = 0; i < SN_TABLE_SIZE; i++) {
         if(!(entry_bitmap & BIT(i))) {
             //found an entry, mark it in use
             entry_bitmap |= BIT(i);
@@ -274,7 +276,7 @@ void SN_Table_clear() {
 
 void SN_Table_clear_all_neighbors() {
     table_bitmap_t  i;
-    for(i = 0; i < TABLE_SIZE; i++) {
+    for(i = 0; i < SN_TABLE_SIZE; i++) {
         if((entry_bitmap & BIT(i))) {
             table[i].neighbor = 0;
         }

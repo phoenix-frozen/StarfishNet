@@ -12,11 +12,12 @@
 
 static void sha1_transform(sha1_context_t *ctx, const uint8_t data[])
 {
-    uint32_t a,b,c,d,e,i,j,t;
+    uint8_t i, j;
+    uint32_t a,b,c,d,e,t;
     static uint32_t m[80];
 
     for (i=0,j=0; i < 16; ++i, j += 4)
-        m[i] = ((uint32_t)data[j] << 24) + ((uint32_t)data[j+1] << 16) + ((uint32_t)data[j+2] << 8) + ((uint32_t)data[j+3]);
+        m[i] = ((uint32_t)data[j] << 24) | ((uint32_t)data[j+1] << 16) | ((uint32_t)data[j+2] << 8) | ((uint32_t)data[j+3]);
     for ( ; i < 80; ++i) {
         m[i] = (m[i-3] ^ m[i-8] ^ m[i-14] ^ m[i-16]);
         m[i] = (m[i] << 1) | (m[i] >> 31);
@@ -84,7 +85,7 @@ void sha1_starts(sha1_context_t *ctx)
     ctx->k[3] = 0xca62c1d6;
 }
 
-void sha1_update(sha1_context_t *ctx, const uint8_t data[], size_t len)
+void sha1_update(sha1_context_t *ctx, const uint8_t* data, size_t len)
 {
     size_t i;
 
@@ -101,7 +102,7 @@ void sha1_update(sha1_context_t *ctx, const uint8_t data[], size_t len)
 
 void sha1_finish(sha1_context_t *ctx, uint8_t hash[])
 {
-    size_t i = ctx->datalen;;
+    uint8_t i = ctx->datalen;
 
     // Pad whatever data is left in the buffer.
     if (ctx->datalen < 56) {
@@ -138,11 +139,4 @@ void sha1_finish(sha1_context_t *ctx, uint8_t hash[])
         hash[i+12] = (ctx->state[3] >> (24-i*8)) & 0x000000ff;
         hash[i+16] = (ctx->state[4] >> (24-i*8)) & 0x000000ff;
     }
-}
-
-void sha1(const uint8_t data[], size_t len, uint8_t hash[]) {
-    sha1_context_t ctx;
-    sha1_starts(&ctx);
-    sha1_update(&ctx, data, len);
-    sha1_finish(&ctx, hash);
 }

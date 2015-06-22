@@ -14,13 +14,14 @@
 #error "uECC and StarfishNet disagree on ECC key size!"
 #endif //SN_PK_key_size != uECC_BYTES
 
-typedef struct SN_ECC_unpacked_public_key {
-    uint8_t data[SN_PK_key_size * 2];
-} SN_ECC_unpacked_public_key_t;
+//some temporary buffers to store intermediate values
+static union {
+    uint8_t        unpacked_public_key[SN_PK_key_size * 2];
+    sha1_context_t ctx;
+} temp;
 
 int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
     int ret;
-    SN_ECC_unpacked_public_key_t unpacked_public_key;
 
     SN_InfoPrintf("enter\n");
 
@@ -30,14 +31,14 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
     }
 
     //generate keypair
-    ret = uECC_make_key(unpacked_public_key.data, keypair->private_key.data);
+    ret = uECC_make_key(temp.unpacked_public_key, keypair->private_key.data);
     if(ret != 1) {
         SN_ErrPrintf("key generation failed\n");
         return -SN_ERR_KEYGEN;
     }
 
     //pack public key
-    uECC_compress(unpacked_public_key.data, keypair->public_key.data);
+    uECC_compress(temp.unpacked_public_key, keypair->public_key.data);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
@@ -81,7 +82,6 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     size_t            data_len,
     const SN_Signature_t*   signature
 ) {
-    SN_ECC_unpacked_public_key_t unpacked_public_key;
     SN_Hash_t hashbuf;
     int ret;
 
@@ -92,15 +92,15 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
         return -SN_ERR_NULL;
     }
 
-    //unpack public key
-    uECC_decompress(public_key->data, unpacked_public_key.data);
-
     //hash data
     SN_Crypto_hash(data, data_len, &hashbuf, 0);
 
+    //unpack public key
+    uECC_decompress(public_key->data, temp.unpacked_public_key);
+
     //verify signature
     //XXX: this works because the hash and keys are the same length
-    ret = uECC_verify(unpacked_public_key.data, hashbuf.data, signature->data);
+    ret = uECC_verify(temp.unpacked_public_key, hashbuf.data, signature->data);
     if(ret == 0) {
         SN_ErrPrintf("error verifying digital signature\n");
         return -SN_ERR_SIGNATURE;
@@ -119,8 +119,6 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     SN_Kex_result_t*  shared_secret
 ) {
     SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
-    SN_ECC_unpacked_public_key_t unpacked_public_key;
-    sha1_context_t ctx;
     int ret;
 
     SN_InfoPrintf("enter\n");
@@ -134,27 +132,27 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     }
 
     //unpack public key
-    uECC_decompress(public_key->data, unpacked_public_key.data);
+    uECC_decompress(public_key->data, temp.unpacked_public_key);
 
     //do ECDH
-    ret = uECC_shared_secret(unpacked_public_key.data, private_key->data, raw_shared_secret.data);
+    ret = uECC_shared_secret(temp.unpacked_public_key, private_key->data, raw_shared_secret.data);
     if(ret == 0) {
         SN_ErrPrintf("error performing key agreement\n");
         return -SN_ERR_KEYGEN;
     }
 
     //hash resultant secret together with identities of parties involved
-    sha1_starts(&ctx);
-    sha1_update(&ctx, raw_shared_secret.data, sizeof(raw_shared_secret.data));
+    sha1_starts(&temp.ctx);
+    sha1_update(&temp.ctx, raw_shared_secret.data, sizeof(raw_shared_secret.data));
     if(identity_A != NULL) {
-        sha1_update(&ctx, identity_A->data, sizeof(identity_A->data));
+        sha1_update(&temp.ctx, identity_A->data, sizeof(identity_A->data));
     }
     if(identity_B != NULL) {
-        sha1_update(&ctx, identity_B->data, sizeof(identity_B->data));
+        sha1_update(&temp.ctx, identity_B->data, sizeof(identity_B->data));
     }
 
     //output resultant link key
-    sha1_finish(&ctx, shared_secret->raw.data);
+    sha1_finish(&temp.ctx, shared_secret->raw.data);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
@@ -166,10 +164,14 @@ void SN_Crypto_hash (
     SN_Hash_t* hash,
     size_t     repeat_count
 ) {
-    sha1(data, data_len, hash->data);
+    sha1_starts(&temp.ctx);
+    sha1_update(&temp.ctx, data, data_len);
+    sha1_finish(&temp.ctx, hash->data);
 
     while(repeat_count-- > 0) {
-        sha1(hash->data, sizeof(hash->data), hash->data);
+        sha1_starts(&temp.ctx);
+        sha1_update(&temp.ctx, hash->data, SN_Hash_size);
+        sha1_finish(&temp.ctx, hash->data);
     }
 }
 
@@ -187,7 +189,6 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     bool             pure_ack
 ) {
     SN_Hash_t iv;
-    sha1_context_t ctx;
 
     SN_InfoPrintf("enter\n");
 
@@ -196,14 +197,14 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
         return -SN_ERR_NULL;
     }
 
-    sha1_starts(&ctx);
-    sha1_update(&ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
-    sha1_update(&ctx, (uint8_t*)&counter, sizeof(counter));
+    sha1_starts(&temp.ctx);
+    sha1_update(&temp.ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
+    sha1_update(&temp.ctx, (uint8_t*)&counter, sizeof(counter));
     if(pure_ack) {
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
-        sha1_update(&ctx, "ACK", 3);
+        sha1_update(&temp.ctx, "ACK", 3);
     }
-    sha1_finish(&ctx, iv.data);
+    sha1_finish(&temp.ctx, iv.data);
 
     //XXX assumption: CCM_MAX_IV_LENGTH <= SN_Hash_size
     CCM_STAR.set_key(key->data);
@@ -226,7 +227,6 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     bool             pure_ack
 ) {
     SN_Hash_t iv;
-    sha1_context_t ctx;
     uint8_t prototag[SN_Tag_size];
     int ret;
 
@@ -237,14 +237,14 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
         return -SN_ERR_NULL;
     }
 
-    sha1_starts(&ctx);
-    sha1_update(&ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
-    sha1_update(&ctx, (uint8_t*)&counter, sizeof(counter));
+    sha1_starts(&temp.ctx);
+    sha1_update(&temp.ctx, key_agreement_key->data, sizeof(key_agreement_key->data));
+    sha1_update(&temp.ctx, (uint8_t*)&counter, sizeof(counter));
     if(pure_ack) {
         //this is to prevent IV reuse without requiring retransmission of pure-ack packets
-        sha1_update(&ctx, "ACK", 3);
+        sha1_update(&temp.ctx, "ACK", 3);
     }
-    sha1_finish(&ctx, iv.data);
+    sha1_finish(&temp.ctx, iv.data);
 
     //XXX assumption: CCM_MAX_IV_LENGTH <= SN_Hash_size
     CCM_STAR.set_key(key->data);
