@@ -5,7 +5,9 @@ project(StarfishNet C)
 #StarfishNet is now a Contiki networking module
 
 #uECC configuration
-add_definitions(-DuECC_CURVE=uECC_secp160r1 -DuECC_PLATFORM=uECC_arch_other -DuECC_ASM=uECC_asm_none -DuECC_WORD_SIZE=1)
+add_definitions(-DuECC_CURVE=uECC_secp160r1 -DuECC_PLATFORM=uECC_arch_other -DuECC_ASM=uECC_asm_none -DuECC_WORD_SIZE=1 -DuECC_SQUARE_FUNC=0)
+
+#contiki configuration
 add_definitions(-DNETSTACK_CONF_RDC=nullrdc_driver -DNULLRDC_CONF_802154_AUTOACK=0 -DNULLRDC_CONF_802154_AUTOACK_HW=0)
 add_definitions(-DCC2530_RF_CONF_AUTOACK=0 -DDMA_CONF_ON -DPACKETBUF_CONF_WITH_PACKET_TYPE -DMMEM_CONF_SIZE=1)
 add_definitions(-DLINKADDR_CONF_SIZE=8 -DNETSTACK_CONF_VARIABLE_SIZE_LINK_ADDRESSES)
