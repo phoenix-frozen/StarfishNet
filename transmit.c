@@ -115,8 +115,12 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
         return -SN_ERR_DISCONNECTED;
     }
 
-    //actual packet buffer
-    memset(&packet.layout, 0, sizeof(packet.layout));
+    //initialise the packet data structure...
+    memset(&packet, 0, sizeof(packet));
+    //... and the packetbuf, setting up pointers as necessary
+    packetbuf_clear();
+    packet.data = packetbuf_dataptr();
+
 
     //network header
     SN_InfoPrintf("generating network header...\n");
@@ -276,7 +280,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     //... and the packetbuf, setting up pointers as necessary
     packetbuf_clear();
     packet.length = 0;
-    packet.data = packetbuf_hdrptr();
+    packet.data = packetbuf_dataptr();
 
     //network header
     SN_InfoPrintf("generating network header...\n");
@@ -373,7 +377,6 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     SN_Table_update(&table_entry);
 
     SN_InfoPrintf("beginning packet transmission...\n");
-    packetbuf_set_datalen(PACKET_SIZE(packet, indication));
     ret = SN_Retransmission_send(&table_entry, &packet, sequence_number);
     if(ret != SN_OK) {
         SN_ErrPrintf("transmission failed with %d\n", -ret);

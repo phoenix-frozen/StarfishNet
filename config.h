@@ -45,10 +45,6 @@ typedef struct SN_Config {
         uint16_t macPANId;
         uint8_t  macExtendedAddress[8];
     } mib;
-
-    struct {
-        uint8_t  phyChannel;
-    } pib;
 } SN_Config_t;
 
 extern SN_Config_t starfishnet_config;

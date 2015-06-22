@@ -24,9 +24,6 @@ int SN_TX_Packetbuf(uint16_t source, uint16_t destination) {
         return ret;
     }
 
-    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.mib.macPANId);
-    packetbuf_set_attr(PACKETBUF_ATTR_CHANNEL, starfishnet_config.pib.phyChannel);
-
     //set addresses in packetbuf
     packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
     packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);

@@ -8,6 +8,8 @@
 #include "retransmission_queue.h"
 #include "constants.h"
 
+#include "net/netstack.h"
+
 #include <assert.h>
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
@@ -777,7 +779,11 @@ int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet) {
 
                     //set our short address to the one we were just given
                     SN_InfoPrintf("setting our short address to %#06x...\n", network_header->dst_addr);
-                    starfishnet_config.mib.macShortAddress             = network_header->dst_addr;
+                    if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, starfishnet_config.mib.macShortAddress) != RADIO_RESULT_OK) {
+                        SN_ErrPrintf("couldn't set the radio's short address...\n");
+                        return -SN_ERR_RADIO;
+                    }
+                    starfishnet_config.mib.macShortAddress = network_header->dst_addr;
 
                     if(starfishnet_config.nib.enable_routing) {
                         int ret = SN_Beacon_update();

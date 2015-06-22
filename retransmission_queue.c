@@ -59,11 +59,13 @@ int allocate_slot() {
     return slot;
 }
 
-static void setup_packetbuf_for_transmission() {
+static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
+    linkaddr_t dst_addr;
     linkaddr_t src_address;
 
-    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.mib.macPANId);
-    packetbuf_set_attr(PACKETBUF_ATTR_CHANNEL, starfishnet_config.pib.phyChannel);
+    if(table_entry == NULL) {
+        return -SN_ERR_NULL;
+    }
 
     //figure out which address type we're using
     if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
@@ -75,18 +77,6 @@ static void setup_packetbuf_for_transmission() {
         SN_InfoPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
         memcpy(src_address.u8, starfishnet_config.mib.macExtendedAddress, 8);
-    }
-
-    //set addresses in packetbuf
-    packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
-}
-
-static int determine_destination_address(SN_Table_entry_t* table_entry) {
-    linkaddr_t dst_addr;
-    uint8_t dst_addr_size;
-
-    if(table_entry == NULL) {
-        return -SN_ERR_NULL;
     }
 
     //perform routing calculations to determine destination address
@@ -101,22 +91,22 @@ static int determine_destination_address(SN_Table_entry_t* table_entry) {
         if(ret < 0) {
             return ret;
         }
-        dst_addr_size = 2;
+        packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
     } else if(table_entry->child || table_entry->short_address == SN_NO_SHORT_ADDRESS) {
         //it's to a long address, so no routing to do. just send direct
         if(memcmp(table_entry->long_address, null_address, 8) == 0) {
             SN_ErrPrintf("trying to send to a node without an address...\n");
             return -SN_ERR_INVALID;
         }
-        dst_addr_size = 8;
+        packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 8);
         memcpy(dst_addr.u8, table_entry->long_address, 8);
     } else {
         //it's to a short address, but we can't route. just send direct
-        dst_addr_size = 2;
+        packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
         dst_addr.u16 = table_entry->short_address;
     }
 
-    packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, dst_addr_size);
+    packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &dst_addr);
 
     return SN_OK;
@@ -185,8 +175,8 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
     }
 
     //2. Address calculations, finish filling in the packetbuf, and allocate the queuebuf
-    setup_packetbuf_for_transmission();
-    ret = determine_destination_address(table_entry);
+    ret = setup_packetbuf_for_transmission(table_entry);
+    packetbuf_set_datalen(PACKET_SIZE(*packet, indication));
     if(ret < 0) {
         return ret;
     }
@@ -336,7 +326,7 @@ void SN_Retransmission_retry(bool count_towards_disconnection) {
         //if we're not ignoring the disconnection counter, and we still have retries left, tx the packet
         if(count_towards_disconnection ? slot->retries < starfishnet_config.nib.tx_retry_limit : 1) {
             queuebuf_to_packetbuf(slot->queuebuf);
-            if(determine_destination_address(&table_entry) != SN_OK) {
+            if(setup_packetbuf_for_transmission(&table_entry) != SN_OK) {
                 table_entry.unavailable = 1;
             } else {
                 NETSTACK_LLSEC.send(retransmission_mac_callback, slot);

@@ -33,26 +33,27 @@ static int generate_random_number(uint8_t *dest, unsigned size) {
 }
 
 static void init(void) {
+    radio_value_t radio_result;
+
     SN_InfoPrintf("enter\n");
     queuebuf_init();
     packetbuf_clear();
 
     uECC_set_rng(&generate_random_number);
 
-    /*TODO: (load configuration)
-     * if (config in flash) then
-     *      load config from flash
-     * else
-     *      generate new default config
-     *      save to flash
-     * fi
-     */
-
-    //for the moment, we just generate a new default config
+    //populate configuration structure
+    //designed so that we can store a root key in future...
     if(!starfishnet_config.device_root_key_valid) {
         SN_WarnPrintf("generating new device root key\n");
         SN_Crypto_generate_keypair(&starfishnet_config.device_root_key);
     }
+    NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.mib.macExtendedAddress, 8);
+    if(NETSTACK_RADIO.get_value(RADIO_PARAM_PAN_ID, &radio_result) == RADIO_RESULT_OK) {
+        starfishnet_config.mib.macPANId = (uint16_t)radio_result;
+    }
+
+    //set up the radio with an invalid short address
+    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, SN_NO_SHORT_ADDRESS);
 
     //TODO: other init stuff goes in here
     SN_InfoPrintf("exit\n");
@@ -88,8 +89,8 @@ static void input(void) {
     } else {
         SN_DebugPrintf("received packet from %#06x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
     }
-    packet.length = packetbuf_totlen();
-    packet.data = packetbuf_hdrptr();
+    packet.length = (uint8_t)packetbuf_datalen(); //cast is safe because datalen <= 128
+    packet.data = packetbuf_dataptr();
     SN_InfoPrintf("received packet containing %d-byte payload\n", meta.length);
 
     SN_InfoPrintf("detecting packet layout...\n");
