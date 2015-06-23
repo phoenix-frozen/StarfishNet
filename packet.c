@@ -31,7 +31,7 @@ int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agr
         return -SN_ERR_INVALID;
     }
 
-    skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
+    skip_size = packet->layout.encryption_header + (uint8_t)sizeof(encryption_header_t);
     if(PACKET_SIZE(*packet, request) < skip_size) {
         SN_ErrPrintf("cannot encrypt packet of length %d with an encryption header at %d\n", PACKET_SIZE(*packet, request), packet->layout.encryption_header);
         return -SN_ERR_END_OF_DATA;
@@ -67,7 +67,7 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     }
 
     //network_header_t
-    packet->layout.network_header         = 0; //redundant, but useful to demonstrate the point
+    packet->layout.network_header         = 0;
     packet->layout.present.network_header = 1;
     network_header = PACKET_ENTRY(*packet, network_header, request);
     if(PACKET_SIZE(*packet, request) != sizeof(network_header_t)) {
@@ -79,27 +79,36 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     network_header->src_addr     = starfishnet_config.mib.macShortAddress;
     network_header->dst_addr     = table_entry->short_address;
     network_header->attributes   = 0;
-    network_header->encrypt      = (uint8_t)(message == NULL || message->type != SN_Association_request);
-    network_header->req_details  = (uint8_t)!table_entry->details_known;
-    network_header->details      = (uint8_t)!table_entry->knows_details;
-    network_header->key_confirm  = (uint8_t)(table_entry->state >= SN_Associate_received);
-    network_header->associate    = (uint8_t)(table_entry->state < SN_Send_finalise);
-    network_header->evidence     = (uint8_t)(message != NULL && message->type > SN_Data_message);
     network_header->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
-    network_header->ack          = (uint8_t)((table_entry->ack && network_header->encrypt) || message == NULL);
-    //update packet
+    network_header->data         = (uint8_t)(message == NULL || message->type != SN_Association_request);
+    if(network_header->data) { //data packet
+        network_header->data_attributes.ack      = (uint8_t)((table_entry->ack && network_header->data) || message == NULL);
+        network_header->data_attributes.evidence = (uint8_t)(message != NULL && message->type > SN_Data_message);
+
+        if(table_entry->state == SN_Send_finalise) {
+            network_header->data_attributes.key_confirm = 1;
+            table_entry->state = SN_Associated;
+        }
+
+        table_entry->ack = 0;
+    } else { //control packet
+        network_header->control_attributes.associate   = (uint8_t)(uint8_t)(message->type == SN_Association_request || message->type == SN_Dissociation_request);
+        network_header->control_attributes.req_details = (uint8_t)!table_entry->details_known;
+        network_header->control_attributes.details     = (uint8_t)!table_entry->knows_details;
+
+        if(network_header->control_attributes.associate && table_entry->state == SN_Associate_received) {
+            network_header->data_attributes.key_confirm = 1;
+            table_entry->state = SN_Awaiting_finalise;
+        }
+
+        if(network_header->control_attributes.details) {
+            table_entry->knows_details = 1;
+        }
+    }
     PACKET_SIZE(*packet, request) = sizeof(network_header_t);
-    //update node table state
-    if(network_header->key_confirm) {
-        table_entry->state = SN_Associated;
-    }
-    if(network_header->details) {
-        table_entry->knows_details = 1;
-    }
-    table_entry->ack = 0;
 
     //alt_stream_header_t
-    if(network_header->alt_stream) {
+    if(ATTRIBUTE(network_header, alt_stream)) {
         alt_stream_header_t* alt_stream_header;
 
         SN_InfoPrintf("generating alternate stream header at %d\n", PACKET_SIZE(*packet, request));
@@ -120,7 +129,7 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     }
 
     //node_details_header_t
-    if(network_header->details) {
+    if(CONTROL_ATTRIBUTE(network_header, details)) {
         node_details_header_t* node_details_header;
 
         SN_InfoPrintf("generating node details header at %d\n", PACKET_SIZE(*packet, request));
@@ -139,7 +148,7 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     }
 
     //association_header_t
-    if(network_header->associate) {
+    if(CONTROL_ATTRIBUTE(network_header, associate)) {
         association_header_t* association_header;
 
         SN_InfoPrintf("generating association header at %d\n", PACKET_SIZE(*packet, request));
@@ -157,8 +166,8 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
         association_header->flags             = 0;
         association_header->dissociate        = (uint8_t)(dissociate ? 1 : 0);
 
-        //key_agreement_header_t
         if(!association_header->dissociate) {
+            //key_agreement_header_t
             key_agreement_header_t* key_agreement_header;
 
             packet->layout.key_agreement_header = PACKET_SIZE(*packet, request);
@@ -168,11 +177,9 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
             assert(key_agreement_header != NULL);
 
             memcpy(&key_agreement_header->key_agreement_key, &table_entry->local_key_agreement_keypair.public_key, sizeof(table_entry->local_key_agreement_keypair.public_key));
-        }
 
-        //parent/child handling
-        if(!association_header->dissociate) {
-            if(network_header->key_confirm) {
+            //parent/child handling
+            if(CONTROL_ATTRIBUTE(network_header, key_confirm)) {
                 //this is a reply
 
                 //address bits
@@ -221,10 +228,10 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     }
 
     //key_confirmation_header_t
-    if(network_header->key_confirm) {
+    if(ATTRIBUTE(network_header, key_confirm)) {
         key_confirmation_header_t* key_confirmation_header;
 
-        SN_InfoPrintf("generating key confirmation header (challenge%d) at %d\n", network_header->associate ? 1 : 2, PACKET_SIZE(*packet, request));
+        SN_InfoPrintf("generating key confirmation header (challenge%d) at %d\n", CONTROL_ATTRIBUTE(network_header, associate) ? 1 : 2, PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(key_confirmation_header_t) > SN_MAXIMUM_PACKET_SIZE) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -235,7 +242,7 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
         key_confirmation_header = PACKET_ENTRY(*packet, key_confirmation_header, request);
         assert(key_confirmation_header != NULL);
 
-        if(network_header->associate) {
+        if(CONTROL_ATTRIBUTE(network_header, associate)) {
             //this is a reply; do challenge1 (double-hash)
             SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 1);
             SN_DebugPrintf("challenge1 = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
@@ -253,31 +260,45 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     }
 
     //encrypted_ack_header_t
-    if(network_header->ack) {
-        if(network_header->encrypt) {
-            encrypted_ack_header_t* encrypted_ack_header;
+    if(DATA_ATTRIBUTE(network_header, ack)) {
+        encrypted_ack_header_t* encrypted_ack_header;
 
-            //encrypted_ack_header_t
-            SN_InfoPrintf("generating encrypted-ack header at %d\n", PACKET_SIZE(*packet, request));
-            if(PACKET_SIZE(*packet, request) + sizeof(encrypted_ack_header_t) > SN_MAXIMUM_PACKET_SIZE) {
-                SN_ErrPrintf("adding encrypted_ack header would make packet too large, aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            packet->layout.encrypted_ack_header = PACKET_SIZE(*packet, request);
-            packet->layout.present.encrypted_ack_header = 1;
-            PACKET_SIZE(*packet, request) += sizeof(encrypted_ack_header_t);
-            encrypted_ack_header = PACKET_ENTRY(*packet, encrypted_ack_header, request);
-            assert(encrypted_ack_header != NULL);
-
-            encrypted_ack_header->counter = table_entry->packet_rx_counter - 1;
-        } else {
-            SN_ErrPrintf("acknowledgements can only be sent for encrypted packets\n");
-            return -SN_ERR_INVALID;
+        //encrypted_ack_header_t
+        SN_InfoPrintf("generating encrypted-ack header at %d\n", PACKET_SIZE(*packet, request));
+        if(PACKET_SIZE(*packet, request) + sizeof(encrypted_ack_header_t) > SN_MAXIMUM_PACKET_SIZE) {
+            SN_ErrPrintf("adding encrypted_ack header would make packet too large, aborting\n");
+            return -SN_ERR_END_OF_DATA;
         }
+        packet->layout.encrypted_ack_header         = PACKET_SIZE(*packet, request);
+        packet->layout.present.encrypted_ack_header = 1;
+        PACKET_SIZE(*packet, request) += sizeof(encrypted_ack_header_t);
+        encrypted_ack_header = PACKET_ENTRY(*packet, encrypted_ack_header, request);
+        assert(encrypted_ack_header != NULL);
+
+        encrypted_ack_header->counter = table_entry->packet_rx_counter - 1;
+    }
+
+    //evidence_header_t
+    if(DATA_ATTRIBUTE(network_header, evidence)) {
+        evidence_header_t* evidence_header;
+
+        SN_InfoPrintf("generating evidence header at %d\n", PACKET_SIZE(*packet, request));
+
+        if(PACKET_SIZE(*packet, request) + sizeof(evidence_header_t) > SN_MAXIMUM_PACKET_SIZE) {
+            SN_ErrPrintf("adding evidence header would make packet too large, aborting\n");
+            return -SN_ERR_END_OF_DATA;
+        }
+        packet->layout.evidence_header = PACKET_SIZE(*packet, request);
+        packet->layout.present.evidence_header = 1;
+        PACKET_SIZE(*packet, request) += sizeof(evidence_header_t);
+        evidence_header = PACKET_ENTRY(*packet, evidence_header, request);
+        assert(evidence_header != NULL);
+
+        evidence_header->flags = 0;
     }
 
     //{encryption,signature}_header_t
-    if(network_header->encrypt) {
+    if(ATTRIBUTE(network_header, data)) {
         encryption_header_t* encryption_header;
 
         SN_InfoPrintf("generating encryption header at %d\n", PACKET_SIZE(*packet, request));
@@ -316,25 +337,6 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
             SN_ErrPrintf("could not sign packet\n");
             return -SN_ERR_SIGNATURE;
         }
-    }
-
-    //evidence_header_t
-    if(network_header->evidence) {
-        evidence_header_t* evidence_header;
-
-        SN_InfoPrintf("generating evidence header at %d\n", PACKET_SIZE(*packet, request));
-
-        if(PACKET_SIZE(*packet, request) + sizeof(evidence_header_t) > SN_MAXIMUM_PACKET_SIZE) {
-            SN_ErrPrintf("adding evidence header would make packet too large, aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        packet->layout.evidence_header = PACKET_SIZE(*packet, request);
-        packet->layout.present.evidence_header = 1;
-        PACKET_SIZE(*packet, request) += sizeof(evidence_header_t);
-        evidence_header = PACKET_ENTRY(*packet, evidence_header, request);
-        assert(evidence_header != NULL);
-
-        evidence_header->flags = 0;
     }
 
     SN_DebugPrintf("exit\n");
@@ -430,7 +432,7 @@ int detect_packet_layout(packet_t* packet) {
     current_position += sizeof(network_header_t);
 
     //alt_stream_header_t
-    if(network_header->alt_stream) {
+    if(ATTRIBUTE(network_header, alt_stream)) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(alt_stream_header_t)) {
             SN_ErrPrintf("packet indicates an alternate stream header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -450,7 +452,7 @@ int detect_packet_layout(packet_t* packet) {
     }
 
     //node_details_header_t
-    if(network_header->details) {
+    if(CONTROL_ATTRIBUTE(network_header, details)) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(node_details_header_t)) {
             SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -462,7 +464,7 @@ int detect_packet_layout(packet_t* packet) {
     }
 
     //association_header_t
-    if(network_header->associate) {
+    if(CONTROL_ATTRIBUTE(network_header, associate)) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(association_header_t)) {
             SN_ErrPrintf("packet indicates an association header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -486,7 +488,7 @@ int detect_packet_layout(packet_t* packet) {
     }
 
     //key_confirmation_header_t
-    if(network_header->key_confirm) {
+    if(ATTRIBUTE(network_header, key_confirm)) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(key_confirmation_header_t)) {
             SN_ErrPrintf("packet indicates a key confirmation header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -498,25 +500,19 @@ int detect_packet_layout(packet_t* packet) {
     }
 
     //encrypted_ack_header_t
-    if(network_header->ack && !network_header->associate) {
-        if(network_header->encrypt) {
-            //encrypted ack
-            if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encrypted_ack_header_t)) {
-                SN_ErrPrintf("packet indicates an acknowledgement (encrypted) header, but is too small. aborting\n");
-                return -SN_ERR_END_OF_DATA;
-            }
-            SN_InfoPrintf("found acknowledgement (encrypted) header at %d\n", current_position);
-            packet->layout.encrypted_ack_header = current_position;
-            packet->layout.present.encrypted_ack_header = 1;
-            current_position += sizeof(encrypted_ack_header_t);
-        } else {
-            SN_ErrPrintf("acknowledgements only work for encrypted packets");
-            return -SN_ERR_INVALID;
+    if(DATA_ATTRIBUTE(network_header, ack)) {
+        if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encrypted_ack_header_t)) {
+            SN_ErrPrintf("packet indicates an acknowledgement (encrypted) header, but is too small. aborting\n");
+            return -SN_ERR_END_OF_DATA;
         }
+        SN_InfoPrintf("found acknowledgement (encrypted) header at %d\n", current_position);
+        packet->layout.encrypted_ack_header         = current_position;
+        packet->layout.present.encrypted_ack_header = 1;
+        current_position += sizeof(encrypted_ack_header_t);
     }
 
     //encryption_header_t / signature_header_t
-    if(network_header->encrypt) {
+    if(ATTRIBUTE(network_header, data)) {
         //encrypted packet
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(encryption_header_t)) {
             SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
@@ -539,7 +535,7 @@ int detect_packet_layout(packet_t* packet) {
     }
 
     //evidence_header
-    if(network_header->evidence) {
+    if(DATA_ATTRIBUTE(network_header, evidence)) {
         if(PACKET_SIZE(*packet, indication) < current_position + sizeof(evidence_header_t)) {
             SN_ErrPrintf("packet indicates an evidence header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -613,7 +609,7 @@ int packet_security_checks(SN_Table_entry_t *table_entry, packet_t *packet) {
     // 4. dissociation packets must be signed or encrypted
     if(PACKET_ENTRY(*packet, encryption_header, indication) == NULL) {
         //1.
-        if(PACKET_ENTRY(*packet, payload_data, indication) != NULL && !PACKET_ENTRY(*packet, network_header, indication)->evidence) {
+        if(PACKET_ENTRY(*packet, payload_data, indication) != NULL && PACKET_ENTRY(*packet, evidence_header, indication) != NULL) {
             SN_ErrPrintf("received unencrypted packet with plain data payload. this is an error.\n");
             return -SN_ERR_SECURITY;
         }
@@ -737,10 +733,12 @@ int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet) {
     //network_header
     network_header = PACKET_ENTRY(*packet, network_header, indication);
     assert(network_header != NULL);
-    if(network_header->req_details) {
+    if(CONTROL_ATTRIBUTE(network_header, req_details)) {
         SN_InfoPrintf("partner has requested our details\n");
+        table_entry->knows_details = 0;
+    } else {
+        table_entry->knows_details = 1;
     }
-    table_entry->knows_details = (uint8_t)!PACKET_ENTRY(*packet, network_header, indication)->req_details;
     if(network_header->src_addr != SN_NO_SHORT_ADDRESS) {
         //if the remote node has a short address, we can erase its MAC address from memory
         SN_InfoPrintf("short address is known; erasing long address\n");
@@ -883,7 +881,7 @@ int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement
 
     encryption_header = PACKET_ENTRY(*packet, encryption_header, indication);
     assert(encryption_header != NULL);
-    skip_size = packet->layout.encryption_header + sizeof(encryption_header_t);
+    skip_size = packet->layout.encryption_header + (uint8_t)sizeof(encryption_header_t);
     SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet, indication), packet->layout.encryption_header, encryption_counter);
     if(PACKET_SIZE(*packet, indication) < skip_size) {
         SN_ErrPrintf("packet is too small\n");

@@ -22,18 +22,35 @@ typedef struct network_header {
     uint16_t dst_addr;
     union {
         struct {
-            uint8_t encrypt      :1; //this packed is encrypted. (false means it's signed.)
-            uint8_t req_details  :1; //requests that the remote party send its details
-            uint8_t details      :1; //flags the presence of a node details header
-            uint8_t associate    :1; //flags the presence of an association request header
-            uint8_t key_confirm  :1; //flags the presence of a key confirmation header
-            uint8_t evidence     :1; //indicates that the payload is a certificate, not plain data
-            uint8_t ack          :1; //indicates the presence of a data acknowledgement header
-            uint8_t alt_stream   :1; //indicates the presence of an alternate stream header
+            uint8_t alt_stream  :1; //indicates the presence of an alternate stream header
+            uint8_t data        :1; //this is a data packet (1: follow data_attributes; 0: follow control_attributes)
+            uint8_t A           :1; //packet type dependent
+            uint8_t key_confirm :1; //flags the presence of a key confirmation header
+            uint8_t type_dep    :4; //packet type dependent
         };
+        struct {
+            uint8_t alt_stream  :1;
+            uint8_t data        :1;
+            uint8_t ack         :1; //indicates the presence of a data acknowledgement header
+            uint8_t key_confirm :1; //flags the presence of a key confirmation header
+            uint8_t evidence    :1; //0: the payload is plain data; 1: it is evidence, and an evidence header is present
+            uint8_t unused      :3;
+        } data_attributes;
+        struct {
+            uint8_t alt_stream  :1;
+            uint8_t data        :1;
+            uint8_t associate   :1; //flags the presence of an association request header
+            uint8_t key_confirm :1; //flags the presence of a key confirmation header
+            uint8_t req_details :1; //requests that the remote party send its details
+            uint8_t details     :1; //flags the presence of a node details header
+            uint8_t unused      :2;
+        } control_attributes;
         uint8_t attributes;
     };
 } network_header_t;
+#define ATTRIBUTE(network_header, attribute) ((network_header)->attribute)
+#define DATA_ATTRIBUTE(network_header, attribute) (ATTRIBUTE(network_header, data) && (network_header)->data_attributes.attribute)
+#define CONTROL_ATTRIBUTE(network_header, attribute) (!ATTRIBUTE(network_header, data) && (network_header)->control_attributes.attribute)
 
 typedef struct alt_stream_header {
     //alternate stream
