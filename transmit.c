@@ -124,7 +124,7 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     SN_InfoPrintf("generating network header...\n");
 
     SN_InfoPrintf("generating subheaders...\n");
-    ret = generate_packet_headers(&table_entry, 0, &packet, message);
+    ret = packet_generate_headers(&packet, &table_entry, message);
     if(ret != SN_OK) {
         SN_ErrPrintf("header generation failed with %d\n", -ret);
         return ret;
@@ -132,7 +132,7 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
 
     if(message != NULL) {
         SN_InfoPrintf("generating payload...\n");
-        ret = generate_payload(message, &packet);
+        ret = packet_generate_payload(&packet, message);
         if(ret != SN_OK) {
             SN_ErrPrintf("payload generation failed with %d\n", -ret);
             return ret;
@@ -154,9 +154,11 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
 
     if(pure_ack) {
         assert(PACKET_ENTRY(packet, encrypted_ack_header, request)->counter + 1 == table_entry.packet_rx_counter);
-        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, PACKET_ENTRY(packet, encrypted_ack_header, request)->counter, &packet, 1);
+        ret = packet_encrypt_authenticate(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
+                                          PACKET_ENTRY(packet, encrypted_ack_header, request)->counter, 1);
     } else {
-        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, encryption_counter, &packet, 0);
+        ret = packet_encrypt_authenticate(&packet, &table_entry.local_key_agreement_keypair.public_key,
+                                          &table_entry.link_key, encryption_counter, 0);
     }
 
     if(ret != SN_OK) {
@@ -184,6 +186,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     packet_t packet;
     uint32_t sequence_number = 0;
     SN_Kex_result_t kex_result;
+    SN_Message_t message;
 
     //initial NULL-checks
     if(dst_addr == NULL) {
@@ -299,7 +302,8 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
 
     //generate subheaders
     SN_InfoPrintf("generating subheaders...\n");
-    ret = generate_packet_headers(&table_entry, 0, &packet, NULL);
+    message.type = SN_Association_request;
+    ret = packet_generate_headers(&packet, &table_entry, &message);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in header generation\n", -ret);
         return ret;

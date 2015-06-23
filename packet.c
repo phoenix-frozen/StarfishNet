@@ -13,7 +13,8 @@
 #include <assert.h>
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
-int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack) {
+int packet_encrypt_authenticate(packet_t* packet, SN_Public_key_t* key_agreement_key, SN_AES_key_t* link_key,
+                                uint32_t encryption_counter, bool pure_ack) {
     encryption_header_t* encryption_header;
     uint8_t skip_size;
     int ret;
@@ -56,8 +57,7 @@ int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agr
     return SN_OK;
 }
 
-int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, packet_t* packet, SN_Message_t* message) {
-    network_header_t* network_header;
+int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_Message_t* message) { network_header_t* network_header;
 
     SN_DebugPrintf("enter\n");
 
@@ -162,9 +162,10 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
         PACKET_SIZE(*packet, request) += sizeof(association_header_t);
         association_header = PACKET_ENTRY(*packet, association_header, request);
         assert(association_header != NULL);
+        assert(message != NULL);
 
         association_header->flags             = 0;
-        association_header->dissociate        = (uint8_t)(dissociate ? 1 : 0);
+        association_header->dissociate        = (uint8_t)(message->type == SN_Dissociation_request ? 1 : 0);
 
         if(!association_header->dissociate) {
             //key_agreement_header_t
@@ -343,7 +344,7 @@ int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, pack
     return SN_OK;
 }
 
-int generate_payload(SN_Message_t* message, packet_t* packet) {
+int packet_generate_payload(packet_t* packet, SN_Message_t* message) {
     uint8_t* payload = NULL;
     uint8_t payload_length = 0;
 
@@ -401,7 +402,7 @@ int generate_payload(SN_Message_t* message, packet_t* packet) {
 
 //outputs crypto margin, and pointers to the key agreement header and payload data
 //also detects basic protocol failures
-int detect_packet_layout(packet_t* packet) {
+int packet_detect_layout(packet_t* packet) {
     uint8_t current_position = 0;
     network_header_t* network_header;
 
@@ -562,7 +563,7 @@ int detect_packet_layout(packet_t* packet) {
     return SN_OK;
 }
 
-int packet_security_checks(SN_Table_entry_t *table_entry, packet_t *packet) {
+int packet_security_checks(packet_t* packet, SN_Table_entry_t* table_entry) {
     if(table_entry == NULL || packet == NULL) {
         SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
@@ -639,7 +640,7 @@ int packet_security_checks(SN_Table_entry_t *table_entry, packet_t *packet) {
     return SN_OK;
 }
 
-int packet_public_key_operations(SN_Public_key_t *self, SN_Table_entry_t *table_entry, packet_t *packet) {
+int packet_public_key_operations(packet_t* packet, SN_Table_entry_t* table_entry) {
     int ret;
     SN_Public_key_t* remote_public_key = NULL;
 
@@ -703,7 +704,7 @@ int packet_public_key_operations(SN_Public_key_t *self, SN_Table_entry_t *table_
 
         //finish the key agreement
         ret = SN_Crypto_key_agreement(
-            self,
+            &starfishnet_config.device_root_key.public_key,
             &table_entry->public_key,
             &PACKET_ENTRY(*packet, key_agreement_header, indication)->key_agreement_key,
             &table_entry->local_key_agreement_keypair.private_key,
@@ -720,7 +721,7 @@ int packet_public_key_operations(SN_Public_key_t *self, SN_Table_entry_t *table_
     return SN_OK;
 }
 
-int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet) {
+int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
     network_header_t* network_header;
 
     if(table_entry == NULL || packet == NULL) {
@@ -867,7 +868,8 @@ int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet) {
  * margin: how much data to skip (after the network header, before the payload) for encryption
  * safe  : if true, arrange so that the original data is untouched on a decryption failure
  */
-int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack) {
+int packet_decrypt_verify(packet_t* packet, SN_Public_key_t* key_agreement_key, SN_AES_key_t* link_key,
+                          uint32_t encryption_counter, bool pure_ack) {
     encryption_header_t* encryption_header;
     uint8_t skip_size;
     int ret;

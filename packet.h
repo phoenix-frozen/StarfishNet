@@ -182,16 +182,16 @@ typedef struct packet {
 #define PACKET_SIZE(packet, req_type) ((packet).length)
 
 /* transmit side */
-int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack);
-int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, packet_t* packet, SN_Message_t* message);
-int generate_payload(SN_Message_t* message, packet_t* packet);
+int packet_encrypt_authenticate(packet_t* packet, SN_Public_key_t* key_agreement_key, SN_AES_key_t* link_key, uint32_t encryption_counter, bool pure_ack);
+int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_Message_t* message);
+int packet_generate_payload(packet_t* packet, SN_Message_t* message);
 
 /* receive side */
-int detect_packet_layout(packet_t* packet);
-int packet_security_checks(SN_Table_entry_t *table_entry, packet_t *packet);
-int packet_public_key_operations(SN_Public_key_t *self, SN_Table_entry_t *table_entry, packet_t *packet);
-int process_packet_headers(SN_Table_entry_t *table_entry, packet_t *packet);
-int decrypt_verify_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack);
+int packet_detect_layout(packet_t* packet);
+int packet_security_checks(packet_t* packet, SN_Table_entry_t* table_entry);
+int packet_public_key_operations(packet_t* packet, SN_Table_entry_t* table_entry);
+int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry);
+int packet_decrypt_verify(packet_t* packet, SN_Public_key_t* key_agreement_key, SN_AES_key_t* link_key, uint32_t encryption_counter, bool pure_ack);
 
 
 #endif /* __SN_PACKET_H__ */

@@ -94,9 +94,9 @@ static void input(void) {
     SN_InfoPrintf("received packet containing %d-byte payload\n", meta.length);
 
     SN_InfoPrintf("detecting packet layout...\n");
-    ret = detect_packet_layout(&packet);
+    ret = packet_detect_layout(&packet);
     if(ret != SN_OK) {
-        SN_ErrPrintf("invalid packet received (detect_packet_layout returned %d)\n", -ret);
+        SN_ErrPrintf("invalid packet received (packet_detect_layout returned %d)\n", -ret);
         return;
     }
 
@@ -154,7 +154,7 @@ static void input(void) {
     SN_InfoPrintf("packet contains payload of length %d\n", packet.layout.payload_length);
 
     SN_InfoPrintf("doing packet security checks...\n");
-    ret = packet_security_checks(&table_entry, &packet);
+    ret = packet_security_checks(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in packet security checks. aborting\n", -ret);
         //certain security check failures could come from a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
@@ -185,7 +185,7 @@ static void input(void) {
     }
 
     SN_InfoPrintf("doing public-key operations...\n");
-    ret = packet_public_key_operations(&starfishnet_config.device_root_key.public_key, &table_entry, &packet);
+    ret = packet_public_key_operations(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in public-key operations. aborting\n", -ret);
         return;
@@ -201,9 +201,12 @@ static void input(void) {
         }
 
         if(pure_ack) {
-            ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, PACKET_ENTRY(packet, encrypted_ack_header, indication)->counter, &packet, 1);
+            ret = packet_decrypt_verify(&packet, &table_entry.local_key_agreement_keypair.public_key,
+                                        &table_entry.link_key,
+                                        PACKET_ENTRY(packet, encrypted_ack_header, indication)->counter, 1);
         } else {
-            ret = decrypt_verify_packet(&table_entry.link_key, &table_entry.remote_key_agreement_key, table_entry.packet_rx_counter++, &packet, 0);
+            ret = packet_decrypt_verify(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
+                                        table_entry.packet_rx_counter++, 0);
         }
         if(ret != SN_OK) {
             SN_ErrPrintf("error %d in packet crypto. aborting\n", -ret);
@@ -232,7 +235,7 @@ static void input(void) {
     }
 
     SN_InfoPrintf("processing packet headers...\n");
-    ret = process_packet_headers(&table_entry, &packet);
+    ret = packet_process_headers(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d processing packet headers. aborting\n", -ret);
         return;
