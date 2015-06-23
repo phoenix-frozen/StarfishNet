@@ -65,7 +65,6 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     int ret;
     packet_t packet;
     uint32_t encryption_counter;
-    bool pure_ack = 0;
 
     //initial NULL-checks
     if(dst_addr == NULL) {
@@ -147,16 +146,11 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
 
     if(PACKET_ENTRY(packet, key_confirmation_header, request) == NULL && PACKET_ENTRY(packet, encrypted_ack_header, request) != NULL && PACKET_ENTRY(packet, payload_data, request) == NULL) {
         //this is a pure-acknowledgement packet; don't change the counter
-        pure_ack = 1;
-    } else {
-        table_entry.packet_tx_counter++;
-    }
-
-    if(pure_ack) {
         assert(PACKET_ENTRY(packet, encrypted_ack_header, request)->counter + 1 == table_entry.packet_rx_counter);
         ret = packet_encrypt_authenticate(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
                                           PACKET_ENTRY(packet, encrypted_ack_header, request)->counter, 1);
     } else {
+        table_entry.packet_tx_counter++;
         ret = packet_encrypt_authenticate(&packet, &table_entry.local_key_agreement_keypair.public_key,
                                           &table_entry.link_key, encryption_counter, 0);
     }
@@ -185,7 +179,6 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     int ret;
     packet_t packet;
     uint32_t sequence_number = 0;
-    SN_Kex_result_t kex_result;
     SN_Message_t message;
 
     //initial NULL-checks
@@ -268,7 +261,9 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
             table_entry.state = SN_Awaiting_reply;
             break;
 
-        case SN_Associate_received:
+        case SN_Associate_received: {
+            SN_Kex_result_t kex_result;
+            
             SN_InfoPrintf("received association request, finishing ECDH\n");
 
             //generate ephemeral keypair
@@ -294,6 +289,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
             //advance state
             table_entry.state = SN_Awaiting_finalise;
             break;
+        }
 
         default:
             SN_ErrPrintf("association requests are only valid in state SN_Associated or SN_Association_received. we are in %d\n", table_entry.state);
