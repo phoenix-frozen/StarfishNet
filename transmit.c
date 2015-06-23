@@ -49,7 +49,6 @@
 #include "node_table.h"
 #include "logging.h"
 #include "status.h"
-#include "constants.h"
 #include "packet.h"
 #include "retransmission_queue.h"
 #include "util.h"
@@ -66,7 +65,6 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     int ret;
     packet_t packet;
     uint32_t encryption_counter;
-    network_header_t* header;
     bool pure_ack = 0;
 
     //initial NULL-checks
@@ -124,37 +122,9 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
 
     //network header
     SN_InfoPrintf("generating network header...\n");
-    packet.layout.network_header           = 0; //redundant, but useful to demonstrate the point
-    packet.layout.present.network_header   = 1;
-    header                                 = PACKET_ENTRY(packet, network_header, request);
-    header->protocol_id                    = STARFISHNET_PROTOCOL_ID;
-    header->protocol_ver                   = STARFISHNET_PROTOCOL_VERSION;
-    header->src_addr                       = starfishnet_config.mib.macShortAddress;
-    header->dst_addr                       = table_entry.short_address;
-    //attributes
-    header->attributes                     = 0;
-    header->encrypt                        = 1;
-    header->req_details                    = (uint8_t)!table_entry.details_known;
-    header->details                        = (uint8_t)!table_entry.knows_details;
-    header->key_confirm                    = (uint8_t)(table_entry.state == SN_Send_finalise);
-    if(message != NULL) {
-        header->evidence                   = (uint8_t)(message->type != SN_Data_message);
-    }
-    header->alt_stream                     = (uint8_t)(table_entry.altstream.stream_idx_length > 0);
-    header->ack                            = (uint8_t)((table_entry.ack && header->encrypt) || message == NULL);
-    //update packet
-    PACKET_SIZE(packet, request) = sizeof(network_header_t);
-
-    if(header->key_confirm) {
-        table_entry.state = SN_Associated;
-    }
-    if(header->details) {
-        table_entry.knows_details = 1;
-    }
-    table_entry.ack = 0;
 
     SN_InfoPrintf("generating subheaders...\n");
-    ret = generate_packet_headers(&table_entry, 0, &packet);
+    ret = generate_packet_headers(&table_entry, 0, &packet, message);
     if(ret != SN_OK) {
         SN_ErrPrintf("header generation failed with %d\n", -ret);
         return ret;
@@ -214,7 +184,6 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     packet_t packet;
     uint32_t sequence_number = 0;
     SN_Kex_result_t kex_result;
-    network_header_t* header;
 
     //initial NULL-checks
     if(dst_addr == NULL) {
@@ -279,32 +248,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     memset(&packet.layout, 0, sizeof(packet.layout));
     //... and the packetbuf, setting up pointers as necessary
     packetbuf_clear();
-    packet.length = 0;
     packet.data = packetbuf_dataptr();
-
-    //network header
-    SN_InfoPrintf("generating network header...\n");
-    packet.layout.network_header    = 0;
-    packet.layout.present.network_header   = 1;
-    header                                 = PACKET_ENTRY(packet, network_header, request);
-    header->protocol_id                    = STARFISHNET_PROTOCOL_ID;
-    header->protocol_ver                   = STARFISHNET_PROTOCOL_VERSION;
-    header->src_addr                       = starfishnet_config.mib.macShortAddress;
-    header->dst_addr                       = table_entry.short_address;
-    //attributes
-    header->attributes                     = 0;
-    header->req_details                    = (uint8_t)!table_entry.details_known;
-    header->details                        = (uint8_t)!table_entry.knows_details;
-    header->associate                      = 1;
-    header->key_confirm                    = (uint8_t)(table_entry.state == SN_Associate_received);
-    header->evidence                       = 0;
-    //update packet
-    PACKET_SIZE(packet, request) = sizeof(network_header_t);
-
-    //we've now sent our details; record this fact
-    if(header->details) {
-        table_entry.knows_details = 1;
-    }
 
     //check the association state, and do appropriate crypto work
     switch(table_entry.state) {
@@ -355,22 +299,10 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
 
     //generate subheaders
     SN_InfoPrintf("generating subheaders...\n");
-    ret = generate_packet_headers(&table_entry, 0, &packet);
+    ret = generate_packet_headers(&table_entry, 0, &packet, NULL);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in header generation\n", -ret);
         return ret;
-    }
-
-    if(header->encrypt) {
-        //XXX: header->encrypt is always false here, so this never gets executed. it's worth leaving in tho, in case rekeying is ever implemented
-        SN_InfoPrintf("encrypting packet...\n");
-        sequence_number = table_entry.packet_tx_counter++;
-        //XXX: also, an association packet is never a pure-ack
-        ret = encrypt_authenticate_packet(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key, sequence_number, &packet, 0);
-        if(ret != SN_OK) {
-            SN_ErrPrintf("packet crypto failed with %d\n", -ret);
-            return ret;
-        }
     }
 
     //update node table

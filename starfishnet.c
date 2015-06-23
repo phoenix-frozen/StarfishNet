@@ -191,7 +191,7 @@ static void input(void) {
         return;
     }
 
-    if(network_header->encrypt) {
+    if(PACKET_ENTRY(packet, encryption_header, indication) != NULL) {
         bool pure_ack = 0;
         SN_InfoPrintf("doing decryption and integrity checking...\n");
 
@@ -257,7 +257,7 @@ static void input(void) {
         uint8_t* payload_data = PACKET_ENTRY(packet, payload_data, indication);
         assert(payload_data != NULL);
 
-        if(network_header->evidence && PACKET_ENTRY(packet, evidence_header, indication)->certificate) {
+        if(PACKET_ENTRY(packet, evidence_header, indication) != NULL && PACKET_ENTRY(packet, evidence_header, indication)->certificate) {
             SN_Certificate_t* evidence;
 
             //evidence packet
@@ -283,7 +283,7 @@ static void input(void) {
             }
 
             //data packet
-            if(!network_header->encrypt) {
+            if(PACKET_ENTRY(packet, encryption_header, indication) == NULL) {
                 //stapled plain data on unencrypted packet. warn and ignore
                 SN_WarnPrintf("received plain data in unencrypted packet. ignoring.\n");
             } else {

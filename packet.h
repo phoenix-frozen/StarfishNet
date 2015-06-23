@@ -166,7 +166,7 @@ typedef struct packet {
 
 /* transmit side */
 int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agreement_key, uint32_t encryption_counter, packet_t* packet, bool pure_ack);
-int generate_packet_headers(SN_Table_entry_t *table_entry, bool dissociate, packet_t *packet);
+int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, packet_t* packet, SN_Message_t* message);
 int generate_payload(SN_Message_t* message, packet_t* packet);
 
 /* receive side */

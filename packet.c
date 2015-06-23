@@ -56,7 +56,7 @@ int encrypt_authenticate_packet(SN_AES_key_t* link_key, SN_Public_key_t* key_agr
     return SN_OK;
 }
 
-int generate_packet_headers(SN_Table_entry_t *table_entry, bool dissociate, packet_t *packet) {
+int generate_packet_headers(SN_Table_entry_t* table_entry, bool dissociate, packet_t* packet, SN_Message_t* message) {
     network_header_t* network_header;
 
     SN_DebugPrintf("enter\n");
@@ -66,11 +66,37 @@ int generate_packet_headers(SN_Table_entry_t *table_entry, bool dissociate, pack
         return -SN_ERR_NULL;
     }
 
+    //network_header_t
+    packet->layout.network_header         = 0; //redundant, but useful to demonstrate the point
+    packet->layout.present.network_header = 1;
     network_header = PACKET_ENTRY(*packet, network_header, request);
     if(PACKET_SIZE(*packet, request) != sizeof(network_header_t)) {
         SN_ErrPrintf("packet doesn't appear to have a valid network header, aborting\n");
         return -SN_ERR_END_OF_DATA;
     }
+    network_header->protocol_id  = STARFISHNET_PROTOCOL_ID;
+    network_header->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    network_header->src_addr     = starfishnet_config.mib.macShortAddress;
+    network_header->dst_addr     = table_entry->short_address;
+    network_header->attributes   = 0;
+    network_header->encrypt      = (uint8_t)(message == NULL || message->type != SN_Association_request);
+    network_header->req_details  = (uint8_t)!table_entry->details_known;
+    network_header->details      = (uint8_t)!table_entry->knows_details;
+    network_header->key_confirm  = (uint8_t)(table_entry->state >= SN_Associate_received);
+    network_header->associate    = (uint8_t)(table_entry->state < SN_Send_finalise);
+    network_header->evidence     = (uint8_t)(message != NULL && message->type > SN_Data_message);
+    network_header->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
+    network_header->ack          = (uint8_t)((table_entry->ack && network_header->encrypt) || message == NULL);
+    //update packet
+    PACKET_SIZE(*packet, request) = sizeof(network_header_t);
+    //update node table state
+    if(network_header->key_confirm) {
+        table_entry->state = SN_Associated;
+    }
+    if(network_header->details) {
+        table_entry->knows_details = 1;
+    }
+    table_entry->ack = 0;
 
     //alt_stream_header_t
     if(network_header->alt_stream) {
