@@ -89,7 +89,7 @@ typedef struct SN_Endpoint {
     SN_Altstream_t* altstream;
 } SN_Endpoint_t;
 
-#define SN_BROADCAST_ADDRESS   0xFFFE
+#define SN_BROADCAST_ADDRESS   0xFFFF
 #define SN_NO_SHORT_ADDRESS    0xFFFE
 #define SN_COORDINATOR_ADDRESS 0x0000
 
@@ -109,7 +109,7 @@ typedef struct SN_Network_descriptor {
     uint16_t        pan_id;
     uint8_t         radio_channel;
 
-    SN_Network_config_t network_config;
+    SN_Network_config_t* network_config;
 } SN_Network_descriptor_t;
 
 /* Messages */

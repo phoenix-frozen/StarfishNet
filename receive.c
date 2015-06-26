@@ -11,9 +11,9 @@
 #include "nonqueued_transmission.h"
 #include "receive.h"
 
-static SN_Receive_callback_t receive_callback = NULL;
+static SN_Receive_callback_t* receive_callback = NULL;
 
-void SN_Receive(SN_Receive_callback_t callback) {
+void SN_Receive(SN_Receive_callback_t* callback) {
     receive_callback = callback;
 }
 

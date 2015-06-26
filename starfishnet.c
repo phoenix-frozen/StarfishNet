@@ -47,7 +47,7 @@ static void init(void) {
     NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.mib.macExtendedAddress, 8);
 
     //set up the radio with an invalid short address
-    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, SN_NO_SHORT_ADDRESS);
+    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)SN_NO_SHORT_ADDRESS);
 
     //TODO: other init stuff goes in here
     SN_InfoPrintf("exit\n");

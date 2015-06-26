@@ -52,6 +52,7 @@ typedef struct network_header {
 #define DATA_ATTRIBUTE(network_header, attribute) (ATTRIBUTE(network_header, data) && (network_header)->data_attributes.attribute)
 #define CONTROL_ATTRIBUTE(network_header, attribute) (!ATTRIBUTE(network_header, data) && (network_header)->control_attributes.attribute)
 
+#pragma disable_warning 219
 typedef struct alt_stream_header {
     //alternate stream
     uint8_t length;

@@ -50,6 +50,7 @@ int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
 
 int SN_Tree_free_address(uint16_t address) {
     //not implemented yet
+    (void)address; //shut up GCC
     return -SN_ERR_UNIMPLEMENTED;
 }
 

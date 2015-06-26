@@ -67,7 +67,7 @@ static struct {
     clock_time_t timeout;
     uint8_t show_full_networks;
 
-    SN_Discovery_callback_t callback;
+    SN_Discovery_callback_t* callback;
     void* extradata;
 } discovery_configuration;
 
@@ -94,6 +94,8 @@ PROCESS_THREAD(starfishnet_discovery_process, ev, data)
 
     PROCESS_BEGIN();
     discovery_event = process_alloc_event();
+
+    (void)data; //shut up GCC
 
     while(1) {
         PROCESS_WAIT_EVENT();
@@ -140,7 +142,7 @@ static inline uint8_t popcount(uint32_t word) {
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int SN_Discover(SN_Discovery_callback_t callback, uint32_t channel_mask, clock_time_t timeout,
+int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_time_t timeout,
                 bool show_full_networks, void *extradata) {
     SN_InfoPrintf("enter\n");
     SN_InfoPrintf("performing discovery over %#010"
@@ -246,7 +248,7 @@ void SN_Discovery_beacon_input(void) {
         return;
     }
 
-    memcpy(&ndesc.network_config, &beacon_payload->beacon_data.network_config, sizeof(ndesc.network_config));
+    ndesc.network_config = &beacon_payload->beacon_data.network_config;
     ndesc.radio_channel = packetbuf_attr(PACKETBUF_ATTR_CHANNEL);
     ndesc.pan_id = packetbuf_attr(PACKETBUF_ATTR_NETWORK_ID);
 
