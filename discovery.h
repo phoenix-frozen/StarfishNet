@@ -1,0 +1,6 @@
+#ifndef STARFISHNET_DISCOVERY_H
+#define STARFISHNET_DISCOVERY_H
+
+void SN_Discover_input(void);
+
+#endif //STARFISHNET_DISCOVERY_H

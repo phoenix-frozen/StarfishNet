@@ -6,15 +6,26 @@
 #include "net/linkaddr.h"
 #include "net/packetbuf.h"
 #include "net/netstack.h"
+#include "logging.h"
 
 #include <assert.h>
 
-int SN_TX_Packetbuf(uint16_t source, uint16_t destination) {
+int SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
     linkaddr_t src_address, next_hop;
     int ret;
 
-    assert(starfishnet_config.nib.enable_routing);
+    if(source == SN_NO_SHORT_ADDRESS || destination == SN_NO_SHORT_ADDRESS) {
+        SN_ErrPrintf("invalid route: %#06x -> %#06x\n", source, destination);
+        return -SN_ERR_INVALID;
+    }
+
+    if(starfishnet_config.mib.macShortAddress == SN_NO_SHORT_ADDRESS) {
+        SN_ErrPrintf("tried to route when addressing isn't correctly configured. aborting\n");
+        return -SN_ERR_INVALID;
+    }
+
     if(!starfishnet_config.nib.enable_routing) {
+        SN_ErrPrintf("tried to route when routing was switched off. aborting\n");
         return -SN_ERR_INVALID;
     }
 

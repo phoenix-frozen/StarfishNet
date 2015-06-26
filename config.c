@@ -1,3 +1,5 @@
+#include "net/mac/frame802154.h"
+
 #include "config.h"
 
 SN_Config_t starfishnet_config = {
@@ -10,5 +12,6 @@ SN_Config_t starfishnet_config = {
 
     .mib = {
         .macShortAddress = SN_NO_SHORT_ADDRESS,
+        .macPANId = IEEE802154_PANID,
     },
 };

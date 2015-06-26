@@ -109,6 +109,9 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &dst_addr);
 
+    packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_DATAFRAME);
+    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.mib.macPANId);
+
     return SN_OK;
 }
 

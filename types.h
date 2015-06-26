@@ -89,14 +89,11 @@ typedef struct SN_Endpoint {
     SN_Altstream_t* altstream;
 } SN_Endpoint_t;
 
+#define SN_BROADCAST_ADDRESS   0xFFFE
 #define SN_NO_SHORT_ADDRESS    0xFFFE
 #define SN_COORDINATOR_ADDRESS 0x0000
 
-typedef struct SN_Network_descriptor {
-    //MAC information
-    uint16_t        pan_id;
-    uint8_t         radio_channel;
-
+typedef struct SN_Network_config {
     //routing tree configuration
     uint8_t         routing_tree_branching_factor;
     uint16_t        leaf_blocks;
@@ -105,6 +102,14 @@ typedef struct SN_Network_descriptor {
     uint8_t         routing_tree_position;
     uint16_t        router_address;
     SN_Public_key_t router_public_key;
+} SN_Network_config_t;
+
+typedef struct SN_Network_descriptor {
+    //MAC information
+    uint16_t        pan_id;
+    uint8_t         radio_channel;
+
+    SN_Network_config_t network_config;
 } SN_Network_descriptor_t;
 
 /* Messages */

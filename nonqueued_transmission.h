@@ -6,6 +6,6 @@
 /* Transmit the packet in the packetbuf, using
  * the routing subsystem to calculate the next hop address.
  */
-int SN_TX_Packetbuf(uint16_t source, uint16_t destination);
+int SN_Forward_Packetbuf(uint16_t source, uint16_t destination);
 
 #endif //STARFISHNET_NONQUEUED_TRANSMISSION_H

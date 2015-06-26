@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <string.h>
-#include <net/linkaddr.h>
 
 #include "starfishnet.h"
 #include "config.h"
@@ -18,7 +17,7 @@ void SN_Receive(SN_Receive_callback_t callback) {
     receive_callback = callback;
 }
 
-void SN_Receive_data_packet(packet_t* packet, const linkaddr_t* from, uint8_t fromsize) {
+void SN_Receive_data_packet(packet_t* packet) {
     int ret;
     SN_Altstream_t altstream;
     SN_Endpoint_t src_addr = {.altstream = &altstream};
@@ -46,37 +45,40 @@ void SN_Receive_data_packet(packet_t* packet, const linkaddr_t* from, uint8_t fr
     SN_DebugPrintf("network layer says packet is to %#06x\n", network_header->dst_addr);
     SN_DebugPrintf("network layer says packet is from %#06x\n", network_header->src_addr);
 
-    if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS && network_header->dst_addr != starfishnet_config.mib.macShortAddress) {
-        //packet was sent to our MAC address, but wasn't for our network address. that means we need to route it
-        SN_InfoPrintf("packet isn't for us. routing\n");
-        if(starfishnet_config.nib.enable_routing) {
-            SN_TX_Packetbuf(network_header->src_addr, network_header->dst_addr);
-            return;
-        } else {
-            SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
-            return;
-        }
+    if(network_header->src_addr == SN_NO_SHORT_ADDRESS || network_header->dst_addr == SN_NO_SHORT_ADDRESS) {
+        SN_ErrPrintf("invalid addressing information: %#06x -> %#06x. dropping\n", source, destination);
+        return;
     }
 
-    if(network_header->src_addr == SN_NO_SHORT_ADDRESS) {
-        if(from == NULL) {
-            SN_ErrPrintf("network header has no address, and no link-layer from address received. aborting\n");
-            return;
-        }
-
-        SN_WarnPrintf("network header has no address; using MAC-layer header\n");
-        if(fromsize == 8) {
-            src_addr.type = SN_ENDPOINT_LONG_ADDRESS;
-            memcpy(src_addr.long_address, from->u8, 8);
-        } else {
-            src_addr.type = SN_ENDPOINT_SHORT_ADDRESS;
-            src_addr.short_address = from->u16;
-        }
+    if(network_header->dst_addr == SN_BROADCAST_ADDRESS) {
+        //TODO: broadcast handling goes here
+        SN_WarnPrintf("broadcasts not currently implemented\n");
+        return;
     } else {
-        SN_InfoPrintf("setting source address to %#06x\n", network_header->src_addr);
-        src_addr.type          = SN_ENDPOINT_SHORT_ADDRESS;
-        src_addr.short_address = network_header->src_addr;
+        if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS &&
+           network_header->dst_addr != starfishnet_config.mib.macShortAddress &&
+           network_header->dst_addr != SN_NO_SHORT_ADDRESS) {
+            /* packet's network-layer header is a valid
+             * network-layer address that isn't ours,
+             * which means we're expected to route it
+             */
+            SN_InfoPrintf("packet isn't for us. routing\n");
+            if(starfishnet_config.nib.enable_routing) {
+                SN_Forward_Packetbuf(network_header->src_addr, network_header->dst_addr);
+                return;
+            } else {
+                SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
+                return;
+            }
+        } else if(starfishnet_config.mib.macShortAddress == SN_NO_SHORT_ADDRESS &&
+                  network_header->src_addr == starfishnet_config.nib.parent_address) {
+            //potential address assignment from our parent. process normally
+        }
     }
+
+    SN_InfoPrintf("setting source address to %#06x\n", network_header->src_addr);
+    src_addr.type          = SN_ENDPOINT_SHORT_ADDRESS;
+    src_addr.short_address = network_header->src_addr;
 
     SN_InfoPrintf("consulting neighbor table...\n");
 
@@ -111,18 +113,7 @@ void SN_Receive_data_packet(packet_t* packet, const linkaddr_t* from, uint8_t fr
             if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(*packet, association_header, indication) == NULL) {
                 SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
                 if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-                    SN_Altstream_t ack_altstream;
-                    SN_Endpoint_t ack_address = {
-                        .type = SN_ENDPOINT_SHORT_ADDRESS,
-                        .short_address = table_entry.short_address,
-                        .altstream = &ack_altstream,
-                    };
-
-                    //this should be an initialiser, but SDCC freaks out
-                    ack_altstream.stream_idx        = table_entry.altstream.stream_idx;
-                    ack_altstream.stream_idx_length = table_entry.altstream.stream_idx_length;
-
-                    SN_Send(&ack_address, NULL);
+                    SN_Send(&src_addr, NULL);
                 }
             }
         }
@@ -159,18 +150,7 @@ void SN_Receive_data_packet(packet_t* packet, const linkaddr_t* from, uint8_t fr
             SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
             SN_Retransmission_retry(0);
             if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
-                SN_Altstream_t ack_altstream;
-                SN_Endpoint_t ack_address = {
-                    .type = SN_ENDPOINT_SHORT_ADDRESS,
-                    .short_address = table_entry.short_address,
-                    .altstream = &ack_altstream,
-                };
-
-                //this should be an initialiser, but SDCC freaks out
-                ack_altstream.stream_idx        = table_entry.altstream.stream_idx;
-                ack_altstream.stream_idx_length = table_entry.altstream.stream_idx_length;
-
-                SN_Send(&ack_address, NULL);
+                SN_Send(&src_addr, NULL);
             }
             return;
         } else {

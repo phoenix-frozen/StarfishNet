@@ -3,6 +3,6 @@
 
 #include "packet.h"
 
-void SN_Receive_data_packet(packet_t* packet, const linkaddr_t* from, uint8_t fromsize);
+void SN_Receive_data_packet(packet_t* packet);
 
 #endif //STARFISHNET_RECEIVE_H

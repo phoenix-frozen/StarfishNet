@@ -1,5 +1,5 @@
-#include <assert.h>
 #include <string.h>
+
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
 #include "net/netstack.h"
@@ -10,12 +10,9 @@
 #include "crypto.h"
 #include "logging.h"
 #include "uECC.h"
-#include "node_table.h"
 #include "packet.h"
-#include "status.h"
-#include "retransmission_queue.h"
-#include "nonqueued_transmission.h"
 #include "receive.h"
+#include "discovery.h"
 
 static int generate_random_number(uint8_t *dest, unsigned size) {
     uint16_t rand;
@@ -34,8 +31,6 @@ static int generate_random_number(uint8_t *dest, unsigned size) {
 }
 
 static void init(void) {
-    radio_value_t radio_result;
-
     SN_InfoPrintf("enter\n");
     queuebuf_init();
     packetbuf_clear();
@@ -49,9 +44,6 @@ static void init(void) {
         SN_Crypto_generate_keypair(&starfishnet_config.device_root_key);
     }
     NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.mib.macExtendedAddress, 8);
-    if(NETSTACK_RADIO.get_value(RADIO_PARAM_PAN_ID, &radio_result) == RADIO_RESULT_OK) {
-        starfishnet_config.mib.macPANId = (uint16_t)radio_result;
-    }
 
     //set up the radio with an invalid short address
     NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, SN_NO_SHORT_ADDRESS);
@@ -78,23 +70,23 @@ static void input(void) {
     } else {
         SN_DebugPrintf("received frame from %#06x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
     }
-    packet.length = (uint8_t)packetbuf_datalen(); //cast is safe because datalen <= 128
-    packet.data = packetbuf_dataptr();
-    SN_InfoPrintf("received %d-byte frame\n", PACKET_SIZE(packet, indication));
+    SN_InfoPrintf("received %d-byte frame\n", packetbuf_datalen());
 
     switch(packetbuf_attr(PACKETBUF_ATTR_FRAME_TYPE)) {
         case FRAME802154_BEACONFRAME:
-            //TODO: call out to the beacon-parsing code
+            SN_Discover_input();
             break;
 
         case FRAME802154_DATAFRAME:
-            SN_Receive_data_packet(&packet, packetbuf_addr(PACKETBUF_ADDR_SENDER), packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE));
+            //TODO: check link-layer destination address matches either ours or broadcast
+            packet.length = (uint8_t)packetbuf_datalen(); //cast is safe because datalen <= 128
+            packet.data = packetbuf_dataptr();
+            SN_Receive_data_packet(&packet);
             break;
 
         case FRAME802154_CMDFRAME:
-            //TODO: is there a command frame type that should cause us to TX a beacon?
-        case FRAME802154_BEACONREQ:
-            //TODO: TX a beacon and return
+            //TODO: check that this is a command frame of type FRAME802154_BEACONREQ
+            //TODO: if so, call out to beacons code to TX
             break;
 
         default:
