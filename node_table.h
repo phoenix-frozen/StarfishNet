@@ -22,27 +22,25 @@ typedef enum SN_Association_state {
 
 typedef struct SN_Table_entry {
     //addressing information
-    uint8_t          long_address[8];
-    uint16_t         short_address;
-    SN_Public_key_t  public_key;
+    uint8_t         long_address[8];
+    uint16_t        short_address;
+    SN_Public_key_t public_key;
 
     struct {
         uint8_t stream_idx_length;
         uint8_t stream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
-    } altstream;
+    }               altstream;
 
     //relationship metadata
-    union {
-        struct {
-            uint16_t state         :3; //taken from SN_Association_state
-            uint16_t details_known :1; //we know the other node's details; don't ask for them
-            uint16_t knows_details :1; //the other node needs our details; send them in our next transmission
-            uint16_t neighbor      :1; //this node is our neighbor
-            uint16_t child         :1; //only valid if neighbor == 1. this node is our child
-            uint16_t router        :1; //only valid if child == 1. this node is a router (and thus possesses an address block)
-            uint16_t ack           :1; //we've received new packets. send an acknowledgement in the next transmission
-            uint16_t unavailable   :1; //we've lost contact with this node. bank up any transmissions until we hear from it again
-        };
+    struct {
+        uint16_t state         :3; //taken from SN_Association_state
+        uint16_t details_known :1; //we know the other node's details; don't ask for them
+        uint16_t knows_details :1; //the other node needs our details; send them in our next transmission
+        uint16_t neighbor      :1; //this node is our neighbor
+        uint16_t child         :1; //only valid if neighbor == 1. this node is our child
+        uint16_t router        :1; //only valid if child == 1. this node is a router (and thus possesses an address block)
+        uint16_t ack           :1; //we've received new packets. send an acknowledgement in the next transmission
+        uint16_t unavailable   :1; //we've lost contact with this node. bank up any transmissions until we hear from it again
     };
 
     //cryptographic data
