@@ -1,5 +1,5 @@
 #include "packet.h"
-#include "sn_beacons.h"
+#include "discovery.h"
 #include "logging.h"
 #include "status.h"
 #include "crypto.h"
@@ -202,7 +202,7 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
                         SN_InfoPrintf("allocated %s address %#06x\n", block ? "router" : "leaf", address);
 
                         table_entry->short_address = address;
-                        ret = SN_Beacon_update();
+                        SN_Discovery_beacon_update();
                     } else {
                         SN_WarnPrintf("address allocation failed; proceeding without\n");
 
@@ -811,11 +811,7 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
                     starfishnet_config.mib.macShortAddress = network_header->dst_addr;
 
                     if(starfishnet_config.nib.enable_routing) {
-                        int ret = SN_Beacon_update();
-                        if(ret != SN_OK) {
-                            SN_ErrPrintf("beacon update failed: %d\n", -ret);
-                            return ret;
-                        }
+                        SN_Discovery_beacon_update();
                     }
                 }
             }

@@ -8,14 +8,59 @@
 #include "starfishnet.h"
 #include "logging.h"
 #include "status.h"
-#include "sn_beacons.h"
+#include "types.h"
 #include "constants.h"
 #include "crypto.h"
 #include "routing_tree.h"
+#include "config.h"
 
-PROCESS(starfishnet_discovery_process, "StarfishNet discovery process");
+typedef struct beacon_payload {
+    struct {
+        //protocol ID information
+        uint8_t protocol_id; //STARFISHNET_PROTOCOL_ID
+        uint8_t protocol_ver; //STARFISHNET_PROTOCOL_VERSION
 
-static process_event_t discovery_event;
+        SN_Network_config_t network_config;
+
+        //capacity information
+        uint8_t router_capacity; //remaining router address blocks
+        uint8_t leaf_capacity;   //remaining leaf addresses
+    } beacon_data;
+
+    SN_Hash_t hash;
+} beacon_payload_t;
+
+static beacon_payload_t self_beacon_payload;
+
+void SN_Discovery_beacon_update(void) {
+    uint16_t leaf_capacity;
+    uint16_t router_capacity;
+
+    //protocol ID information
+    self_beacon_payload.beacon_data.protocol_id     = STARFISHNET_PROTOCOL_ID;
+    self_beacon_payload.beacon_data.protocol_ver    = STARFISHNET_PROTOCOL_VERSION;
+    //routing tree metadata
+    self_beacon_payload.beacon_data.network_config.routing_tree_branching_factor = starfishnet_config.nib.tree_branching_factor;
+    self_beacon_payload.beacon_data.network_config.routing_tree_position         = starfishnet_config.nib.tree_position;
+    self_beacon_payload.beacon_data.network_config.leaf_blocks                   = starfishnet_config.nib.leaf_blocks;
+
+    if(starfishnet_config.nib.enable_routing) {
+        SN_Tree_determine_capacity(&leaf_capacity, &router_capacity);
+    } else {
+        leaf_capacity = router_capacity = 0;
+    }
+    self_beacon_payload.beacon_data.leaf_capacity   = (uint8_t)(leaf_capacity > 255 ? 255 : leaf_capacity);
+    self_beacon_payload.beacon_data.router_capacity = (uint8_t)(router_capacity > 255 ? 255 : router_capacity);
+
+    //public key
+    memcpy(&self_beacon_payload.beacon_data.network_config.router_public_key, &starfishnet_config.device_root_key.public_key, sizeof(self_beacon_payload.beacon_data.network_config.router_public_key));
+
+    //address
+    self_beacon_payload.beacon_data.network_config.router_address = starfishnet_config.mib.macShortAddress;
+
+    //hash
+    SN_Crypto_hash((uint8_t*)&self_beacon_payload.beacon_data, sizeof(self_beacon_payload.beacon_data), &self_beacon_payload.hash, 0);
+}
 
 static struct {
     uint32_t channel_mask;
@@ -35,6 +80,10 @@ static inline uint8_t ctz(uint32_t word) {
 
     return count;
 }
+
+PROCESS(starfishnet_discovery_process, "StarfishNet discovery process");
+
+static process_event_t discovery_event;
 
 PROCESS_THREAD(starfishnet_discovery_process, ev, data)
 {
@@ -134,11 +183,10 @@ int SN_Discover(SN_Discovery_callback_t callback, uint32_t channel_mask, clock_t
     return SN_OK;
 }
 
-void SN_Discover_input(void) {
+void SN_Discovery_beacon_input(void) {
     static SN_Network_descriptor_t ndesc;
     static SN_Hash_t protohash;
     beacon_payload_t* beacon_payload;
-    SN_Hash_t* beacon_hash;
 
     SN_InfoPrintf("enter\n");
 
@@ -147,9 +195,9 @@ void SN_Discover_input(void) {
                   packetbuf_attr(PACKETBUF_ATTR_NETWORK_ID));
 
     //check beacon payload is of the correct length and router is broadcasting with a short address
-    if(packetbuf_datalen() != sizeof(beacon_payload_t) + BEACON_HASH_LENGTH) {
+    if(packetbuf_datalen() != sizeof(beacon_payload_t)) {
         SN_InfoPrintf("packetbuf is the wrong size (%d, should be %d). aborting\n", packetbuf_datalen(),
-                      sizeof(beacon_payload_t) + BEACON_HASH_LENGTH);
+                      sizeof(beacon_payload_t));
         return;
     }
 
@@ -161,32 +209,31 @@ void SN_Discover_input(void) {
     }
 
     SN_InfoPrintf("    CoordAddress=%#06x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
-    if(beacon_payload->network_config.router_address != packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16) {
-        SN_WarnPrintf("    Address mismatch! Using %#06x\n", beacon_payload->address);
+    if(beacon_payload->beacon_data.network_config.router_address != packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16) {
+        SN_WarnPrintf("    Address mismatch! Using %#06x\n", beacon_payload->beacon_data.address);
     }
 
     //check that this is a network of the kind we care about
-    SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->protocol_id, beacon_payload->protocol_ver);
-    if(beacon_payload->protocol_id != STARFISHNET_PROTOCOL_ID ||
-       beacon_payload->protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
+    SN_InfoPrintf("    PID=%#04x, PVER=%#04x\n", beacon_payload->beacon_data.protocol_id, beacon_payload->beacon_data.protocol_ver);
+    if(beacon_payload->beacon_data.protocol_id != STARFISHNET_PROTOCOL_ID ||
+       beacon_payload->beacon_data.protocol_ver != STARFISHNET_PROTOCOL_VERSION) {
         SN_InfoPrintf("Beacon is for wrong kind of network.\n");
         return;
     }
 
     //XXX: this is the most disgusting way to print a key ever invented by man
     SN_InfoPrintf("    key=%#018"PRIx64"%016"PRIx64"%08"PRIx32"\n",
-                  *(uint64_t*)beacon_payload->public_key.data,
-                  *(((uint64_t*)beacon_payload->public_key.data) + 1),
-                  *(((uint32_t*)beacon_payload->public_key.data) + 4));
+                  *(uint64_t*)beacon_payload->beacon_data.public_key.data,
+                  *(((uint64_t*)beacon_payload->beacon_data.public_key.data) + 1),
+                  *(((uint32_t*)beacon_payload->beacon_data.public_key.data) + 4));
 
-    beacon_hash = (SN_Hash_t*)((uint8_t*)beacon_payload + sizeof(beacon_payload_t));
-    SN_Crypto_hash((uint8_t*)beacon_payload, sizeof(*beacon_payload), &protohash, 0);
-    if(memcmp(beacon_hash, &protohash, BEACON_HASH_LENGTH) != 0) {
+    SN_Crypto_hash((uint8_t*)&beacon_payload->beacon_data, sizeof(beacon_payload->beacon_data), &protohash, 0);
+    if(memcmp(beacon_payload->hash.data, protohash.data, SN_Hash_size) != 0) {
         SN_WarnPrintf("Beacon hash check failed.\n");
         return;
     }
 
-    if(beacon_payload->router_capacity == 0 && beacon_payload->leaf_capacity == 0) {
+    if(beacon_payload->beacon_data.router_capacity == 0 && beacon_payload->beacon_data.leaf_capacity == 0) {
         SN_WarnPrintf("Router is full.\n");
 
         if(!discovery_configuration.show_full_networks) {
@@ -194,12 +241,12 @@ void SN_Discover_input(void) {
         }
     }
 
-    if(SN_Tree_check_join(beacon_payload->network_config.routing_tree_position + (uint8_t)1, beacon_payload->network_config.routing_tree_branching_factor) < 0) {
+    if(SN_Tree_check_join(beacon_payload->beacon_data.network_config.routing_tree_position + (uint8_t)1, beacon_payload->beacon_data.network_config.routing_tree_branching_factor) < 0) {
         SN_WarnPrintf("Router has invalid tree configuration\n");
         return;
     }
 
-    memcpy(&ndesc.network_config, &beacon_payload->network_config, sizeof(ndesc.network_config));
+    memcpy(&ndesc.network_config, &beacon_payload->beacon_data.network_config, sizeof(ndesc.network_config));
     ndesc.radio_channel = packetbuf_attr(PACKETBUF_ATTR_CHANNEL);
     ndesc.pan_id = packetbuf_attr(PACKETBUF_ATTR_NETWORK_ID);
 

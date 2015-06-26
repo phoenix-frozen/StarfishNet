@@ -34,6 +34,7 @@ static void init(void) {
     SN_InfoPrintf("enter\n");
     queuebuf_init();
     packetbuf_clear();
+    process_start(&starfishnet_discovery_process, NULL);
 
     uECC_set_rng(&generate_random_number);
 
@@ -74,7 +75,7 @@ static void input(void) {
 
     switch(packetbuf_attr(PACKETBUF_ATTR_FRAME_TYPE)) {
         case FRAME802154_BEACONFRAME:
-            SN_Discover_input();
+            SN_Discovery_beacon_input();
             break;
 
         case FRAME802154_DATAFRAME:
