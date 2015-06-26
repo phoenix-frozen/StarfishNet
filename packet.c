@@ -76,7 +76,7 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
     }
     network_header->protocol_id  = STARFISHNET_PROTOCOL_ID;
     network_header->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
-    network_header->src_addr     = starfishnet_config.mib.macShortAddress;
+    network_header->src_addr     = starfishnet_config.short_address;
     network_header->dst_addr     = table_entry->short_address;
     network_header->attributes   = 0;
     network_header->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
@@ -217,12 +217,12 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
                 }
             } else {
                 //this is a request
-                association_header->router = starfishnet_config.nib.enable_routing;
+                association_header->router = starfishnet_config.enable_routing;
                 association_header->child =
                     memcmp(
-                        starfishnet_config.nib.parent_public_key.data,
+                        starfishnet_config.parent_public_key.data,
                         table_entry->public_key.data,
-                        sizeof(starfishnet_config.nib.parent_public_key.data)
+                        sizeof(starfishnet_config.parent_public_key.data)
                     ) == 0 ? (uint8_t)1 : (uint8_t)0;
             }
         }
@@ -788,29 +788,29 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
 
                 //parent/child handling
                 if(association_header->child) {
-                    if(network_header->src_addr != starfishnet_config.nib.parent_address) {
+                    if(network_header->src_addr != starfishnet_config.parent_address) {
                         SN_ErrPrintf("received address delegation packet from someone not our parent\n");
                         return -SN_ERR_SECURITY;
                     }
 
-                    if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS) {
+                    if(starfishnet_config.short_address != SN_NO_SHORT_ADDRESS) {
                         SN_ErrPrintf("received address delegation when we already have a short address\n");
                         return -SN_ERR_UNEXPECTED;
                     }
 
-                    if(starfishnet_config.nib.enable_routing) {
-                        starfishnet_config.nib.enable_routing = association_header->router;
+                    if(starfishnet_config.enable_routing) {
+                        starfishnet_config.enable_routing = association_header->router;
                     }
 
                     //set our short address to the one we were just given
                     SN_InfoPrintf("setting our short address to %#06x...\n", network_header->dst_addr);
-                    if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, starfishnet_config.mib.macShortAddress) != RADIO_RESULT_OK) {
+                    if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, starfishnet_config.short_address) != RADIO_RESULT_OK) {
                         SN_ErrPrintf("couldn't set the radio's short address...\n");
                         return -SN_ERR_RADIO;
                     }
-                    starfishnet_config.mib.macShortAddress = network_header->dst_addr;
+                    starfishnet_config.short_address = network_header->dst_addr;
 
-                    if(starfishnet_config.nib.enable_routing) {
+                    if(starfishnet_config.enable_routing) {
                         SN_Discovery_beacon_update();
                     }
                 }

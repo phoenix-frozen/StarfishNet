@@ -55,23 +55,23 @@ void SN_Receive_data_packet(packet_t* packet) {
         SN_WarnPrintf("broadcasts not currently implemented\n");
         return;
     } else {
-        if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS &&
-           network_header->dst_addr != starfishnet_config.mib.macShortAddress &&
+        if(starfishnet_config.short_address != SN_NO_SHORT_ADDRESS &&
+           network_header->dst_addr != starfishnet_config.short_address &&
            network_header->dst_addr != SN_NO_SHORT_ADDRESS) {
             /* packet's network-layer header is a valid
              * network-layer address that isn't ours,
              * which means we're expected to route it
              */
             SN_InfoPrintf("packet isn't for us. routing\n");
-            if(starfishnet_config.nib.enable_routing) {
+            if(starfishnet_config.enable_routing) {
                 SN_Forward_Packetbuf(network_header->src_addr, network_header->dst_addr);
                 return;
             } else {
                 SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
                 return;
             }
-        } else if(starfishnet_config.mib.macShortAddress == SN_NO_SHORT_ADDRESS &&
-                  network_header->src_addr == starfishnet_config.nib.parent_address) {
+        } else if(starfishnet_config.short_address == SN_NO_SHORT_ADDRESS &&
+                  network_header->src_addr == starfishnet_config.parent_address) {
             //potential address assignment from our parent. process normally
         }
     }

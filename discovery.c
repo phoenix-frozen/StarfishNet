@@ -40,11 +40,11 @@ void SN_Discovery_beacon_update(void) {
     self_beacon_payload.beacon_data.protocol_id     = STARFISHNET_PROTOCOL_ID;
     self_beacon_payload.beacon_data.protocol_ver    = STARFISHNET_PROTOCOL_VERSION;
     //routing tree metadata
-    self_beacon_payload.beacon_data.network_config.routing_tree_branching_factor = starfishnet_config.nib.tree_branching_factor;
-    self_beacon_payload.beacon_data.network_config.routing_tree_position         = starfishnet_config.nib.tree_position;
-    self_beacon_payload.beacon_data.network_config.leaf_blocks                   = starfishnet_config.nib.leaf_blocks;
+    self_beacon_payload.beacon_data.network_config.routing_tree_branching_factor = starfishnet_config.tree_branching_factor;
+    self_beacon_payload.beacon_data.network_config.routing_tree_position         = starfishnet_config.tree_position;
+    self_beacon_payload.beacon_data.network_config.leaf_blocks                   = starfishnet_config.leaf_blocks;
 
-    if(starfishnet_config.nib.enable_routing) {
+    if(starfishnet_config.enable_routing) {
         SN_Tree_determine_capacity(&leaf_capacity, &router_capacity);
     } else {
         leaf_capacity = router_capacity = 0;
@@ -56,7 +56,7 @@ void SN_Discovery_beacon_update(void) {
     memcpy(&self_beacon_payload.beacon_data.network_config.router_public_key, &starfishnet_config.device_root_key.public_key, sizeof(self_beacon_payload.beacon_data.network_config.router_public_key));
 
     //address
-    self_beacon_payload.beacon_data.network_config.router_address = starfishnet_config.mib.macShortAddress;
+    self_beacon_payload.beacon_data.network_config.router_address = starfishnet_config.short_address;
 
     //hash
     SN_Crypto_hash((uint8_t*)&self_beacon_payload.beacon_data, sizeof(self_beacon_payload.beacon_data), &self_beacon_payload.hash, 0);

@@ -6,11 +6,11 @@
 #include <assert.h>
 
 int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
-    uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
-    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
-    uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
+    uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
+    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor);
+    uint8_t  block_exponent       =            space_exponent - starfishnet_config.tree_branching_factor;
     uint16_t block_size           = (uint16_t)(1 << block_exponent);
-    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
+    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.leaf_blocks);
     uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
 
     if(address == NULL || block == NULL) {
@@ -18,15 +18,15 @@ int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
         return -SN_ERR_NULL;
     }
 
-    assert(starfishnet_config.nib.tree_branching_factor <= 16);
-    assert(starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor < 16);
-    assert(starfishnet_config.nib.enable_routing);
+    assert(starfishnet_config.tree_branching_factor <= 16);
+    assert(starfishnet_config.tree_position * starfishnet_config.tree_branching_factor < 16);
+    assert(starfishnet_config.enable_routing);
 
     if(*block) {
-        if(starfishnet_config.nib.router_blocks_allocated < total_blocks - total_leaf_blocks) {
-            *address = starfishnet_config.mib.macShortAddress + total_leaf_addresses + starfishnet_config.nib.router_blocks_allocated * block_size;
+        if(starfishnet_config.router_blocks_allocated < total_blocks - total_leaf_blocks) {
+            *address = starfishnet_config.short_address + total_leaf_addresses + starfishnet_config.router_blocks_allocated * block_size;
 
-            starfishnet_config.nib.router_blocks_allocated++;
+            starfishnet_config.router_blocks_allocated++;
         } else {
             //no available blocks. allocate single address
             *block = 0;
@@ -34,11 +34,11 @@ int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
     }
 
     if(!*block) {
-        if(starfishnet_config.nib.leaf_addresses_allocated < total_leaf_addresses) {
+        if(starfishnet_config.leaf_addresses_allocated < total_leaf_addresses) {
             //our short address is always at the start of our range, with leaf children right next to it
-            *address = starfishnet_config.mib.macShortAddress + starfishnet_config.nib.leaf_addresses_allocated;
+            *address = starfishnet_config.short_address + starfishnet_config.leaf_addresses_allocated;
 
-            starfishnet_config.nib.leaf_addresses_allocated++;
+            starfishnet_config.leaf_addresses_allocated++;
         } else {
             //no available addresses.
             return -SN_ERR_RESOURCES;
@@ -55,11 +55,11 @@ int SN_Tree_free_address(uint16_t address) {
 }
 
 int SN_Tree_determine_capacity(uint16_t* leaf, uint16_t* block) {
-    uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
-    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
-    uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
+    uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
+    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor);
+    uint8_t  block_exponent       =            space_exponent - starfishnet_config.tree_branching_factor;
     uint16_t block_size           = (uint16_t)(1 << block_exponent);
-    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
+    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.leaf_blocks);
     uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
 
     if(leaf == NULL || block == NULL) {
@@ -67,31 +67,31 @@ int SN_Tree_determine_capacity(uint16_t* leaf, uint16_t* block) {
         return -SN_ERR_NULL;
     }
 
-    *leaf  = total_leaf_addresses - starfishnet_config.nib.leaf_addresses_allocated;
-    *block = total_blocks - total_leaf_blocks - starfishnet_config.nib.router_blocks_allocated;
+    *leaf  = total_leaf_addresses - starfishnet_config.leaf_addresses_allocated;
+    *block = total_blocks - total_leaf_blocks - starfishnet_config.router_blocks_allocated;
 
     return SN_OK;
 }
 
 
 int SN_Tree_init() {
-    uint16_t total_blocks      = (uint16_t)(1 << starfishnet_config.nib.tree_branching_factor);
-    int address_block_exponent = 16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor;
+    uint16_t total_blocks      = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
+    int address_block_exponent = 16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor;
 
-    if(address_block_exponent < -starfishnet_config.nib.tree_branching_factor) {
+    if(address_block_exponent < -starfishnet_config.tree_branching_factor) {
         //we're trying to join a tree below the bottom. error
         return -SN_ERR_INVALID;
     } else if(address_block_exponent < 0) {
         //we're at the bottom of the tree. no children
-        starfishnet_config.nib.enable_routing = 0;
-        starfishnet_config.nib.leaf_blocks = (uint16_t)(total_blocks - 1);
-    } else if(address_block_exponent < starfishnet_config.nib.tree_branching_factor) {
+        starfishnet_config.enable_routing = 0;
+        starfishnet_config.leaf_blocks = (uint16_t)(total_blocks - 1);
+    } else if(address_block_exponent < starfishnet_config.tree_branching_factor) {
         //we're near the bottom of the tree. our children cannot route
-        starfishnet_config.nib.leaf_blocks = (uint16_t)(total_blocks - 1);
+        starfishnet_config.leaf_blocks = (uint16_t)(total_blocks - 1);
     }
 
-    starfishnet_config.nib.leaf_addresses_allocated = 1; //we always take the first address
-    starfishnet_config.nib.router_blocks_allocated  = 0;
+    starfishnet_config.leaf_addresses_allocated = 1; //we always take the first address
+    starfishnet_config.router_blocks_allocated  = 0;
 
     return SN_OK;
 }
@@ -132,8 +132,8 @@ int SN_Tree_check_join(uint8_t tree_position, uint8_t tree_branching_factor) {
  */
 
 int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
-    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.nib.tree_position * starfishnet_config.nib.tree_branching_factor);
-    uint8_t  block_exponent       =            space_exponent - starfishnet_config.nib.tree_branching_factor;
+    uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor);
+    uint8_t  block_exponent       =            space_exponent - starfishnet_config.tree_branching_factor;
 
     uint16_t space_size           = (uint16_t)(1 << space_exponent);
     uint16_t block_size           = (uint16_t)(1 << block_exponent);
@@ -141,9 +141,9 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
     uint16_t space_mask           = (uint16_t)(space_size - 1);
     uint16_t block_mask           = (uint16_t)(block_size - 1);
 
-    uint16_t space_base           = (uint16_t)(starfishnet_config.mib.macShortAddress & ~space_mask);
+    uint16_t space_base           = (uint16_t)(starfishnet_config.short_address & ~space_mask);
 
-    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.nib.leaf_blocks);
+    uint16_t total_leaf_blocks    = (uint16_t)(1 + starfishnet_config.leaf_blocks);
     uint16_t total_leaf_addresses = (uint16_t)(total_leaf_blocks * block_size);
 
     if(next_hop == NULL) {
@@ -151,7 +151,7 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
         return -SN_ERR_NULL;
     }
 
-    assert(starfishnet_config.nib.tree_branching_factor < 16);
+    assert(starfishnet_config.tree_branching_factor < 16);
 
 #ifdef SN_MESH_SHORTCUT_ROUTING
 #error Mesh-shortcut routing not yet implemented.
@@ -196,7 +196,7 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
     if((src_addr & ~space_mask) == space_base) {
         //src_addr is in my subtree, dst_addr is not
         //Rule 5 applies. Forward to my parent.
-        *next_hop = starfishnet_config.nib.parent_address;
+        *next_hop = starfishnet_config.parent_address;
         SN_DebugPrintf("Rule 5: %#06x\n", *next_hop);
         return SN_OK;
     }

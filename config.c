@@ -3,15 +3,10 @@
 #include "config.h"
 
 SN_Config_t starfishnet_config = {
-    .nib = {
-        .tx_retry_limit = STARFISHNET_TX_RETRY_LIMIT,
-        .tx_retry_timeout = STARFISHNET_TX_RETRY_TIMEOUT,
+    .tx_retry_limit = STARFISHNET_TX_RETRY_LIMIT,
+    .tx_retry_timeout = STARFISHNET_TX_RETRY_TIMEOUT,
 
-        .parent_address = SN_NO_SHORT_ADDRESS,
-    },
-
-    .mib = {
-        .macShortAddress = SN_NO_SHORT_ADDRESS,
-        .macPANId = IEEE802154_PANID,
-    },
+    .parent_address = SN_NO_SHORT_ADDRESS,
+    .short_address = SN_NO_SHORT_ADDRESS,
+    .pan_id = IEEE802154_PANID,
 };

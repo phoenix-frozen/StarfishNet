@@ -44,7 +44,7 @@ static void init(void) {
         SN_WarnPrintf("generating new device root key\n");
         SN_Crypto_generate_keypair(&starfishnet_config.device_root_key);
     }
-    NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.mib.macExtendedAddress, 8);
+    NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.long_address, 8);
 
     //set up the radio with an invalid short address
     NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)SN_NO_SHORT_ADDRESS);

@@ -19,17 +19,17 @@ int SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
         return -SN_ERR_INVALID;
     }
 
-    if(starfishnet_config.mib.macShortAddress == SN_NO_SHORT_ADDRESS) {
+    if(starfishnet_config.short_address == SN_NO_SHORT_ADDRESS) {
         SN_ErrPrintf("tried to route when addressing isn't correctly configured. aborting\n");
         return -SN_ERR_INVALID;
     }
 
-    if(!starfishnet_config.nib.enable_routing) {
+    if(!starfishnet_config.enable_routing) {
         SN_ErrPrintf("tried to route when routing was switched off. aborting\n");
         return -SN_ERR_INVALID;
     }
 
-    src_address.u16 = starfishnet_config.mib.macShortAddress;
+    src_address.u16 = starfishnet_config.short_address;
     ret = SN_Tree_route(source, destination, &next_hop.u16);
     if(ret != SN_OK) {
         return ret;

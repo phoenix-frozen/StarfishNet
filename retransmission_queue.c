@@ -68,26 +68,26 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     }
 
     //figure out which address type we're using
-    if(starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS) {;
-        SN_InfoPrintf("sending from our short address, %#06x\n", starfishnet_config.mib.macShortAddress);
+    if(starfishnet_config.short_address != SN_NO_SHORT_ADDRESS) {;
+        SN_InfoPrintf("sending from our short address, %#06x\n", starfishnet_config.short_address);
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
-        src_address.u16 = starfishnet_config.mib.macShortAddress;
+        src_address.u16 = starfishnet_config.short_address;
     } else {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_InfoPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
-        memcpy(src_address.u8, starfishnet_config.mib.macExtendedAddress, 8);
+        memcpy(src_address.u8, starfishnet_config.long_address, 8);
     }
 
     //perform routing calculations to determine destination address
     if(
         table_entry->short_address != SN_NO_SHORT_ADDRESS && //sending to a short address
-        starfishnet_config.mib.macShortAddress != SN_NO_SHORT_ADDRESS && //we have a short address
-        starfishnet_config.nib.enable_routing && //routing is switched on
+        starfishnet_config.short_address != SN_NO_SHORT_ADDRESS && //we have a short address
+        starfishnet_config.enable_routing && //routing is switched on
         !(table_entry->state < SN_Associated && table_entry->child) //not an associate_reply with an address
         ) {
         //normal circumstances
-        int ret = SN_Tree_route(starfishnet_config.mib.macShortAddress, table_entry->short_address, &dst_addr.u16);
+        int ret = SN_Tree_route(starfishnet_config.short_address, table_entry->short_address, &dst_addr.u16);
         if(ret < 0) {
             return ret;
         }
@@ -110,7 +110,7 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &dst_addr);
 
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_DATAFRAME);
-    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.mib.macPANId);
+    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.pan_id);
 
     return SN_OK;
 }
@@ -327,7 +327,7 @@ void SN_Retransmission_retry(bool count_towards_disconnection) {
         }
 
         //if we're not ignoring the disconnection counter, and we still have retries left, tx the packet
-        if(count_towards_disconnection ? slot->retries < starfishnet_config.nib.tx_retry_limit : 1) {
+        if(count_towards_disconnection ? slot->retries < starfishnet_config.tx_retry_limit : 1) {
             queuebuf_to_packetbuf(slot->queuebuf);
             if(setup_packetbuf_for_transmission(&table_entry) != SN_OK) {
                 table_entry.unavailable = 1;
@@ -340,7 +340,7 @@ void SN_Retransmission_retry(bool count_towards_disconnection) {
         //update the disconnection counter, and mark as disconnected if it's been reached
         if(count_towards_disconnection) {
             slot->retries++;
-            if(slot->retries >= starfishnet_config.nib.tx_retry_limit) {
+            if(slot->retries >= starfishnet_config.tx_retry_limit) {
                 SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
 
                 table_entry.unavailable = 1;
