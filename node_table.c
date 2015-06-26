@@ -2,6 +2,8 @@
 #include "status.h"
 #include "util.h"
 
+#include "net/mac/frame802154.h"
+
 #include <string.h>
 
 //implemented as 32-entry table with free bitmap
@@ -37,7 +39,7 @@ static int lookup_by_long_address(uint8_t* address, uint8_t stream_idx_len, uint
 static int lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, uint8_t* stream_idx) {
     table_bitmap_t i;
 
-    if(address == SN_NO_SHORT_ADDRESS) {
+    if(address == FRAME802154_INVALIDADDR) {
         return -1;
     }
 
@@ -136,7 +138,7 @@ static int alloc_entry() {
 
             //clear its data
             memset(&table[i], 0, sizeof(table[i]));
-            table[i].short_address = SN_NO_SHORT_ADDRESS;
+            table[i].short_address = FRAME802154_INVALIDADDR;
 
             //we're done
             return i;
@@ -163,7 +165,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
 
     //consistency checks to make sure we don't pollute the table with BS entries
     if((!memcmp(entry->long_address, null_address, sizeof(null_address)))
-       && (entry->short_address == SN_NO_SHORT_ADDRESS)
+       && (entry->short_address == FRAME802154_INVALIDADDR)
        && (!memcmp(&entry->public_key, &null_key, sizeof(null_key)))) {
         return -SN_ERR_INVALID;
     }

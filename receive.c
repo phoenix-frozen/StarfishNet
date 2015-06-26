@@ -1,8 +1,3 @@
-#include <assert.h>
-#include <string.h>
-
-#include "net/mac/frame802154.h"
-
 #include "starfishnet.h"
 #include "config.h"
 #include "crypto.h"
@@ -12,6 +7,11 @@
 #include "retransmission_queue.h"
 #include "nonqueued_transmission.h"
 #include "receive.h"
+
+#include "net/mac/frame802154.h"
+
+#include <assert.h>
+#include <string.h>
 
 static SN_Receive_callback_t* receive_callback = NULL;
 
@@ -47,7 +47,7 @@ void SN_Receive_data_packet(packet_t* packet) {
     SN_DebugPrintf("network layer says packet is to %#06x\n", network_header->dst_addr);
     SN_DebugPrintf("network layer says packet is from %#06x\n", network_header->src_addr);
 
-    if(network_header->src_addr == SN_NO_SHORT_ADDRESS || network_header->dst_addr == SN_NO_SHORT_ADDRESS) {
+    if(network_header->src_addr == FRAME802154_INVALIDADDR || network_header->dst_addr == FRAME802154_INVALIDADDR) {
         SN_ErrPrintf("invalid addressing information: %#06x -> %#06x. dropping\n", source, destination);
         return;
     }
@@ -57,9 +57,9 @@ void SN_Receive_data_packet(packet_t* packet) {
         SN_WarnPrintf("broadcasts not currently implemented\n");
         return;
     } else {
-        if(starfishnet_config.short_address != SN_NO_SHORT_ADDRESS &&
+        if(starfishnet_config.short_address != FRAME802154_INVALIDADDR &&
            network_header->dst_addr != starfishnet_config.short_address &&
-           network_header->dst_addr != SN_NO_SHORT_ADDRESS) {
+           network_header->dst_addr != FRAME802154_INVALIDADDR) {
             /* packet's network-layer header is a valid
              * network-layer address that isn't ours,
              * which means we're expected to route it
@@ -72,7 +72,7 @@ void SN_Receive_data_packet(packet_t* packet) {
                 SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
                 return;
             }
-        } else if(starfishnet_config.short_address == SN_NO_SHORT_ADDRESS &&
+        } else if(starfishnet_config.short_address == FRAME802154_INVALIDADDR &&
                   network_header->src_addr == starfishnet_config.parent_address) {
             //potential address assignment from our parent. process normally
         }
@@ -114,7 +114,7 @@ void SN_Receive_data_packet(packet_t* packet) {
             //special case: if the security check failure is because this is a finalise, and we've already received one, it's probably an acknowledgement drop. send acknowledgements
             if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL && PACKET_ENTRY(*packet, association_header, indication) == NULL) {
                 SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
-                if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
+                if(table_entry.short_address != FRAME802154_INVALIDADDR) {
                     SN_Send(&src_addr, NULL);
                 }
             }
@@ -151,7 +151,7 @@ void SN_Receive_data_packet(packet_t* packet) {
             //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
             SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
             SN_Retransmission_retry(0);
-            if(table_entry.short_address != SN_NO_SHORT_ADDRESS) {
+            if(table_entry.short_address != FRAME802154_INVALIDADDR) {
                 SN_Send(&src_addr, NULL);
             }
             return;

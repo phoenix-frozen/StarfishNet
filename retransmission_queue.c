@@ -10,8 +10,8 @@
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
 
-#include <assert.h>
 #include <string.h>
+#include <assert.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT QUEUEBUF_NUM
@@ -68,7 +68,7 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     }
 
     //figure out which address type we're using
-    if(starfishnet_config.short_address != SN_NO_SHORT_ADDRESS) {;
+    if(starfishnet_config.short_address != FRAME802154_INVALIDADDR) {;
         SN_InfoPrintf("sending from our short address, %#06x\n", starfishnet_config.short_address);
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
         src_address.u16 = starfishnet_config.short_address;
@@ -81,8 +81,8 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
 
     //perform routing calculations to determine destination address
     if(
-        table_entry->short_address != SN_NO_SHORT_ADDRESS && //sending to a short address
-        starfishnet_config.short_address != SN_NO_SHORT_ADDRESS && //we have a short address
+        table_entry->short_address != FRAME802154_INVALIDADDR && //sending to a short address
+        starfishnet_config.short_address != FRAME802154_INVALIDADDR && //we have a short address
         starfishnet_config.enable_routing && //routing is switched on
         !(table_entry->state < SN_Associated && table_entry->child) //not an associate_reply with an address
         ) {
@@ -92,7 +92,7 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
             return ret;
         }
         packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
-    } else if(table_entry->child || table_entry->short_address == SN_NO_SHORT_ADDRESS) {
+    } else if(table_entry->child || table_entry->short_address == FRAME802154_INVALIDADDR) {
         //it's to a long address, so no routing to do. just send direct
         if(memcmp(table_entry->long_address, null_address, 8) == 0) {
             SN_ErrPrintf("trying to send to a node without an address...\n");
@@ -133,7 +133,7 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
         SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
     }
-    if(table_entry->short_address == SN_NO_SHORT_ADDRESS && memcmp(table_entry->long_address, null_address, 8) == 0) {
+    if(table_entry->short_address == FRAME802154_INVALIDADDR && memcmp(table_entry->long_address, null_address, 8) == 0) {
         SN_ErrPrintf("trying to send to node with unknown address\n");
         return -SN_ERR_INVALID;
     }
@@ -167,7 +167,7 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
         slot_data->counter = counter;
         slot_data->retries = 0;
         slot_data->transmit_status = MAC_TX_DEFERRED;
-        if(table_entry->short_address == SN_NO_SHORT_ADDRESS) {
+        if(table_entry->short_address == FRAME802154_INVALIDADDR) {
             slot_data->dst_address.type = SN_ENDPOINT_LONG_ADDRESS;
             memcpy(slot_data->dst_address.long_address, table_entry->long_address, 8);
         } else {

@@ -6,6 +6,8 @@
 #include "discovery.h"
 #include "config.h"
 
+#include "net/mac/frame802154.h"
+
 #include <string.h>
 
 //start a new StarfishNet network as coordinator
@@ -129,11 +131,11 @@ int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
 
     //Set our short address to the no-short-address marker address
     if(ret == SN_OK) {
-        SN_InfoPrintf("setting short address to %#06x...\n", SN_NO_SHORT_ADDRESS);
-        if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)SN_NO_SHORT_ADDRESS) != RADIO_RESULT_OK) {
+        SN_InfoPrintf("setting short address to %#06x...\n", FRAME802154_INVALIDADDR);
+        if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR) != RADIO_RESULT_OK) {
             ret = -SN_ERR_RADIO;
         } else {
-            starfishnet_config.short_address = SN_NO_SHORT_ADDRESS;
+            starfishnet_config.short_address = FRAME802154_INVALIDADDR;
         }
     }
 

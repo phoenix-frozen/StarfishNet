@@ -6,7 +6,7 @@
 // MD5 Hash Digest implementation (little endian byte order)
 
 #include <stdint.h>
-#include <stdlib.h>
+#include <stddef.h>
 
 //modified from version found at http://bradconte.com/sha1_c
 

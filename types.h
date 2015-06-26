@@ -2,6 +2,7 @@
 #define __SN_TYPES_H__
 
 #include "lib/aes-128.h"
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -89,7 +90,6 @@ typedef struct SN_Endpoint {
     SN_Altstream_t* altstream;
 } SN_Endpoint_t;
 
-#define SN_NO_SHORT_ADDRESS    0xFFFE
 #define SN_COORDINATOR_ADDRESS 0x0000
 
 typedef struct SN_Network_config {

@@ -3,8 +3,6 @@
 
 #include "types.h"
 
-#include <stdbool.h>
-
 //block: IN: whether you want a block; OUT: whether you got one
 //address: OUT: if a block, the first address in it
 int SN_Tree_allocate_address(uint16_t *address, uint8_t *block);

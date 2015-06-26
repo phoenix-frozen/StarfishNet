@@ -75,7 +75,7 @@ int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message) {
     //validity check on address
     switch(dst_addr->type) {
         case SN_ENDPOINT_SHORT_ADDRESS:
-            if(dst_addr->short_address == SN_NO_SHORT_ADDRESS) {
+            if(dst_addr->short_address == FRAME802154_INVALIDADDR) {
                 SN_ErrPrintf("attempting to send to null short address. aborting\n");
                 return -SN_ERR_INVALID;
             }
@@ -190,7 +190,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
     //validity check on address
     switch(dst_addr->type) {
         case SN_ENDPOINT_SHORT_ADDRESS:
-            if(dst_addr->short_address == SN_NO_SHORT_ADDRESS) {
+            if(dst_addr->short_address == FRAME802154_INVALIDADDR) {
                 SN_ErrPrintf("attempting to send to null short address. aborting\n");
                 return -SN_ERR_INVALID;
             }

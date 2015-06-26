@@ -1,14 +1,10 @@
-#include <malloc.h>
-#include <assert.h>
 #include "crypto.h"
 #include "status.h"
 #include "logging.h"
+#include "sha1.h"
+#include "uECC.h"
 
 #include "lib/ccm-star.h"
-#include "sha1.h"
-
-#include "uECC.h"
-#include "util.h"
 
 #if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"

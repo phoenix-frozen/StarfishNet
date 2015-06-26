@@ -9,6 +9,7 @@
 #include "constants.h"
 
 #include "net/netstack.h"
+#include "net/mac/frame802154.h"
 
 #include <assert.h>
 
@@ -570,7 +571,7 @@ int packet_security_checks(packet_t* packet, SN_Table_entry_t* table_entry) {
     }
 
     //alt-stream check: alt streams are only allowed for nodes using their short address
-    if(PACKET_ENTRY(*packet, network_header, indication)->src_addr == SN_NO_SHORT_ADDRESS &&
+    if(PACKET_ENTRY(*packet, network_header, indication)->src_addr == FRAME802154_INVALIDADDR &&
        PACKET_ENTRY(*packet, alt_stream_header, indication) != NULL &&
        PACKET_ENTRY(*packet, alt_stream_header, indication)->length > 0) {
         SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
@@ -740,7 +741,7 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
     } else {
         table_entry->knows_details = 1;
     }
-    if(network_header->src_addr != SN_NO_SHORT_ADDRESS) {
+    if(network_header->src_addr != FRAME802154_INVALIDADDR) {
         //if the remote node has a short address, we can erase its MAC address from memory
         SN_InfoPrintf("short address is known; erasing long address\n");
         memset(table_entry->long_address, 0, 8);
@@ -793,7 +794,7 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
                         return -SN_ERR_SECURITY;
                     }
 
-                    if(starfishnet_config.short_address != SN_NO_SHORT_ADDRESS) {
+                    if(starfishnet_config.short_address != FRAME802154_INVALIDADDR) {
                         SN_ErrPrintf("received address delegation when we already have a short address\n");
                         return -SN_ERR_UNEXPECTED;
                     }

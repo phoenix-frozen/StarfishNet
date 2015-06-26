@@ -4,6 +4,7 @@
 // Modified by: Justin King-Lacroix <justin.king-lacroix@cs.ox.ac.uk>
 
 #include "sha1.h"
+
 #include <string.h>
 
 // DBL_INT_ADD treats two unsigned ints a and b as one 64-bit integer and adds c to it

@@ -1,19 +1,17 @@
-#include <assert.h>
-#include <net/packetbuf.h>
-#include <net/linkaddr.h>
-
-#include "sys/etimer.h"
-
-#include "discovery.h"
 #include "starfishnet.h"
+#include "discovery.h"
 #include "logging.h"
 #include "status.h"
-#include "types.h"
 #include "constants.h"
 #include "crypto.h"
 #include "routing_tree.h"
 #include "config.h"
-#include "util.h"
+
+#include "net/packetbuf.h"
+#include "net/linkaddr.h"
+#include "sys/etimer.h"
+
+#include <string.h>
 
 typedef struct beacon_payload {
     struct {

@@ -1,10 +1,3 @@
-#include <string.h>
-
-#include "net/packetbuf.h"
-#include "net/queuebuf.h"
-#include "net/netstack.h"
-#include "lib/random.h"
-
 #include "starfishnet.h"
 #include "config.h"
 #include "crypto.h"
@@ -13,6 +6,13 @@
 #include "packet.h"
 #include "receive.h"
 #include "discovery.h"
+
+#include "net/packetbuf.h"
+#include "net/queuebuf.h"
+#include "net/netstack.h"
+#include "lib/random.h"
+
+#include <string.h>
 
 static int generate_random_number(uint8_t *dest, unsigned size) {
     uint16_t rand;
@@ -47,7 +47,7 @@ static void init(void) {
     NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.long_address, 8);
 
     //set up the radio with an invalid short address
-    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)SN_NO_SHORT_ADDRESS);
+    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR);
 
     SN_InfoPrintf("exit\n");
 }
