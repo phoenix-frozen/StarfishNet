@@ -57,7 +57,7 @@ int SN_Start(SN_Network_descriptor_t* network) {
     starfishnet_config.pan_id = network->pan_id;
 
     SN_InfoPrintf("updating beacon payload\n");
-    SN_Discovery_beacon_update();
+    SN_Beacon_update();
 
     return SN_OK;
 }

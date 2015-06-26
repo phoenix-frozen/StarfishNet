@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include "net/mac/frame802154.h"
+
 #include "starfishnet.h"
 #include "config.h"
 #include "crypto.h"
@@ -50,7 +52,7 @@ void SN_Receive_data_packet(packet_t* packet) {
         return;
     }
 
-    if(network_header->dst_addr == SN_BROADCAST_ADDRESS) {
+    if(network_header->dst_addr == FRAME802154_BROADCASTADDR) {
         //TODO: broadcast handling goes here
         SN_WarnPrintf("broadcasts not currently implemented\n");
         return;

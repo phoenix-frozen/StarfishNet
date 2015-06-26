@@ -49,7 +49,6 @@ static void init(void) {
     //set up the radio with an invalid short address
     NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)SN_NO_SHORT_ADDRESS);
 
-    //TODO: other init stuff goes in here
     SN_InfoPrintf("exit\n");
 }
 
@@ -62,32 +61,48 @@ static void input(void) {
     if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 8) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_DebugPrintf("received frame to %#018"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8));
-    } else {
+    } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {
         SN_DebugPrintf("received frame to %#06x\n", packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16);
+    } else {
+        SN_DebugPrintf("received with blank destination address\n");
     }
     if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 8) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_DebugPrintf("received frame from %#018"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
-    } else {
+    } else if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 2) {
         SN_DebugPrintf("received frame from %#06x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
+    } else {
+        SN_DebugPrintf("received with blank source address\n");
     }
     SN_InfoPrintf("received %d-byte frame\n", packetbuf_datalen());
 
     switch(packetbuf_attr(PACKETBUF_ATTR_FRAME_TYPE)) {
         case FRAME802154_BEACONFRAME:
-            SN_Discovery_beacon_input();
+            SN_Beacon_input();
             break;
 
         case FRAME802154_DATAFRAME:
-            //TODO: check link-layer destination address matches either ours or broadcast
+            if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 8) {
+                const linkaddr_t* dst_addr = packetbuf_addr(PACKETBUF_ADDR_RECEIVER);
+
+                if(memcmp(dst_addr->u8, starfishnet_config.long_address, 8) != 0) {
+                    break;
+                }
+            } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {
+                const uint16_t dst_addr = packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16;
+                if(dst_addr != starfishnet_config.short_address && dst_addr != FRAME802154_BROADCASTADDR) {
+                    break;
+                }
+            }
             packet.length = (uint8_t)packetbuf_datalen(); //cast is safe because datalen <= 128
             packet.data = packetbuf_dataptr();
             SN_Receive_data_packet(&packet);
             break;
 
         case FRAME802154_CMDFRAME:
-            //TODO: check that this is a command frame of type FRAME802154_BEACONREQ
-            //TODO: if so, call out to beacons code to TX
+            if(*(uint8_t*)packetbuf_dataptr() == FRAME802154_BEACONREQ) {
+                SN_Beacon_TX();
+            }
             break;
 
         default:

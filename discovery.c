@@ -13,6 +13,7 @@
 #include "crypto.h"
 #include "routing_tree.h"
 #include "config.h"
+#include "util.h"
 
 typedef struct beacon_payload {
     struct {
@@ -32,7 +33,7 @@ typedef struct beacon_payload {
 
 static beacon_payload_t self_beacon_payload;
 
-void SN_Discovery_beacon_update(void) {
+void SN_Beacon_update(void) {
     uint16_t leaf_capacity;
     uint16_t router_capacity;
 
@@ -85,6 +86,16 @@ PROCESS(starfishnet_discovery_process, "StarfishNet discovery process");
 
 static process_event_t discovery_event;
 
+static void beacon_request_tx() {
+    packetbuf_clear();
+
+    packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 0);
+    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, FRAME802154_BROADCASTPANDID);
+    packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_CMDFRAME);
+
+    *(uint8_t*)packetbuf_dataptr() = FRAME802154_BEACONREQ;
+}
+
 PROCESS_THREAD(starfishnet_discovery_process, ev, data)
 {
     struct etimer timer = {
@@ -115,7 +126,7 @@ PROCESS_THREAD(starfishnet_discovery_process, ev, data)
                     SN_ErrPrintf("radio returned error on channel set; aborting\n");
                     discovery_configuration.callback = NULL;
                 } else {
-                    //TODO: TX a beacon request frame
+                    beacon_request_tx();
                     etimer_set(&timer, discovery_configuration.timeout);
                 }
             } else {
@@ -185,7 +196,7 @@ int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_
     return SN_OK;
 }
 
-void SN_Discovery_beacon_input(void) {
+void SN_Beacon_input(void) {
     static SN_Network_descriptor_t ndesc;
     static SN_Hash_t protohash;
     beacon_payload_t* beacon_payload;
@@ -257,4 +268,39 @@ void SN_Discovery_beacon_input(void) {
     }
 
     SN_InfoPrintf("exit\n");
+}
+
+void SN_Beacon_TX(void) {
+    linkaddr_t src_address;
+    uint8_t* packetbuf_ptr;
+
+    packetbuf_clear();
+
+    packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
+    packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 0);
+
+    src_address.u16 = starfishnet_config.short_address;
+    packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
+
+    packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_BEACONFRAME);
+    packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.pan_id);
+
+    /* 802.15.4 beacon frame format
+     *
+     * ----------------------------------------
+     * |     2      |  1+ |    1+   | Payload |
+     * | Superframe | GTS | Pending | Payload |
+     * ----------------------------------------
+     */
+
+    packetbuf_ptr = packetbuf_dataptr();
+
+    memset(packetbuf_ptr, 0, 4); //no superframe, GTS, or pending frames
+    packetbuf_ptr[1] |= 2; //set PAN coordinator bit //TODO: is this right?
+
+    memcpy(packetbuf_ptr + 4, &self_beacon_payload, sizeof(self_beacon_payload));
+
+    packetbuf_set_datalen(sizeof(self_beacon_payload) + 4);
+
+    NETSTACK_LLSEC.send(NULL, NULL);
 }

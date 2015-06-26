@@ -202,7 +202,7 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
                         SN_InfoPrintf("allocated %s address %#06x\n", block ? "router" : "leaf", address);
 
                         table_entry->short_address = address;
-                        SN_Discovery_beacon_update();
+                        SN_Beacon_update();
                     } else {
                         SN_WarnPrintf("address allocation failed; proceeding without\n");
 
@@ -364,7 +364,7 @@ int packet_generate_payload(packet_t* packet, SN_Message_t* message) {
             break;
 
         case SN_Implicit_Evidence_message:
-            //TODO: WRITEME
+            //TODO: WRITEME (implicit evidence message)
 
         default:
             SN_ErrPrintf("invalid message type %d, aborting\n", message->type);
@@ -811,7 +811,7 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
                     starfishnet_config.short_address = network_header->dst_addr;
 
                     if(starfishnet_config.enable_routing) {
-                        SN_Discovery_beacon_update();
+                        SN_Beacon_update();
                     }
                 }
             }

@@ -89,7 +89,6 @@ typedef struct SN_Endpoint {
     SN_Altstream_t* altstream;
 } SN_Endpoint_t;
 
-#define SN_BROADCAST_ADDRESS   0xFFFF
 #define SN_NO_SHORT_ADDRESS    0xFFFE
 #define SN_COORDINATOR_ADDRESS 0x0000
 
@@ -140,14 +139,6 @@ typedef union SN_Message {
     } explicit_evidence_message;
 
     //TODO: implicit_evidence_message
-
-    struct {
-        SN_Message_type_t type;
-    } association_message;
 } SN_Message_t;
-#define SN_MAX_DATA_MESSAGE_LENGTH 127
-//TODO: make SN_MAX_DATA_MESSAGE_LENGTH right
-
-
 
 #endif /* __SN_TYPES_H__ */
