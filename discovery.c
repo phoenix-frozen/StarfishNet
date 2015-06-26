@@ -294,7 +294,6 @@ void SN_Beacon_TX(void) {
     packetbuf_ptr = packetbuf_dataptr();
 
     memset(packetbuf_ptr, 0, 4); //no superframe, GTS, or pending frames
-    packetbuf_ptr[1] |= 2; //set PAN coordinator bit //TODO: is this right?
 
     memcpy(packetbuf_ptr + 4, &self_beacon_payload, sizeof(self_beacon_payload));
 
