@@ -6,6 +6,7 @@ project(StarfishNet C)
 
 #uECC configuration
 add_definitions(-DuECC_CURVE=uECC_secp160r1 -DuECC_PLATFORM=uECC_arch_other -DuECC_ASM=uECC_asm_none -DuECC_WORD_SIZE=1 -DuECC_SQUARE_FUNC=0)
+add_definitions(-DuECC_DETERMINISTIC_SIGNING)
 
 #contiki configuration
 add_definitions(-DNETSTACK_CONF_RDC=nullrdc_driver)
