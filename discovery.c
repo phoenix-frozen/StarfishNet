@@ -6,6 +6,7 @@
 #include "crypto.h"
 #include "routing_tree.h"
 #include "config.h"
+#include "types.h"
 
 #include "net/packetbuf.h"
 #include "net/linkaddr.h"
@@ -117,7 +118,7 @@ PROCESS_THREAD(starfishnet_discovery_process, ev, data)
             if(discovery_configuration.channel_mask) {
                 uint8_t current_channel = 0;
                 current_channel = ctz(discovery_configuration.channel_mask);
-                discovery_configuration.channel_mask &= ~(1 << current_channel)
+                discovery_configuration.channel_mask &= ~(1 << current_channel);
 
                 SN_InfoPrintf("beginning discovery on channel %d\n", current_channel);
                 if(NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, current_channel) != RADIO_RESULT_OK) {
@@ -154,9 +155,7 @@ static inline uint8_t popcount(uint32_t word) {
 int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_time_t timeout,
                 bool show_full_networks, void *extradata) {
     SN_InfoPrintf("enter\n");
-    SN_InfoPrintf("performing discovery over %#010"
-                      PRIx32
-                      ", in %d ms\n", channel_mask, timeout);
+    SN_InfoPrintf("performing discovery over %#010"PRIx32", in %d ms\n", channel_mask, timeout);
 
     if(callback == NULL) {
         SN_ErrPrintf("callback must be valid\n");
@@ -221,7 +220,7 @@ void SN_Beacon_input(void) {
 
     SN_InfoPrintf("    CoordAddress=%#06x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
     if(beacon_payload->beacon_data.network_config.router_address != packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16) {
-        SN_WarnPrintf("    Address mismatch! Using %#06x\n", beacon_payload->beacon_data.address);
+        SN_WarnPrintf("    Address mismatch! Using %#06x\n", beacon_payload->beacon_data.network_config.router_address);
     }
 
     //check that this is a network of the kind we care about
@@ -233,10 +232,12 @@ void SN_Beacon_input(void) {
     }
 
     //XXX: this is the most disgusting way to print a key ever invented by man
-    SN_InfoPrintf("    key=%#018"PRIx64"%016"PRIx64"%08"PRIx32"\n",
-                  *(uint64_t*)beacon_payload->beacon_data.public_key.data,
-                  *(((uint64_t*)beacon_payload->beacon_data.public_key.data) + 1),
-                  *(((uint32_t*)beacon_payload->beacon_data.public_key.data) + 4));
+    SN_InfoPrintf("    key=%#010"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"\n",
+                  *(uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data,
+                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 1),
+                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 2),
+                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 3),
+                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 4));
 
     SN_Crypto_hash((uint8_t*)&beacon_payload->beacon_data, sizeof(beacon_payload->beacon_data), &protohash, 0);
     if(memcmp(beacon_payload->hash.data, protohash.data, SN_Hash_size) != 0) {

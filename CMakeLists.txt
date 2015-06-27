@@ -12,7 +12,12 @@ add_definitions(-DNETSTACK_CONF_RDC=nullrdc_driver)
 add_definitions(-DNULLRDC_CONF_802154_AUTOACK=0 -DNULLRDC_CONF_802154_AUTOACK_HW=0 -DNULLRDC_CONF_ADDRESS_FILTER=0)
 add_definitions(-DCC2530_RF_CONF_AUTOACK=0)
 add_definitions(-DLINKADDR_CONF_SIZE=8 -DPACKETBUF_CONF_WITH_PACKET_TYPE -DNETSTACK_CONF_VARIABLE_SIZE_LINK_ADDRESSES)
-add_definitions(-DMMEM_CONF_SIZE=1 -DDMA_CONF_ON)
+#add_definitions(-DMMEM_CONF_SIZE=1)
+add_definitions(-DDMA_CONF_ON)
+
+#starfishnet configuration
+add_definitions(-DSN_DEBUG)
+add_definitions(-DSN_DEBUG_LEVEL=4)
 
 include_directories(../contiki/platform/cc2530dk)
 include_directories(../contiki/cpu/cc253x)

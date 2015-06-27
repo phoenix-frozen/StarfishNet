@@ -16,8 +16,17 @@
 #endif //SN_DEBUG
 
 #ifdef SN_DEBUG
+#ifndef __FUNCTION__
+#define __FUNCTION__ __func__
+#endif //__FUNCTION__
+#ifndef PRIx32
+#define PRIx32 "lx"
+#endif //PRIx32
+#ifndef PRIx64
+#define PRIx64 "llx"
+#endif //PRIx64
 #include <stdio.h>
-#define SN_Printf(level, fmt, x...) fprintf(stderr, "SN_" level " %s: " fmt, __FUNCTION__, ##x)
+#define SN_Printf(level, fmt, x...) printf("SN_" level " %s: " fmt, __FUNCTION__, ##x)
 #else /* SN_DEBUG */
 #define SN_Printf(x...)
 #endif /* SN_DEBUG */

@@ -48,7 +48,7 @@ void SN_Receive_data_packet(packet_t* packet) {
     SN_DebugPrintf("network layer says packet is from %#06x\n", network_header->src_addr);
 
     if(network_header->src_addr == FRAME802154_INVALIDADDR || network_header->dst_addr == FRAME802154_INVALIDADDR) {
-        SN_ErrPrintf("invalid addressing information: %#06x -> %#06x. dropping\n", source, destination);
+        SN_ErrPrintf("invalid addressing information: %#06x -> %#06x. dropping\n", network_header->src_addr, network_header->dst_addr);
         return;
     }
 

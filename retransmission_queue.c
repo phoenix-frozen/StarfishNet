@@ -74,7 +74,7 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
         src_address.u16 = starfishnet_config.short_address;
     } else {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_InfoPrintf("sending from our long address, %#018"PRIx64"\n", *(uint64_t*)session->mib.macIEEEAddress.ExtendedAddress);
+        SN_InfoPrintf("sending from our long address, %#010"PRIx32"%08"PRIx32"\n", *(uint32_t*)starfishnet_config.long_address, *(((uint32_t*)starfishnet_config.long_address) + 1));
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
         memcpy(src_address.u8, starfishnet_config.long_address, 8);
     }
@@ -120,7 +120,7 @@ static void retransmission_mac_callback(void *ptr, int status, int transmissions
 
     if(ptr != NULL) {
         transmission_slot_t* slot_data = (transmission_slot_t*)ptr;
-        slot_data->transmit_status = status; //TODO: BUG!! this currently doesn't actually go anywhere
+        slot_data->transmit_status = status; // TODO: BUG!! this currently doesn't actually go anywhere
         slot_data->retries++;
     }
 }
