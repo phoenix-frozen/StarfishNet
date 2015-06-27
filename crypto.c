@@ -160,6 +160,8 @@ void SN_Crypto_hash (
     SN_Hash_t* hash,
     size_t     repeat_count
 ) {
+    SN_InfoPrintf("enter\n");
+
     sha1_starts(&temp.ctx);
     sha1_update(&temp.ctx, data, data_len);
     sha1_finish(&temp.ctx, hash->data);
@@ -169,6 +171,8 @@ void SN_Crypto_hash (
         sha1_update(&temp.ctx, hash->data, SN_Hash_size);
         sha1_finish(&temp.ctx, hash->data);
     }
+
+    SN_InfoPrintf("exit\n");
 }
 
 #define CCM_MAX_IV_LENGTH 12

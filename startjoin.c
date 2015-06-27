@@ -131,7 +131,7 @@ int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
 
     //Set our short address to the no-short-address marker address
     if(ret == SN_OK) {
-        SN_InfoPrintf("setting short address to %#06x...\n", FRAME802154_INVALIDADDR);
+        SN_InfoPrintf("setting short address to 0x%04x...\n", FRAME802154_INVALIDADDR);
         if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR) != RADIO_RESULT_OK) {
             ret = -SN_ERR_RADIO;
         } else {

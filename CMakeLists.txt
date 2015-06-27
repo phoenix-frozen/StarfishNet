@@ -10,10 +10,10 @@ add_definitions(-DuECC_CURVE=uECC_secp160r1 -DuECC_PLATFORM=uECC_arch_other -DuE
 #contiki configuration
 add_definitions(-DNETSTACK_CONF_RDC=nullrdc_driver)
 add_definitions(-DNULLRDC_CONF_802154_AUTOACK=0 -DNULLRDC_CONF_802154_AUTOACK_HW=0 -DNULLRDC_CONF_ADDRESS_FILTER=0)
-add_definitions(-DCC2530_RF_CONF_AUTOACK=0)
+add_definitions(-DCC2530_RF_CONF_AUTOACK=0 -DCC2530_RF_CONF_LEDS)
 add_definitions(-DLINKADDR_CONF_SIZE=8 -DPACKETBUF_CONF_WITH_PACKET_TYPE -DNETSTACK_CONF_VARIABLE_SIZE_LINK_ADDRESSES)
-#add_definitions(-DMMEM_CONF_SIZE=1)
-add_definitions(-DDMA_CONF_ON)
+add_definitions(-DMMEM_CONF_SIZE=1)
+#add_definitions(-DDMA_CONF_ON)
 
 #starfishnet configuration
 add_definitions(-DSN_DEBUG)

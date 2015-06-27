@@ -165,7 +165,7 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
             //dst_addr is one of my leaf children.
             //Rule 1 applies. Forward directly to the node.
             *next_hop = dst_addr;
-            SN_DebugPrintf("Rule 1: %#06x\n", *next_hop);
+            SN_DebugPrintf("Rule 1: 0x%04x\n", *next_hop);
             return SN_OK;
             //XXX: in practice, this branch should never be taken, because it should be caught by Rule 1.
         }
@@ -173,7 +173,7 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
             //dst_addr is one of my router children.
             //Rule 1 applies. Forward directly to the node.
             *next_hop = dst_addr;
-            SN_DebugPrintf("Rule 1: %#06x\n", *next_hop);
+            SN_DebugPrintf("Rule 1: 0x%04x\n", *next_hop);
             return SN_OK;
             //XXX: in practice, this branch should never be taken, because it should be caught by Rule 1.
         }
@@ -189,7 +189,7 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
         //if we get to here, dst_addr is in my subtree, but is not my immediate child.
         //Rule 4 applies. Determine the child whose subtree it is in, and forward to it.
         *next_hop = dst_addr & ~block_mask;
-        SN_DebugPrintf("Rule 4: %#06x\n", *next_hop);
+        SN_DebugPrintf("Rule 4: 0x%04x\n", *next_hop);
         return SN_OK;
 
     }
@@ -197,7 +197,7 @@ int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
         //src_addr is in my subtree, dst_addr is not
         //Rule 5 applies. Forward to my parent.
         *next_hop = starfishnet_config.parent_address;
-        SN_DebugPrintf("Rule 5: %#06x\n", *next_hop);
+        SN_DebugPrintf("Rule 5: 0x%04x\n", *next_hop);
         return SN_OK;
     }
     //neither src_addr nor dst_addr is in my subtree.

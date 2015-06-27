@@ -44,11 +44,11 @@ void SN_Receive_data_packet(packet_t* packet) {
     network_header = PACKET_ENTRY(*packet, network_header, indication);
     assert(network_header != NULL);
 
-    SN_DebugPrintf("network layer says packet is to %#06x\n", network_header->dst_addr);
-    SN_DebugPrintf("network layer says packet is from %#06x\n", network_header->src_addr);
+    SN_DebugPrintf("network layer says packet is to 0x%04x\n", network_header->dst_addr);
+    SN_DebugPrintf("network layer says packet is from 0x%04x\n", network_header->src_addr);
 
     if(network_header->src_addr == FRAME802154_INVALIDADDR || network_header->dst_addr == FRAME802154_INVALIDADDR) {
-        SN_ErrPrintf("invalid addressing information: %#06x -> %#06x. dropping\n", network_header->src_addr, network_header->dst_addr);
+        SN_ErrPrintf("invalid addressing information: 0x%04x -> 0x%04x. dropping\n", network_header->src_addr, network_header->dst_addr);
         return;
     }
 
@@ -78,7 +78,7 @@ void SN_Receive_data_packet(packet_t* packet) {
         }
     }
 
-    SN_InfoPrintf("setting source address to %#06x\n", network_header->src_addr);
+    SN_InfoPrintf("setting source address to 0x%04x\n", network_header->src_addr);
     src_addr.type          = SN_ENDPOINT_SHORT_ADDRESS;
     src_addr.short_address = network_header->src_addr;
 
