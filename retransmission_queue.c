@@ -69,12 +69,12 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
 
     //figure out which address type we're using
     if(starfishnet_config.short_address != FRAME802154_INVALIDADDR) {;
-        SN_InfoPrintf("sending from our short address, %#06x\n", starfishnet_config.short_address);
+        SN_InfoPrintf("sending from our short address, 0x%04x\n", starfishnet_config.short_address);
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
         src_address.u16 = starfishnet_config.short_address;
     } else {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_InfoPrintf("sending from our long address, %#010"PRIx32"%08"PRIx32"\n", *(uint32_t*)starfishnet_config.long_address, *(((uint32_t*)starfishnet_config.long_address) + 1));
+        SN_InfoPrintf("sending from our long address, 0x%08"PRIx32"%08"PRIx32"\n", *(uint32_t*)starfishnet_config.long_address, *(((uint32_t*)starfishnet_config.long_address) + 1));
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
         memcpy(src_address.u8, starfishnet_config.long_address, 8);
     }

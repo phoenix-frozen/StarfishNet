@@ -200,7 +200,7 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
                         network_header->dst_addr   = address;
                         association_header->router = (uint8_t)(block ? 1 : 0);
 
-                        SN_InfoPrintf("allocated %s address %#06x\n", block ? "router" : "leaf", address);
+                        SN_InfoPrintf("allocated %s address 0x%04x\n", block ? "router" : "leaf", address);
 
                         table_entry->short_address = address;
                         SN_Beacon_update();
@@ -247,14 +247,14 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
         if(CONTROL_ATTRIBUTE(network_header, associate)) {
             //this is a reply; do challenge1 (double-hash)
             SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 1);
-            SN_DebugPrintf("challenge1 = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
+            SN_DebugPrintf("challenge1 = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n",
                 *(uint64_t*)key_confirmation_header->challenge.data,
                 *((uint64_t*)key_confirmation_header->challenge.data + 1),
                 *((uint32_t*)key_confirmation_header->challenge.data + 4));
         } else {
             //this is a finalise; do challenge2 (single-hash)
             SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 0);
-            SN_DebugPrintf("challenge2 = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n",
+            SN_DebugPrintf("challenge2 = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n",
                 *(uint64_t*)key_confirmation_header->challenge.data,
                 *((uint64_t*)key_confirmation_header->challenge.data + 1),
                 *((uint32_t*)key_confirmation_header->challenge.data + 4));
@@ -804,7 +804,7 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
                     }
 
                     //set our short address to the one we were just given
-                    SN_InfoPrintf("setting our short address to %#06x...\n", network_header->dst_addr);
+                    SN_InfoPrintf("setting our short address to 0x%04x...\n", network_header->dst_addr);
                     if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, starfishnet_config.short_address) != RADIO_RESULT_OK) {
                         SN_ErrPrintf("couldn't set the radio's short address...\n");
                         return -SN_ERR_RADIO;
@@ -833,11 +833,11 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
 
         //do the challenge1 check (double-hash)
         SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf, challengenumber == 2 ? 0 : 1);
-        SN_DebugPrintf("challenge%d (received)   = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n", challengenumber,
+        SN_DebugPrintf("challenge%d (received)   = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n", challengenumber,
                        *(uint64_t *) PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data,
                        *((uint64_t *)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 1),
                        *((uint32_t *)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 4));
-        SN_DebugPrintf("challenge%d (calculated) = %#18"PRIx64"%16"PRIx64"%08"PRIx32"\n", challengenumber,
+        SN_DebugPrintf("challenge%d (calculated) = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n", challengenumber,
                        *(uint64_t *) hashbuf.data,
                        *((uint64_t *)hashbuf.data + 1),
                        *((uint32_t *)hashbuf.data + 4));

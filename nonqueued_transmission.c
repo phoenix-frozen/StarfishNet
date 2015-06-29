@@ -13,7 +13,7 @@ int SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
     int ret;
 
     if(source == FRAME802154_INVALIDADDR || destination == FRAME802154_INVALIDADDR) {
-        SN_ErrPrintf("invalid route: %#06x -> %#06x\n", source, destination);
+        SN_ErrPrintf("invalid route: 0x%04x -> 0x%04x\n", source, destination);
         return -SN_ERR_INVALID;
     }
 

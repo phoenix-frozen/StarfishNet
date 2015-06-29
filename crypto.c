@@ -14,7 +14,31 @@
 static union {
     uint8_t        unpacked_public_key[SN_PK_key_size * 2];
     sha1_context_t ctx;
+    uint8_t        hmac_tmp[128];
 } temp;
+
+static void init_sha1_uECC(uECC_HashContext *base) {
+    sha1_starts(&temp.ctx);
+}
+
+static void update_sha1_uECC(uECC_HashContext *base,
+                   const uint8_t *message,
+                   unsigned message_size) {
+    sha1_update(&temp.ctx, message, message_size);
+}
+
+static void finish_sha1_uECC(uECC_HashContext *base, uint8_t *hash_result) {
+    sha1_finish(&temp.ctx, hash_result);
+}
+
+static uECC_HashContext uECC_hashContext = {
+    .init_hash = &init_sha1_uECC,
+    .update_hash = &update_sha1_uECC,
+    .finish_hash = &finish_sha1_uECC,
+
+    .block_size = 64,
+    .result_size = 160/8,
+};
 
 int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
     int ret;
@@ -47,7 +71,7 @@ int SN_Crypto_sign ( //sign data into sigbuf
     size_t            data_len,
     SN_Signature_t*   signature
 ) {
-    SN_Hash_t hashbuf;
+    static SN_Hash_t hashbuf;
     int ret;
 
     SN_InfoPrintf("enter\n");
@@ -62,7 +86,8 @@ int SN_Crypto_sign ( //sign data into sigbuf
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
-    ret = uECC_sign(private_key->data, hashbuf.data, signature->data);
+    uECC_hashContext.tmp = temp.hmac_tmp;
+    ret = uECC_sign_deterministic(private_key->data, hashbuf.data, &uECC_hashContext, signature->data);
     if(ret == 0) {
         SN_ErrPrintf("error generating digital signature\n");
         return -SN_ERR_SIGNATURE;
@@ -78,7 +103,7 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     size_t            data_len,
     const SN_Signature_t*   signature
 ) {
-    SN_Hash_t hashbuf;
+    static SN_Hash_t hashbuf;
     int ret;
 
     SN_InfoPrintf("enter\n");
@@ -93,6 +118,8 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
 
     //unpack public key
     uECC_decompress(public_key->data, temp.unpacked_public_key);
+
+    SN_InfoPrintf("starting ECC signature verification\n");
 
     //verify signature
     //XXX: this works because the hash and keys are the same length
@@ -160,6 +187,8 @@ void SN_Crypto_hash (
     SN_Hash_t* hash,
     size_t     repeat_count
 ) {
+    SN_InfoPrintf("enter\n");
+
     sha1_starts(&temp.ctx);
     sha1_update(&temp.ctx, data, data_len);
     sha1_finish(&temp.ctx, hash->data);
@@ -169,6 +198,8 @@ void SN_Crypto_hash (
         sha1_update(&temp.ctx, hash->data, SN_Hash_size);
         sha1_finish(&temp.ctx, hash->data);
     }
+
+    SN_InfoPrintf("exit\n");
 }
 
 int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes

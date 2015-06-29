@@ -44,7 +44,17 @@ static void init(void) {
         SN_WarnPrintf("generating new device root key\n");
         SN_Crypto_generate_keypair(&starfishnet_config.device_root_key);
     }
+    SN_InfoPrintf("root key is 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"\n",
+                  *(uint32_t*)starfishnet_config.device_root_key.public_key.data,
+                  *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 1),
+                  *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 2),
+                  *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 3),
+                  *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 4));
+
     NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.long_address, 8);
+    SN_InfoPrintf("long address is 0x%08"PRIx32"%08"PRIx32"\n",
+                  *(uint32_t*)starfishnet_config.long_address,
+                  *(((uint32_t*)starfishnet_config.long_address) + 1));
 
     //set up the radio with an invalid short address
     NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR);
@@ -60,17 +70,17 @@ static void input(void) {
     //print some debugging information
     if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 8) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("received frame to %#018"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8));
+        SN_DebugPrintf("received frame to 0x%016"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8));
     } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {
-        SN_DebugPrintf("received frame to %#06x\n", packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16);
+        SN_DebugPrintf("received frame to 0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16);
     } else {
         SN_DebugPrintf("received with blank destination address\n");
     }
     if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 8) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("received frame from %#018"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
+        SN_DebugPrintf("received frame from 0x%016"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
     } else if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 2) {
-        SN_DebugPrintf("received frame from %#06x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
+        SN_DebugPrintf("received frame from 0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
     } else {
         SN_DebugPrintf("received with blank source address\n");
     }

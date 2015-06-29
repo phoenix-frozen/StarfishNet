@@ -26,7 +26,8 @@
 #define PRIx64 "llx"
 #endif //PRIx64
 #include <stdio.h>
-#define SN_Printf(level, fmt, x...) printf("SN_" level " %s: " fmt, __FUNCTION__, ##x)
+#include "sys/clock.h"
+#define SN_Printf(level, fmt, x...) printf("(% 6d)SN_" level " %s: " fmt, clock_time(), __FUNCTION__, ##x)
 #else /* SN_DEBUG */
 #define SN_Printf(x...)
 #endif /* SN_DEBUG */
