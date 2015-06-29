@@ -171,8 +171,6 @@ void SN_Crypto_hash (
     }
 }
 
-#define CCM_MAX_IV_LENGTH 12
-
 int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     const SN_AES_key_t*    key,
     const SN_Public_key_t* key_agreement_key,
@@ -202,10 +200,10 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     }
     sha1_finish(&temp.ctx, iv.data);
 
-    //XXX assumption: CCM_MAX_IV_LENGTH <= SN_Hash_size
+    //XXX assumption: SN_Hash_size >= 13
     CCM_STAR.set_key(key->data);
-    CCM_STAR.mic(data, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, tag, SN_Tag_size);
-    CCM_STAR.ctr(data, data_len, iv.data, CCM_MAX_IV_LENGTH);
+    CCM_STAR.mic(data, data_len, iv.data, ad, ad_len, tag, SN_Tag_size);
+    CCM_STAR.ctr(data, data_len, iv.data);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
@@ -242,10 +240,10 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
     }
     sha1_finish(&temp.ctx, iv.data);
 
-    //XXX assumption: CCM_MAX_IV_LENGTH <= SN_Hash_size
+    //XXX assumption: SN_Hash_size >= 13
     CCM_STAR.set_key(key->data);
-    CCM_STAR.ctr(data, data_len, iv.data, CCM_MAX_IV_LENGTH);
-    CCM_STAR.mic(data, data_len, iv.data, CCM_MAX_IV_LENGTH, ad, ad_len, prototag, SN_Tag_size);
+    CCM_STAR.ctr(data, data_len, iv.data);
+    CCM_STAR.mic(data, data_len, iv.data, ad, ad_len, prototag, SN_Tag_size);
 
     ret = memcmp(prototag, tag, SN_Tag_size);
     if(ret != 0) {
