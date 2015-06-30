@@ -14,7 +14,7 @@
 static union {
     uint8_t        unpacked_public_key[SN_PK_key_size * 2];
     sha1_context_t ctx;
-    uint8_t        hmac_tmp[128];
+    uint8_t        hmac_tmp[(160/8 * 2) + 64];
 } temp;
 
 static void init_sha1_uECC(uECC_HashContext *base) {
