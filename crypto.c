@@ -94,8 +94,6 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     //unpack public key
     uECC_decompress(public_key->data, temp.unpacked_public_key);
 
-    SN_InfoPrintf("starting ECC signature verification\n");
-
     //verify signature
     //XXX: this works because the hash and keys are the same length
     ret = uECC_verify(temp.unpacked_public_key, hashbuf.data, signature->data);
