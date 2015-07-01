@@ -19,15 +19,15 @@
 #ifndef __FUNCTION__
 #define __FUNCTION__ __func__
 #endif //__FUNCTION__
+
 #ifndef PRIx32
 #define PRIx32 "lx"
 #endif //PRIx32
-#ifndef PRIx64
-#define PRIx64 "llx"
-#endif //PRIx64
+
 #include <stdio.h>
 #include "sys/clock.h"
-#define SN_Printf(level, fmt, x...) printf("(% 6d)SN_" level " %s: " fmt, clock_time(), __FUNCTION__, ##x)
+#include "cc253x.h"
+#define SN_Printf(level, fmt, x...) printf("[T=% 6d](SP=0x%02x) SN_" level " %s: " fmt, clock_time(), SP, __FUNCTION__, ##x)
 #else /* SN_DEBUG */
 #define SN_Printf(x...)
 #endif /* SN_DEBUG */

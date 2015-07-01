@@ -14,31 +14,7 @@
 static union {
     uint8_t        unpacked_public_key[SN_PK_key_size * 2];
     sha1_context_t ctx;
-    uint8_t        hmac_tmp[(160/8 * 2) + 64];
 } temp;
-
-static void init_sha1_uECC(uECC_HashContext *base) {
-    sha1_starts(&temp.ctx);
-}
-
-static void update_sha1_uECC(uECC_HashContext *base,
-                   const uint8_t *message,
-                   unsigned message_size) {
-    sha1_update(&temp.ctx, message, message_size);
-}
-
-static void finish_sha1_uECC(uECC_HashContext *base, uint8_t *hash_result) {
-    sha1_finish(&temp.ctx, hash_result);
-}
-
-static uECC_HashContext uECC_hashContext = {
-    .init_hash = &init_sha1_uECC,
-    .update_hash = &update_sha1_uECC,
-    .finish_hash = &finish_sha1_uECC,
-
-    .block_size = 64,
-    .result_size = 160/8,
-};
 
 int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
     int ret;
@@ -86,8 +62,7 @@ int SN_Crypto_sign ( //sign data into sigbuf
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
-    uECC_hashContext.tmp = temp.hmac_tmp;
-    ret = uECC_sign_deterministic(private_key->data, hashbuf.data, &uECC_hashContext, signature->data);
+    ret = uECC_sign_deterministic(private_key->data, hashbuf.data, signature->data);
     if(ret == 0) {
         SN_ErrPrintf("error generating digital signature\n");
         return -SN_ERR_SIGNATURE;
@@ -141,7 +116,7 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     const SN_Private_key_t* private_key,
     SN_Kex_result_t*  shared_secret
 ) {
-    SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
+    static SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
     int ret;
 
     SN_InfoPrintf("enter\n");

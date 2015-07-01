@@ -2,6 +2,10 @@
 /* Modified by: Justin King-Lacroix <justin.king-lacroix@cs.ox.ac.uk> (modifications for 8051-based systems, which have a tiny stack) */
 
 #include "uECC.h"
+#include "logging.h"
+#ifdef uECC_DETERMINISTIC_SIGNING
+#include "sha1.h"
+#endif //uECC_DETERMINISTIC_SIGNING
 
 #include <string.h>
 
@@ -322,11 +326,12 @@ static const uECC_word_t curve_b[uECC_WORDS] = uECC_CONCAT(Curve_B_, uECC_CURVE)
 static const EccPoint curve_G = uECC_CONCAT(Curve_G_, uECC_CURVE);
 static const uECC_word_t curve_n[uECC_N_WORDS] = uECC_CONCAT(Curve_N_, uECC_CURVE);
 
-static void vli_clear(uECC_word_t *p_vli);
+#define max(a, b) ((a) > (b) ? (a) : (b));
+#define min(a, b) ((a) < (b) ? (a) : (b));
+
 static uECC_word_t vli_isZero(const uECC_word_t *p_vli);
 static uECC_word_t vli_testBit(const uECC_word_t *p_vli, bitcount_t p_bit);
 static bitcount_t vli_numBits(const uECC_word_t *p_vli, wordcount_t p_maxWords);
-static void vli_set(uECC_word_t *p_dest, const uECC_word_t *p_src);
 static cmpresult_t vli_cmp(const uECC_word_t *p_left, const uECC_word_t *p_right);
 static cmpresult_t vli_equal(const uECC_word_t *p_left, const uECC_word_t *p_right);
 static void vli_rshift1(uECC_word_t *p_vli);
@@ -439,12 +444,7 @@ void uECC_set_rng(uECC_RNG_Function rng_function) {
 #endif
 
 #if !asm_clear
-static void vli_clear(uECC_word_t *vli) {
-    wordcount_t i;
-    for (i = 0; i < uECC_WORDS; ++i) {
-        vli[i] = 0;
-    }
-}
+#define vli_clear(vli) memset((uint8_t*)(vli), 0, uECC_WORDS & sizeof(uECC_word_t))
 #endif
 
 /* Returns 1 if vli == 0, 0 otherwise. */
@@ -493,19 +493,14 @@ static bitcount_t vli_numBits(const uECC_word_t *vli, wordcount_t max_words) {
     for (i = 0; digit; ++i) {
         digit >>= 1;
     }
-    
+
     return (((bitcount_t)(num_digits - 1) << uECC_WORD_BITS_SHIFT) + i);
 }
 #endif /* !asm_numBits */
 
 /* Sets dest = src. */
 #if !asm_set
-static void vli_set(uECC_word_t *dest, const uECC_word_t *src) {
-    wordcount_t i;
-    for (i = 0; i < uECC_WORDS; ++i) {
-        dest[i] = src[i];
-    }
-}
+#define vli_set(dest, src) memcpy((uint8_t*)(dest), (uint8_t*)(src), uECC_WORDS * sizeof(uECC_word_t))
 #endif
 
 /* Returns sign of left - right. */
@@ -580,7 +575,7 @@ static uECC_word_t vli_sub(uECC_word_t *result, const uECC_word_t *left, const u
 #endif
 
 #if (!asm_mult || !asm_square || uECC_CURVE == uECC_secp256k1)
-static void muladd(uECC_word_t a,
+static inline void muladd(uECC_word_t a,
                    uECC_word_t b,
                    uECC_word_t *r0,
                    uECC_word_t *r1,
@@ -723,15 +718,15 @@ static void vli_square(uECC_word_t *result, const uECC_word_t *left) {
         r1 = r2;
         r2 = 0;
     }
-    
+
     result[uECC_WORDS * 2 - 1] = r0;
 }
 #endif
 
 #else /* uECC_SQUARE_FUNC */
 
-#define vli_square(result, left, size) vli_mult((result), (left), (left), (size))
-    
+#define vli_square(result, left) vli_mult((result), (left), (left))
+
 #endif /* uECC_SQUARE_FUNC */
 
 
@@ -1591,7 +1586,9 @@ static void EccPoint_mult(EccPoint * RESTRICT result,
     
     bitcount_t i;
     uECC_word_t nb;
-    
+
+    SN_InfoPrintf("enter\n");
+
     vli_set(Rx[1], point->x);
     vli_set(Ry[1], point->y);
 
@@ -1617,12 +1614,12 @@ static void EccPoint_mult(EccPoint * RESTRICT result,
 
     XYcZ_add(Rx[nb], Ry[nb], Rx[1 - nb], Ry[1 - nb]);
     apply_z(Rx[0], Ry[0], z);
-    
+
     vli_set(result->x, Rx[0]);
     vli_set(result->y, Ry[0]);
 }
 
-static int EccPoint_compute_public_key(EccPoint *result, const uECC_word_t *private) {
+static inline int EccPoint_compute_public_key(EccPoint *result, const uECC_word_t *private) {
     /* Make sure the private key is in the range [1, n-1]. */
     if (vli_isZero(private)) {
         return 0;
@@ -2135,15 +2132,17 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     static uECC_word_t tmp[uECC_N_WORDS];
     static uECC_word_t s[uECC_N_WORDS];
     static EccPoint p;
-    uECC_word_t *k2[2] = {tmp, s};
     uECC_word_t carry;
-    uECC_word_t tries;
-    
+
+    SN_InfoPrintf("enter\n");
+
     /* Make sure 0 < k < curve_n */
     if (vli_isZero(k) || vli_cmp_n(curve_n, k) != 1) {
+        SN_ErrPrintf("K out of bounds!\n");
         return 0;
     }
 
+    SN_InfoPrintf("beginning side channel defence (timing)\n");
 #if (uECC_CURVE == uECC_secp160r1)
     /* Make sure that we don't leak timing information about k.
        See http://eprint.iacr.org/2011/232.pdf */
@@ -2152,7 +2151,7 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     vli_add_n(s, tmp, curve_n);
 
     /* p = k * G */
-    EccPoint_mult(&p, &curve_G, k2[!carry], 0, (uECC_BYTES * 8) + 2);
+    EccPoint_mult(&p, &curve_G, (carry == 0 ? tmp : s), 0, (uECC_BYTES * 8) + 2);
 #else
     /* Make sure that we don't leak timing information about k.
        See http://eprint.iacr.org/2011/232.pdf */
@@ -2167,37 +2166,26 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
         vli_sub(p.x, p.x, curve_n);
     }
 #endif
+    SN_InfoPrintf("done. clearing\n");
+
     if (vli_isZero(p.x)) {
         return 0;
     }
-    
-    // Attempt to get a random number to prevent side channel analysis of k.
-    // If the RNG fails every time (eg it was not defined), we continue so that
-    // deterministic signing can still work (with reduced security) without
-    // an RNG defined.
-    carry = 0; // use to signal that the RNG succeeded at least once.
-    for (tries = 0; tries < MAX_TRIES; ++tries) {
-        if (!g_rng_function((uint8_t *)tmp, sizeof(tmp))) {
-            continue;
-        }
-        carry = 1;
-        if (!vli_isZero(tmp)) {
-            break;
-        }
-    }
-    if (!carry) {
-        vli_clear(tmp);
-        tmp[0] = 1;
-    }
-    
+
+    vli_clear(tmp);
+    tmp[0] = 1;
+
+    SN_InfoPrintf("beginning side channel defence (premult)\n");
     /* Prevent side channel analysis of vli_modInv() to determine
        bits of k / the private key by premultiplying by a random number */
     vli_modMult_n(k, k, tmp); /* k' = rand * k */
     vli_modInv_n(k, k, curve_n); /* k = 1 / k' */
     vli_modMult_n(k, k, tmp); /* k = 1 / k */
-    
+
+    SN_InfoPrintf("begin real work\n");
+
     vli_nativeToBytes(signature, p.x); /* store r */
-    
+
     tmp[uECC_N_WORDS - 1] = 0;
     vli_bytesToNative(tmp, private_key); /* tmp = d */
     s[uECC_N_WORDS - 1] = 0;
@@ -2207,6 +2195,9 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     vli_bytesToNative(tmp, message_hash);
     vli_modAdd_n(s, tmp, s, curve_n); /* s = e + r*d */
     vli_modMult_n(s, s, k); /* s = (e + r*d) / k */
+
+    SN_InfoPrintf("exit\n");
+
 #if (uECC_CURVE == uECC_secp160r1)
     if (s[uECC_N_WORDS - 1]) {
         return 0;
@@ -2220,12 +2211,8 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
               const uint8_t message_hash[uECC_BYTES],
               uint8_t signature[uECC_BYTES*2]) {
     static uECC_word_t k[uECC_N_WORDS];
-    static uECC_word_t tmp[uECC_N_WORDS];
-    static uECC_word_t s[uECC_N_WORDS];
-    static EccPoint p;
-    uECC_word_t *k2[2] = {tmp, s};
     uECC_word_t tries;
-    
+
     for (tries = 0; tries < MAX_TRIES; ++tries) {
         if(g_rng_function((uint8_t *)k, sizeof(k))) {
         #if (uECC_CURVE == uECC_secp160r1)
@@ -2240,48 +2227,50 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
 }
 
 #if uECC_DETERMINISTIC_SIGNING
+static sha1_context_t hmac_ctx;
+static uint8_t hmac_pad[SHA1_BLOCKSIZE];
+static uint8_t hmac_K[SHA1_HASHSIZE];
+static uint8_t hmac_V[SHA1_HASHSIZE + 1];
 
 /* Compute an HMAC using K as a key (as in RFC 6979). Note that K is always
    the same size as the hash result size. */
-static void HMAC_init(uECC_HashContext *hash_context, const uint8_t *K) {
-    uint8_t *pad = hash_context->tmp + 2 * hash_context->result_size;
+static void HMAC_starts() {
     unsigned i;
-    for (i = 0; i < hash_context->result_size; ++i)
-        pad[i] = K[i] ^ 0x36;
-    for (; i < hash_context->block_size; ++i)
-        pad[i] = 0x36;
-    
-    hash_context->init_hash(hash_context);
-    hash_context->update_hash(hash_context, pad, hash_context->block_size);
+    for (i = 0; i < SHA1_HASHSIZE; ++i)
+        hmac_pad[i] = hmac_K[i] ^ 0x36;
+    for (; i < SHA1_BLOCKSIZE; ++i)
+        hmac_pad[i] = 0x36;
+
+    sha1_starts(&hmac_ctx);
+    sha1_update(&hmac_ctx, hmac_pad, SHA1_BLOCKSIZE);
 }
 
-static void HMAC_update(uECC_HashContext *hash_context,
-                        const uint8_t *message,
-                        unsigned message_size) {
-    hash_context->update_hash(hash_context, message, message_size);
+static inline void HMAC_update(const uint8_t *message, unsigned message_size) {
+    sha1_update(&hmac_ctx, message, message_size);
 }
 
-static void HMAC_finish(uECC_HashContext *hash_context, const uint8_t *K, uint8_t *result) {
-    uint8_t *pad = hash_context->tmp + 2 * hash_context->result_size;
+static void HMAC_finish(uint8_t *result) {
     unsigned i;
-    for (i = 0; i < hash_context->result_size; ++i)
-        pad[i] = K[i] ^ 0x5c;
-    for (; i < hash_context->block_size; ++i)
-        pad[i] = 0x5c;
+    for (i = 0; i < SHA1_HASHSIZE; ++i)
+        hmac_pad[i] = hmac_K[i] ^ 0x5c;
+    for (; i < SHA1_BLOCKSIZE; ++i)
+        hmac_pad[i] = 0x5c;
 
-    hash_context->finish_hash(hash_context, result);
-    
-    hash_context->init_hash(hash_context);
-    hash_context->update_hash(hash_context, pad, hash_context->block_size);
-    hash_context->update_hash(hash_context, result, hash_context->result_size);
-    hash_context->finish_hash(hash_context, result);
+    sha1_finish(&hmac_ctx, result);
+
+    sha1_starts(&hmac_ctx);
+    sha1_update(&hmac_ctx, hmac_pad, SHA1_BLOCKSIZE);
+    sha1_update(&hmac_ctx, result, SHA1_HASHSIZE);
+    sha1_finish(&hmac_ctx, result);
 }
 
 /* V = HMAC_K(V) */
-static void update_V(uECC_HashContext *hash_context, uint8_t *K, uint8_t *V) {
-    HMAC_init(hash_context, K);
-    HMAC_update(hash_context, V, hash_context->result_size);
-    HMAC_finish(hash_context, K, V);
+static inline void update_V() {
+    HMAC_starts();
+    HMAC_update(hmac_V, SHA1_HASHSIZE);
+    HMAC_finish(hmac_V);
+
+    SN_InfoPrintf("update_V done\n");
 }
 
 /* Deterministic signing, similar to RFC 6979. Differences are:
@@ -2292,71 +2281,70 @@ static void update_V(uECC_HashContext *hash_context, uint8_t *K, uint8_t *V) {
    Layout of hash_context->tmp: <K> | <V> | (1 byte overlapped 0x00 or 0x01) / <HMAC pad> */
 int uECC_sign_deterministic(const uint8_t private_key[uECC_BYTES],
                             const uint8_t message_hash[uECC_BYTES],
-                            uECC_HashContext *hash_context,
                             uint8_t signature[uECC_BYTES*2]) {
-    uint8_t *K = hash_context->tmp;
-    uint8_t *V = K + hash_context->result_size;
     uECC_word_t tries;
-    unsigned i;
-    for (i = 0; i < hash_context->result_size; ++i) {
-        V[i] = 0x01;
-        K[i] = 0;
-    }
-    
+    memset(hmac_K, 0, SHA1_HASHSIZE);
+    memset(hmac_V, 1, SHA1_HASHSIZE);
+    hmac_V[SHA1_HASHSIZE] = 0x00;
+
+    SN_InfoPrintf("initialisation done\n");
+
     // K = HMAC_K(V || 0x00 || int2octets(x) || h(m))
-    HMAC_init(hash_context, K);
-    V[hash_context->result_size] = 0x00;
-    HMAC_update(hash_context, V, hash_context->result_size + 1);
-    HMAC_update(hash_context, private_key, uECC_BYTES);
-    HMAC_update(hash_context, message_hash, uECC_BYTES);
-    HMAC_finish(hash_context, K, K);
-    
-    update_V(hash_context, K, V);
-    
+    HMAC_starts();
+    HMAC_update(hmac_V, SHA1_HASHSIZE + 1);
+    HMAC_update(private_key, uECC_BYTES);
+    HMAC_update(message_hash, uECC_BYTES);
+    HMAC_finish(hmac_K);
+
+    SN_InfoPrintf("hash1 done\n");
+
+    update_V();
+
     // K = HMAC_K(V || 0x01 || int2octets(x) || h(m))
-    HMAC_init(hash_context, K);
-    V[hash_context->result_size] = 0x01;
-    HMAC_update(hash_context, V, hash_context->result_size + 1);
-    HMAC_update(hash_context, private_key, uECC_BYTES);
-    HMAC_update(hash_context, message_hash, uECC_BYTES);
-    HMAC_finish(hash_context, K, K);
-    
-    update_V(hash_context, K, V);
+    HMAC_starts();
+    hmac_V[SHA1_HASHSIZE] = 0x01;
+    HMAC_update(hmac_V, SHA1_HASHSIZE + 1);
+    HMAC_update(private_key, uECC_BYTES);
+    HMAC_update(message_hash, uECC_BYTES);
+    HMAC_finish(hmac_K);
+
+    SN_InfoPrintf("hash2 done\n");
+
+    update_V();
 
     for (tries = 0; tries < MAX_TRIES; ++tries) {
-        uECC_word_t T[uECC_N_WORDS];
-        uint8_t *T_ptr = (uint8_t *)T;
+        static uint8_t T[uECC_N_WORDS];
         unsigned T_bytes = 0;
+
         while (T_bytes < sizeof(T)) {
-            update_V(hash_context, K, V);
-            for (i = 0; i < hash_context->result_size && T_bytes < sizeof(T); ++i, ++T_bytes) {
-                T_ptr[T_bytes] = V[i];
+            unsigned i;
+            update_V();
+            for (i = 0; i < SHA1_HASHSIZE && T_bytes < sizeof(T); ++i, ++T_bytes) {
+                T[T_bytes] = hmac_V[i];
             }
         }
     #if (uECC_CURVE == uECC_secp160r1)
         T[uECC_WORDS] &= 0x01;
     #endif
-    
-        if (uECC_sign_with_k(private_key, message_hash, T, signature)) {
+
+        if (uECC_sign_with_k(private_key, message_hash, (uECC_word_t *)T, signature)) {
             return 1;
         }
 
         // K = HMAC_K(V || 0x00)
-        HMAC_init(hash_context, K);
-        V[hash_context->result_size] = 0x00;
-        HMAC_update(hash_context, V, hash_context->result_size + 1);
-        HMAC_finish(hash_context, K, K);
-        
-        update_V(hash_context, K, V);
+        HMAC_starts();
+        hmac_V[SHA1_HASHSIZE] = 0x00;
+        HMAC_update(hmac_V, SHA1_HASHSIZE + 1);
+        HMAC_finish(hmac_K);
+
+        SN_InfoPrintf("hash3-%d done\n", tries);
+
+        update_V();
     }
     return 0;
 }
 
 #endif //uECC_DETERMINISTIC_SIGNING
-
-static inline bitcount_t smax(bitcount_t a, bitcount_t b) {
-    return (a > b ? a : b);
-}
 
 int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
                 const uint8_t hash[uECC_BYTES],
@@ -2410,14 +2398,14 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
     XYcZ_add(tx, ty, sum.x, sum.y);
     vli_modInv(z, z, curve_p); /* Z = 1/Z */
     apply_z(sum.x, sum.y, z);
-    
+
     /* Use Shamir's trick to calculate u1*G + u2*Q */
     points[0] = 0;
     points[1] = &curve_G;
     points[2] = &public;
     points[3] = &sum;
-    numBits = smax(vli_numBits(u1, uECC_N_WORDS), vli_numBits(u2, uECC_N_WORDS));
-    
+    numBits = max(vli_numBits(u1, uECC_N_WORDS), vli_numBits(u2, uECC_N_WORDS));
+
     point = points[(!!vli_testBit(u1, numBits - 1)) | ((!!vli_testBit(u2, numBits - 1)) << 1)];
     vli_set(rx, point->x);
     vli_set(ry, point->y);
