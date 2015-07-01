@@ -4,8 +4,8 @@
 #include "logging.h"
 #include "node_table.h"
 #include "status.h"
-#include "retransmission_queue.h"
-#include "nonqueued_transmission.h"
+#include "reliable_tx.h"
+#include "raw_tx.h"
 #include "receive.h"
 
 #include "net/mac/frame802154.h"

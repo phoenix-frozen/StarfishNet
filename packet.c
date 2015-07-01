@@ -5,7 +5,7 @@
 #include "crypto.h"
 #include "config.h"
 #include "routing_tree.h"
-#include "retransmission_queue.h"
+#include "reliable_tx.h"
 #include "constants.h"
 
 #include "net/netstack.h"

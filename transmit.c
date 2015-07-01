@@ -50,7 +50,7 @@
 #include "logging.h"
 #include "status.h"
 #include "packet.h"
-#include "retransmission_queue.h"
+#include "reliable_tx.h"
 #include "util.h"
 #include "config.h"
 
@@ -263,7 +263,7 @@ int SN_Associate(SN_Endpoint_t *dst_addr) {
 
         case SN_Associate_received: {
             SN_Kex_result_t kex_result;
-            
+
             SN_InfoPrintf("received association request, finishing ECDH\n");
 
             //generate ephemeral keypair
