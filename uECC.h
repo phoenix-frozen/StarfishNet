@@ -37,6 +37,7 @@ uECC_asm_fast  - Use GCC inline assembly optimized for maximum speed. */
 #define uECC_secp192r1 2
 #define uECC_secp256r1 3
 #define uECC_secp256k1 4
+#define uECC_secp224r1 5
 #ifndef uECC_CURVE
     #define uECC_CURVE uECC_secp160r1
 #endif
@@ -55,6 +56,7 @@ faster by about 8% but increases the code size. */
 #define uECC_size_2 24 /* secp192r1 */
 #define uECC_size_3 32 /* secp256r1 */
 #define uECC_size_4 32 /* secp256k1 */
+#define uECC_size_5 28 /* secp224r1 */
 
 #define uECC_BYTES uECC_CONCAT(uECC_size_, uECC_CURVE)
 
@@ -141,8 +143,6 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
               const uint8_t message_hash[uECC_BYTES],
               uint8_t signature[uECC_BYTES*2]);
 
-#if uECC_DETERMINISTIC_SIGNING
-
 /* uECC_sign_deterministic() function.
 Generate an ECDSA signature for a given hash value, using a deterministic algorithm
 (see RFC 6979). You do not need to set the RNG using uECC_set_rng() before calling
@@ -167,8 +167,6 @@ EDIT: ditched the HMAC construct in favor of a SHA1-specific one to save space
 int uECC_sign_deterministic(const uint8_t private_key[uECC_BYTES],
                             const uint8_t message_hash[uECC_BYTES],
                             uint8_t signature[uECC_BYTES*2]);
-
-#endif //uECC_DETERMINISTIC_SIGNING
 
 /* uECC_verify() function.
 Verify an ECDSA signature.
@@ -241,12 +239,12 @@ int uECC_compute_public_key(const uint8_t private_key[uECC_BYTES],
 /* uECC_bytes() function.
 Returns the value of uECC_BYTES. Helpful for foreign-interfaces to higher-level languages.
 */
-int uECC_bytes(void);
+static inline int uECC_bytes(void) { return uECC_BYTES; }
 
 /* uECC_curve() function.
 Returns the value of uECC_CURVE. Helpful for foreign-interfaces to higher-level languages.
 */
-int uECC_curve(void);
+static inline int uECC_curve(void) { return uECC_CURVE; }
 
 #ifdef __cplusplus
 } /* end of extern "C" */
