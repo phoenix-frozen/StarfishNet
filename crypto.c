@@ -34,8 +34,6 @@ static int generate_random_number(uint8_t *dest, unsigned size) {
 }
 
 int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
-    int ret = 0;
-
     SN_InfoPrintf("enter\n");
 
     if(keypair == NULL) {
@@ -43,17 +41,14 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
         return -SN_ERR_NULL;
     }
 
-    while(ret != 1) {
+    do {
         //generate uECC_BYTES random bytes
         generate_random_number(keypair->private_key.data, sizeof(keypair->private_key.data));
 
+        SN_InfoPrintf("attempting key generation...\n");
         //generate keypair
-        ret = uECC_make_key(temp.unpacked_public_key, keypair->private_key.data);
+    } while(uECC_make_key(temp.unpacked_public_key, keypair->private_key.data) != 1);
 
-        if(ret != 1) {
-            SN_ErrPrintf("key generation failed. trying again...\n");
-        }
-    }
     //pack public key
     uECC_compress(temp.unpacked_public_key, keypair->public_key.data);
 
