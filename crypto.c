@@ -64,7 +64,6 @@ int SN_Crypto_sign ( //sign data into sigbuf
     SN_Signature_t*   signature
 ) {
     static SN_Hash_t hashbuf;
-    int ret;
 
     SN_InfoPrintf("enter\n");
 
@@ -78,8 +77,7 @@ int SN_Crypto_sign ( //sign data into sigbuf
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
-    ret = uECC_sign(private_key->data, hashbuf.data, signature->data);
-    if(ret == 0) {
+    if(uECC_sign(private_key->data, hashbuf.data, signature->data) == 0) {
         SN_ErrPrintf("error generating digital signature\n");
         return -SN_ERR_SIGNATURE;
     }
