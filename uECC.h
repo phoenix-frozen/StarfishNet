@@ -65,46 +65,16 @@ extern "C"
 {
 #endif
 
-/* uECC_RNG_Function type
-The RNG function should fill 'size' random bytes into 'dest'. It should return 1 if
-'dest' was filled with random data, or 0 if the random data could not be generated.
-The filled-in values should be either truly random, or from a cryptographically-secure PRNG.
-
-A correctly functioning RNG function must be set (using uECC_set_rng()) before calling
-uECC_make_key() or uECC_sign().
-
-Setting a correctly functioning RNG function improves the resistance to side-channel attacks
-for uECC_shared_secret() and uECC_sign_deterministic().
-
-A correct RNG function is set by default when building for Windows, Linux, or OS X.
-If you are building on another POSIX-compliant system that supports /dev/random or /dev/urandom,
-you can define uECC_POSIX to use the predefined RNG. For embedded platforms there is no predefined
-RNG function; you must provide your own.
-*/
-typedef int (*uECC_RNG_Function)(uint8_t *dest, unsigned size);
-
-/* uECC_set_rng() function.
-Set the function that will be used to generate random bytes. The RNG function should
-return 1 if the random data was generated, or 0 if the random data could not be generated.
-
-On platforms where there is no predefined RNG function (eg embedded platforms), this must
-be called before uECC_make_key() or uECC_sign() are used.
-
-Inputs:
-    rng_function - The function that will be used to generate random bytes.
-*/
-void uECC_set_rng(uECC_RNG_Function rng_function);
-
 /* uECC_make_key() function.
 Create a public/private key pair.
 
 Outputs:
     public_key  - Will be filled in with the public key.
-    private_key - Will be filled in with the private key.
+    private_key - Should be filled with uECC_BYTES random bytes.
 
 Returns 1 if the key pair was generated successfully, 0 if an error occurred.
 */
-int uECC_make_key(uint8_t public_key[uECC_BYTES*2], uint8_t private_key[uECC_BYTES]);
+int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uECC_BYTES]);
 
 /* uECC_shared_secret() function.
 Compute a shared secret given your secret key and someone else's public key.
@@ -138,35 +108,12 @@ Outputs:
     signature - Will be filled in with the signature value.
 
 Returns 1 if the signature generated successfully, 0 if an error occurred.
+
+EDIT: this generates a deterministic signature using a SHA1 hash
 */
 int uECC_sign(const uint8_t private_key[uECC_BYTES],
               const uint8_t message_hash[uECC_BYTES],
               uint8_t signature[uECC_BYTES*2]);
-
-/* uECC_sign_deterministic() function.
-Generate an ECDSA signature for a given hash value, using a deterministic algorithm
-(see RFC 6979). You do not need to set the RNG using uECC_set_rng() before calling
-this function; however, if the RNG is defined it will improve resistance to side-channel
-attacks.
-
-Usage: Compute a hash of the data you wish to sign (SHA-2 is recommended) and pass it in to
-this function along with your private key and a hash context.
-
-Inputs:
-    private_key  - Your private key.
-    message_hash - The hash of the message to sign.
-    hash_context - A hash context to use.
-
-Outputs:
-    signature - Will be filled in with the signature value.
-
-Returns 1 if the signature generated successfully, 0 if an error occurred.
-
-EDIT: ditched the HMAC construct in favor of a SHA1-specific one to save space
-*/
-int uECC_sign_deterministic(const uint8_t private_key[uECC_BYTES],
-                            const uint8_t message_hash[uECC_BYTES],
-                            uint8_t signature[uECC_BYTES*2]);
 
 /* uECC_verify() function.
 Verify an ECDSA signature.
@@ -206,45 +153,6 @@ Outputs:
     public_key - Will be filled in with the decompressed public key.
 */
 void uECC_decompress(const uint8_t compressed[uECC_BYTES+1], uint8_t public_key[uECC_BYTES*2]);
-
-/* uECC_valid_public_key() function.
-Check to see if a public key is valid.
-
-Note that you are not required to check for a valid public key before using any other uECC
-functions. However, you may wish to avoid spending CPU time computing a shared secret or
-verifying a signature using an invalid public key.
-
-Inputs:
-    public_key - The public key to check.
-
-Returns 1 if the public key is valid, 0 if it is invalid.
-*/
-int uECC_valid_public_key(const uint8_t public_key[uECC_BYTES*2]);
-
-/* uECC_compute_public_key() function.
-Compute the corresponding public key for a private key.
-
-Inputs:
-    private_key - The private key to compute the public key for
-
-Outputs:
-    public_key - Will be filled in with the corresponding public key
-
-Returns 1 if the key was computed successfully, 0 if an error occurred.
-*/
-int uECC_compute_public_key(const uint8_t private_key[uECC_BYTES],
-                            uint8_t public_key[uECC_BYTES * 2]);
-
-
-/* uECC_bytes() function.
-Returns the value of uECC_BYTES. Helpful for foreign-interfaces to higher-level languages.
-*/
-static inline int uECC_bytes(void) { return uECC_BYTES; }
-
-/* uECC_curve() function.
-Returns the value of uECC_CURVE. Helpful for foreign-interfaces to higher-level languages.
-*/
-static inline int uECC_curve(void) { return uECC_CURVE; }
 
 #ifdef __cplusplus
 } /* end of extern "C" */

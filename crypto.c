@@ -4,6 +4,7 @@
 #include "sha1.h"
 #include "uECC.h"
 
+#include "lib/random.h"
 #include "lib/ccm-star.h"
 
 #if SN_PK_key_size != uECC_BYTES
@@ -16,8 +17,24 @@ static union {
     sha1_context_t ctx;
 } temp;
 
+static int generate_random_number(uint8_t *dest, unsigned size) {
+    uint16_t rand;
+
+    for(; size > 1; size -= 2, dest += 2) {
+        rand = random_rand();
+        memcpy(dest, &rand, 2);
+    }
+
+    if(size > 0) {
+        rand = random_rand();
+        memcpy(dest, &rand, 1);
+    }
+
+    return 1;
+}
+
 int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
-    int ret;
+    int ret = 0;
 
     SN_InfoPrintf("enter\n");
 
@@ -26,13 +43,17 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
         return -SN_ERR_NULL;
     }
 
-    //generate keypair
-    ret = uECC_make_key(temp.unpacked_public_key, keypair->private_key.data);
-    if(ret != 1) {
-        SN_ErrPrintf("key generation failed\n");
-        return -SN_ERR_KEYGEN;
-    }
+    while(ret != 1) {
+        //generate uECC_BYTES random bytes
+        generate_random_number(keypair->private_key.data, sizeof(keypair->private_key.data));
 
+        //generate keypair
+        ret = uECC_make_key(temp.unpacked_public_key, keypair->private_key.data);
+
+        if(ret != 1) {
+            SN_ErrPrintf("key generation failed. trying again...\n");
+        }
+    }
     //pack public key
     uECC_compress(temp.unpacked_public_key, keypair->public_key.data);
 
@@ -62,7 +83,7 @@ int SN_Crypto_sign ( //sign data into sigbuf
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
-    ret = uECC_sign_deterministic(private_key->data, hashbuf.data, signature->data);
+    ret = uECC_sign(private_key->data, hashbuf.data, signature->data);
     if(ret == 0) {
         SN_ErrPrintf("error generating digital signature\n");
         return -SN_ERR_SIGNATURE;

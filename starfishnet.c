@@ -2,7 +2,6 @@
 #include "config.h"
 #include "crypto.h"
 #include "logging.h"
-#include "uECC.h"
 #include "packet.h"
 #include "receive.h"
 #include "discovery.h"
@@ -10,33 +9,14 @@
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
 #include "net/netstack.h"
-#include "lib/random.h"
 
 #include <string.h>
-
-static int generate_random_number(uint8_t *dest, unsigned size) {
-    uint16_t rand;
-
-    for(; size > 1; size -= 2, dest += 2) {
-        rand = random_rand();
-        memcpy(dest, &rand, 2);
-    }
-
-    if(size > 0) {
-        rand = random_rand();
-        memcpy(dest, &rand, 1);
-    }
-
-    return 1;
-}
 
 static void init(void) {
     SN_InfoPrintf("enter\n");
     queuebuf_init();
     packetbuf_clear();
     process_start(&starfishnet_discovery_process, NULL);
-
-    uECC_set_rng(&generate_random_number);
 
     //populate configuration structure
     //designed so that we can store a root key in future...

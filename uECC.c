@@ -377,6 +377,7 @@ static const uECC_word_t curve_p[uECC_WORDS] = uECC_CONCAT(Curve_P_, uECC_CURVE)
 static const uECC_word_t curve_b[uECC_WORDS] = uECC_CONCAT(Curve_B_, uECC_CURVE);
 static const EccPoint curve_G = uECC_CONCAT(Curve_G_, uECC_CURVE);
 static const uECC_word_t curve_n[uECC_N_WORDS] = uECC_CONCAT(Curve_N_, uECC_CURVE);
+static const uECC_word_t _3[uECC_WORDS] = {3};
 
 #if asm_clear
 static void vli_clear(uECC_word_t *vli);
@@ -415,80 +416,7 @@ static void vli_square(uECC_word_t *result, const uECC_word_t *left);
 static void vli_modSquare_fast(uECC_word_t *result, const uECC_word_t *left);
 #endif
 
-#define BOOL_TO_BYTE(x) ((x) ? (uint8_t)1 : (uint8_t)0)
-#define max(a, b) ((a) > (b) ? (a) : (b))
-
-#if (defined(_WIN32) || defined(_WIN64))
-/* Windows */
-
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <wincrypt.h>
-
-static int default_RNG(uint8_t *dest, unsigned size) {
-    HCRYPTPROV prov;
-    if (!CryptAcquireContext(&prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        return 0;
-    }
-
-    CryptGenRandom(prov, size, (BYTE *)dest);
-    CryptReleaseContext(prov, 0);
-    return 1;
-}
-
-#elif defined(unix) || defined(__linux__) || defined(__unix__) || defined(__unix) || \
-    (defined(__APPLE__) && defined(__MACH__)) || defined(uECC_POSIX)
-
-/* Some POSIX-like system with /dev/urandom or /dev/random. */
-#include <sys/types.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-#ifndef O_CLOEXEC
-    #define O_CLOEXEC 0
-#endif
-
-static int default_RNG(uint8_t *dest, unsigned size) {
-    int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-    if (fd == -1) {
-        fd = open("/dev/random", O_RDONLY | O_CLOEXEC);
-        if (fd == -1) {
-            return 0;
-        }
-    }
-
-    char *ptr = (char *)dest;
-    size_t left = size;
-    while (left > 0) {
-        ssize_t bytes_read = read(fd, ptr, left);
-        if (bytes_read <= 0) { // read failed
-            close(fd);
-            return 0;
-        }
-        left -= bytes_read;
-        ptr += bytes_read;
-    }
-
-    close(fd);
-    return 1;
-}
-
-#else /* Some other platform */
-
-static int default_RNG(uint8_t *dest, unsigned size) {
-    (void)dest; //shut up GCC
-    (void)size; //shut up GCC
-
-    return 0;
-}
-
-#endif
-
-static uECC_RNG_Function g_rng_function = &default_RNG;
-
-void uECC_set_rng(uECC_RNG_Function rng_function) {
-    g_rng_function = rng_function;
-}
+#define BOOL_TO_BYTE(x) ((uint8_t)(x))
 
 #ifdef __GNUC__ /* Only support GCC inline asm for now */
     #if (uECC_ASM && (uECC_PLATFORM == uECC_avr))
@@ -531,10 +459,10 @@ static wordcount_t vli_numDigits(const uECC_word_t *vli, wordcount_t max_words) 
     swordcount_t i;
     /* Search from the end until we find a non-zero digit.
        We do it in reverse because we expect that most digits will be nonzero. */
-    for (i = max_words - (wordcount_t)1; i >= 0 && vli[i] == 0; --i) {
-    }
+    for (i = max_words - (wordcount_t)1; i >= 0 && vli[i] == 0; --i)
+        ;
 
-    return (i + (wordcount_t)1);
+    return (wordcount_t)(i + (swordcount_t)1);
 }
 
 /* Counts the number of bits required to represent vli. */
@@ -795,8 +723,7 @@ static void vli_modAdd(uECC_word_t *result,
                        const uECC_word_t *left,
                        const uECC_word_t *right,
                        const uECC_word_t *mod) {
-    uECC_word_t carry = vli_add(result, left, right);
-    if (carry || vli_cmp(result, mod) >= 0) {
+    if (vli_add(result, left, right) || vli_cmp(result, mod) >= 0) {
         /* result > mod (result = mod + remainder), so subtract mod to get remainder. */
         vli_sub(result, result, mod);
     }
@@ -810,8 +737,7 @@ static void vli_modSub(uECC_word_t *result,
                        const uECC_word_t *left,
                        const uECC_word_t *right,
                        const uECC_word_t *mod) {
-    uECC_word_t l_borrow = vli_sub(result, left, right);
-    if (l_borrow) {
+    if (vli_sub(result, left, right)) {
         /* In this case, result == -diff == (max int) - diff. Since -x % d == d - x,
            we can get the correct result from result + mod (with overflow). */
         vli_add(result, result, mod);
@@ -1458,6 +1384,7 @@ static void vli_modMult_fast(uECC_word_t *result,
     uECC_word_t* product;
 
     ALLOCATE(product, uECC_word_t, 2 * uECC_WORDS);
+
     vli_mult(product, left, right);
     vli_mmod_fast(result, product);
 
@@ -1696,21 +1623,13 @@ static void apply_z(uECC_word_t * RESTRICT X1,
 }
 
 /* P = (x1, y1) => 2P, (x2, y2) => P' */
-static void XYcZ_initial_double(uECC_word_t * RESTRICT X1,
-                                uECC_word_t * RESTRICT Y1,
-                                uECC_word_t * RESTRICT X2,
-                                uECC_word_t * RESTRICT Y2,
-                                const uECC_word_t * RESTRICT initial_Z) {
-    uECC_word_t* z;
+static void XYcZ_initial_double(uECC_word_t *X1, uECC_word_t *Y1, uECC_word_t *X2, uECC_word_t *Y2) {
+    uECC_word_t *z;
 
     ALLOCATE(z, uECC_word_t, uECC_WORDS);
 
-    if (initial_Z) {
-        vli_set(z, initial_Z);
-    } else {
-        vli_clear(z);
-        z[0] = 1;
-    }
+    vli_clear(z);
+    z[0] = 1;
 
     vli_set(X2, X1);
     vli_set(Y2, Y1);
@@ -1802,15 +1721,11 @@ static void XYcZ_addC(uECC_word_t * RESTRICT X1,
     FREE(t7);
 }
 
-static void EccPoint_mult(EccPoint * RESTRICT result,
-                          const EccPoint * RESTRICT point,
-                          const uECC_word_t * RESTRICT scalar,
-                          const uECC_word_t * RESTRICT initialZ,
-                          bitcount_t numBits) {
+static void EccPoint_mult(EccPoint *result, const EccPoint *point, const uECC_word_t *scalar, bitcount_t numBits) {
     /* R0 and R1 */
-    uECC_word_t* z;
-    uECC_word_t* Rx[2];
-    uECC_word_t* Ry[2];
+    uECC_word_t *z;
+    uECC_word_t *Rx[2];
+    uECC_word_t *Ry[2];
     bitcount_t i;
     uECC_word_t nb;
 
@@ -1823,7 +1738,7 @@ static void EccPoint_mult(EccPoint * RESTRICT result,
     vli_set(Rx[1], point->x);
     vli_set(Ry[1], point->y);
 
-    XYcZ_initial_double(Rx[1], Ry[1], Rx[0], Ry[0], initialZ);
+    XYcZ_initial_double(Rx[1], Ry[1], Rx[0], Ry[0]);
 
     for (i = numBits - (bitcount_t)2; i > 0; --i) {
 
@@ -1855,47 +1770,6 @@ static void EccPoint_mult(EccPoint * RESTRICT result,
     FREE(Rx[1]);
     FREE(Ry[0]);
     FREE(Ry[1]);
-}
-
-static int EccPoint_compute_public_key(EccPoint *result, uECC_word_t *private) {
-#if (uECC_CURVE != uECC_secp160r1)
-    uECC_word_t *p2[2];
-    uECC_word_t carry;
-#endif
-
-    /* Make sure the private key is in the range [1, n-1]. */
-    if (vli_isZero(private)) {
-        return 0;
-    }
-
-#if (uECC_CURVE == uECC_secp160r1)
-    // Don't regularize the bitcount for secp160r1, since it would have a larger performance
-    // impact (about 2% slower on average) and requires the vli_xxx_n functions, leading to
-    // a significant increase in code size.
-
-    EccPoint_mult(result, &curve_G, private, 0, vli_numBits(private, uECC_WORDS));
-#else
-    if (vli_cmp(curve_n, private) != 1) {
-        return 0;
-    }
-
-    ALLOCATE(p2[0], uECC_word_t, uECC_WORDS);
-    ALLOCATE(p2[1], uECC_word_t, uECC_WORDS);
-
-    // Regularize the bitcount for the private key so that attackers cannot use a side channel
-    // attack to learn the number of leading zeros.
-    carry = vli_add(p2[0], private, curve_n);
-    vli_add(p2[1], p2[0], curve_n);
-    EccPoint_mult(result, &curve_G, p2[!carry], 0, (uECC_BYTES * 8) + 1);
-
-    FREE(p2[0]);
-    FREE(p2[1]);
-#endif
-
-    if (EccPoint_isZero(result)) {
-        return 0;
-    }
-    return 1;
 }
 
 #if uECC_CURVE == uECC_secp224r1
@@ -2144,27 +2018,59 @@ static void vli_bytesToNative(uint64_t *native, const uint8_t *bytes) {
 
 #endif /* uECC_WORD_SIZE */
 
-int uECC_make_key(uint8_t public_key[uECC_BYTES*2], uint8_t private_key[uECC_BYTES]) {
-    uECC_word_t* private;
-    EccPoint* public;
-    uECC_word_t tries;
-    int ret;
+int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uECC_BYTES]) {
+    uECC_word_t *private;
+    EccPoint *public;
+    int ret = 1;
+#if (uECC_CURVE != uECC_secp160r1)
+    uECC_word_t *p2[2];
+    uECC_word_t carry;
+#endif
 
     ALLOCATE(private, uECC_word_t, uECC_WORDS);
     ALLOCATE(public, EccPoint, 1);
 
-    for (tries = 0; tries < MAX_TRIES; ++tries) {
-        if (g_rng_function((uint8_t *)private, sizeof(private)) &&
-                EccPoint_compute_public_key(public, private)) {
-            vli_nativeToBytes(private_key, private);
-            vli_nativeToBytes(public_key, public->x);
-            vli_nativeToBytes(public_key + uECC_BYTES, public->y);
-            ret = 1;
-            goto exit;
-        }
+    vli_bytesToNative(private, private_key);
+
+    /* Make sure the private key is in the range [1, n-1]. */
+    if (vli_isZero(private)) {
+        ret = 0;
+        goto exit;
     }
 
-    ret = 0;
+#if (uECC_CURVE == uECC_secp160r1)
+    // Don't regularize the bitcount for secp160r1, since it would have a larger performance
+    // impact (about 2% slower on average) and requires the vli_xxx_n functions, leading to
+    // a significant increase in code size.
+
+    EccPoint_mult(public, &curve_G, private, vli_numBits(private, uECC_WORDS));
+#else
+    if (vli_cmp(curve_n, private) != 1) {
+        ret = 0;
+        goto exit;
+    }
+
+    ALLOCATE(p2[0], uECC_word_t, uECC_WORDS);
+    ALLOCATE(p2[1], uECC_word_t, uECC_WORDS);
+
+    // Regularize the bitcount for the private key so that attackers cannot use a side channel
+    // attack to learn the number of leading zeros.
+    carry = vli_add(p2[0], private, curve_n);
+    vli_add(p2[1], p2[0], curve_n);
+    EccPoint_mult(public, &curve_G, p2[!carry], 0, (uECC_BYTES * 8) + 1);
+
+    FREE(p2[0]);
+    FREE(p2[1]);
+#endif
+
+    if (EccPoint_isZero(public)) {
+        ret = 0;
+        goto exit;
+    }
+
+    vli_nativeToBytes(public_key, public->x);
+    vli_nativeToBytes(public_key + uECC_BYTES, public->y);
+    ret = 1;
 
     exit:
     FREE(public);
@@ -2179,9 +2085,6 @@ int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
     EccPoint* public;
     EccPoint* product;
     uECC_word_t* private;
-    uECC_word_t* random;
-    uECC_word_t* initial_Z;
-    uECC_word_t tries;
 #if (uECC_CURVE != uECC_secp160r1)
     uECC_word_t *p2[2];
     uECC_word_t carry;
@@ -2190,18 +2093,6 @@ int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
     ALLOCATE(public, EccPoint, 1);
     ALLOCATE(product, EccPoint, 1);
     ALLOCATE(private, uECC_word_t, uECC_WORDS);
-    ALLOCATE(random, uECC_word_t, uECC_WORDS);
-    initial_Z = NULL;
-
-    // Try to get a random initial Z value to improve protection against side-channel
-    // attacks. If the RNG fails every time (eg it was not defined), we continue so that
-    // uECC_shared_secret() can still work without an RNG defined.
-    for (tries = 0; tries < MAX_TRIES; ++tries) {
-        if (g_rng_function((uint8_t *)random, sizeof(random)) && !vli_isZero(random)) {
-            initial_Z = random;
-            break;
-        }
-    }
 
     vli_bytesToNative(private, private_key);
     vli_bytesToNative(public->x, public_key);
@@ -2209,7 +2100,7 @@ int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
 
 #if (uECC_CURVE == uECC_secp160r1)
     // Don't regularize the bitcount for secp160r1.
-    EccPoint_mult(product, public, private, initial_Z, vli_numBits(private, uECC_WORDS));
+    EccPoint_mult(product, public, private, vli_numBits(private, uECC_WORDS));
 #else
     p2[0] = private;
     ALLOCATE(p2[1], uECC_word_t, uECC_WORDS);
@@ -2229,7 +2120,6 @@ int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
     FREE(public);
     FREE(product);
     FREE(private);
-    FREE(random);
 
     return ret;
 }
@@ -2275,68 +2165,6 @@ void uECC_decompress(const uint8_t compressed[uECC_BYTES+1], uint8_t public_key[
     vli_nativeToBytes(public_key + uECC_BYTES, point->y);
 
     FREE(point);
-}
-
-int uECC_valid_public_key(const uint8_t public_key[uECC_BYTES*2]) {
-    int ret;
-    uECC_word_t* tmp1;
-    uECC_word_t* tmp2;
-    EccPoint* public;
-
-    ALLOCATE(tmp1, uECC_word_t, uECC_WORDS);
-    ALLOCATE(tmp2, uECC_word_t, uECC_WORDS);
-    ALLOCATE(public, EccPoint, 1);
-
-    vli_bytesToNative(public->x, public_key);
-    vli_bytesToNative(public->y, public_key + uECC_BYTES);
-
-    // The point at infinity is invalid.
-    if (EccPoint_isZero(public)) {
-        return 0;
-    }
-
-    // x and y must be smaller than p.
-    if (vli_cmp(curve_p, public->x) != 1 || vli_cmp(curve_p, public->y) != 1) {
-        return 0;
-    }
-
-    vli_modSquare_fast(tmp1, public->y); /* tmp1 = y^2 */
-    curve_x_side(tmp2, public->x); /* tmp2 = x^3 + ax + b */
-
-    /* Make sure that y^2 == x^3 + ax + b */
-    ret = (vli_cmp(tmp1, tmp2) == 0);
-
-    FREE(tmp1);
-    FREE(tmp2);
-    FREE(public);
-
-    return ret;
-}
-
-int uECC_compute_public_key(const uint8_t private_key[uECC_BYTES],
-                            uint8_t public_key[uECC_BYTES * 2]) {
-    int ret;
-    uECC_word_t* private;
-    EccPoint* public;
-
-    ALLOCATE(private, uECC_word_t, uECC_WORDS);
-    ALLOCATE(public, EccPoint, 1);
-
-    vli_bytesToNative(private, private_key);
-
-    if (!EccPoint_compute_public_key(public, private)) {
-        ret = 0;
-        goto exit;
-    }
-
-    vli_nativeToBytes(public_key, public->x);
-    vli_nativeToBytes(public_key + uECC_BYTES, public->y);
-    ret = 1;
-
-    exit:
-    FREE(private);
-    FREE(public);
-    return ret;
 }
 
 /* -------- ECDSA code -------- */
@@ -2645,7 +2473,6 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     uECC_word_t *k2[2];
     EccPoint* p;
     uECC_word_t carry;
-    uECC_word_t tries;
 
     /* Make sure 0 < k < curve_n */
     if (vli_isZero(k) || vli_cmp_n(curve_n, k) != 1) {
@@ -2667,7 +2494,7 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     vli_add_n(s, tmp, curve_n);
 
     /* p = k * G */
-    EccPoint_mult(p, &curve_G, k2[!carry], 0, (uECC_BYTES * 8) + 2);
+    EccPoint_mult(p, &curve_G, k2[!carry], (uECC_BYTES * 8) + 2);
 #else
     /* Make sure that we don't leak timing information about k.
        See http://eprint.iacr.org/2011/232.pdf */
@@ -2687,24 +2514,8 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
         goto exit;
     }
 
-    // Attempt to get a random number to prevent side channel analysis of k.
-    // If the RNG fails every time (eg it was not defined), we continue so that
-    // deterministic signing can still work (with reduced security) without
-    // an RNG defined.
-    carry = 0; // use to signal that the RNG succeeded at least once.
-    for (tries = 0; tries < MAX_TRIES; ++tries) {
-        if (!g_rng_function((uint8_t *)tmp, sizeof(tmp))) {
-            continue;
-        }
-        carry = 1;
-        if (!vli_isZero(tmp)) {
-            break;
-        }
-    }
-    if (!carry) {
-        vli_clear(tmp);
-        tmp[0] = 1;
-    }
+    vli_clear(tmp);
+    tmp[0] = 1;
 
     /* Prevent side channel analysis of vli_modInv() to determine
        bits of k / the private key by premultiplying by a random number */
@@ -2736,34 +2547,6 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     FREE(tmp);
     FREE(s);
     FREE(p);
-    return ret;
-}
-
-int uECC_sign(const uint8_t private_key[uECC_BYTES],
-              const uint8_t message_hash[uECC_BYTES],
-              uint8_t signature[uECC_BYTES*2]) {
-    int ret;
-    uECC_word_t* k;
-    uECC_word_t tries;
-
-    ALLOCATE(k, uECC_word_t, uECC_N_WORDS);
-
-    for (tries = 0; tries < MAX_TRIES; ++tries) {
-        if(g_rng_function((uint8_t *)k, sizeof(k))) {
-        #if (uECC_CURVE == uECC_secp160r1)
-            k[uECC_WORDS] &= (uECC_word_t)0x01;
-        #endif
-            if (uECC_sign_with_k(private_key, message_hash, k, signature)) {
-                ret = 1;
-                goto exit;
-            }
-        }
-    }
-
-    ret = 0;
-
-    exit:
-    FREE(k);
     return ret;
 }
 
@@ -2815,7 +2598,7 @@ static void update_V() {
     * We generate a value for k (aka T) directly rather than converting endianness.
 
    Layout of hash_context->tmp: <K> | <V> | (1 byte overlapped 0x00 or 0x01) / <HMAC pad> */
-int uECC_sign_deterministic(const uint8_t private_key[uECC_BYTES],
+int uECC_sign(const uint8_t private_key[uECC_BYTES],
                             const uint8_t message_hash[uECC_BYTES],
                             uint8_t signature[uECC_BYTES*2]) {
     uECC_word_t tries;
@@ -2955,7 +2738,12 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
     points[1] = &curve_G;
     points[2] = public;
     points[3] = sum;
-    numBits = max(vli_numBits(u1, uECC_N_WORDS), vli_numBits(u2, uECC_N_WORDS));
+    //this should be a macro or an inline, but SDCC sucks
+    numBits = vli_numBits(u1, uECC_N_WORDS);
+    i = vli_numBits(u2, uECC_N_WORDS); //using i purely because it means avoiding another stack variable, and it's unused at this point
+    if(i > numBits) {
+        numBits = i;
+    }
 
     point = points[BOOL_TO_BYTE(vli_testBit(u1, numBits - (bitcount_t)1) != 0) | (BOOL_TO_BYTE(vli_testBit(u2, numBits - (bitcount_t)1) != 0) << 1)];
     vli_set(rx, point->x);
