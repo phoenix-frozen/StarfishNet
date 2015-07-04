@@ -367,6 +367,7 @@ typedef int cmpresult_t;
 
 #define uECC_WORDS ((wordcount_t)uECC_CONCAT(uECC_WORDS_, uECC_CURVE))
 #define uECC_N_WORDS ((wordcount_t)uECC_CONCAT(uECC_N_WORDS_, uECC_CURVE))
+#define uECC_N_BYTES ((wordcount_t)(uECC_N_WORDS * sizeof(uECC_word_t)))
 
 typedef struct EccPoint {
     uECC_word_t x[uECC_WORDS];
@@ -561,7 +562,7 @@ static uECC_word_t vli_sub(uECC_word_t *result, const uECC_word_t *left, const u
 #endif
 
 #if (!asm_mult || !asm_square || uECC_CURVE == uECC_secp256k1)
-static void muladd(uECC_word_t a,
+static inline void muladd(uECC_word_t a,
                    uECC_word_t b,
                    uECC_word_t *r0,
                    uECC_word_t *r1,
@@ -608,10 +609,11 @@ static void vli_mult(uECC_word_t *result, const uECC_word_t *left, const uECC_wo
     uECC_word_t r0 = 0;
     uECC_word_t r1 = 0;
     uECC_word_t r2 = 0;
-    wordcount_t i, k;
+    wordcount_t k = 0;
 
     /* Compute each digit of result in sequence, maintaining the carries. */
-    for (k = 0; k < uECC_WORDS; ++k) {
+    for (; k < uECC_WORDS; ++k) {
+        wordcount_t i;
         for (i = 0; i <= k; ++i) {
             muladd(left[i], right[k - i], &r0, &r1, &r2);
         }
@@ -620,7 +622,8 @@ static void vli_mult(uECC_word_t *result, const uECC_word_t *left, const uECC_wo
         r1 = r2;
         r2 = 0;
     }
-    for (k = uECC_WORDS; k < uECC_WORDS * 2 - 1; ++k) {
+    for (; k < uECC_WORDS * 2 - 1; ++k) {
+        wordcount_t i;
         for (i = (k + (wordcount_t)1) - uECC_WORDS; i < uECC_WORDS; ++i) {
             muladd(left[i], right[k - i], &r0, &r1, &r2);
         }
@@ -629,7 +632,7 @@ static void vli_mult(uECC_word_t *result, const uECC_word_t *left, const uECC_wo
         r1 = r2;
         r2 = 0;
     }
-    result[uECC_WORDS * 2 - 1] = r0;
+    result[k] = r0;
 }
 #endif
 
@@ -1622,25 +1625,6 @@ static void apply_z(uECC_word_t * RESTRICT X1,
     FREE(t1);
 }
 
-/* P = (x1, y1) => 2P, (x2, y2) => P' */
-static void XYcZ_initial_double(uECC_word_t *X1, uECC_word_t *Y1, uECC_word_t *X2, uECC_word_t *Y2) {
-    uECC_word_t *z;
-
-    ALLOCATE(z, uECC_word_t, uECC_WORDS);
-
-    vli_clear(z);
-    z[0] = 1;
-
-    vli_set(X2, X1);
-    vli_set(Y2, Y1);
-
-    apply_z(X1, Y1, z);
-    EccPoint_double_jacobian(X1, Y1, z);
-    apply_z(X2, Y2, z);
-
-    FREE(z);
-}
-
 /* Input P = (x1, y1, Z), Q = (x2, y2, Z)
    Output P' = (x1', y1', Z3), P + Q = (x3, y3, Z3)
    or P => P', Q => P + Q
@@ -1737,11 +1721,15 @@ static void EccPoint_mult(EccPoint *result, const EccPoint *point, const uECC_wo
 
     vli_set(Rx[1], point->x);
     vli_set(Ry[1], point->y);
+    vli_set(Rx[0], point->x);
+    vli_set(Ry[0], point->y);
 
-    XYcZ_initial_double(Rx[1], Ry[1], Rx[0], Ry[0]);
+    vli_clear(z);
+    z[0] = 1;
+
+    EccPoint_double_jacobian(Rx[1], Ry[1], z);
 
     for (i = numBits - (bitcount_t)2; i > 0; --i) {
-
         nb = BOOL_TO_BYTE(!vli_testBit(scalar, i));
         XYcZ_addC(Rx[1 - nb], Ry[1 - nb], Rx[nb], Ry[nb]);
         XYcZ_add(Rx[nb], Ry[nb], Rx[1 - nb], Ry[1 - nb]);
@@ -2070,7 +2058,6 @@ int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uE
 
     vli_nativeToBytes(public_key, public->x);
     vli_nativeToBytes(public_key + uECC_BYTES, public->y);
-    ret = 1;
 
     exit:
     FREE(public);
@@ -2139,8 +2126,6 @@ static void curve_x_side(uECC_word_t * RESTRICT result, const uECC_word_t * REST
     vli_modMult_fast(result, result, x); /* r = x^3 */
     vli_modAdd(result, result, curve_b, curve_p); /* r = x^3 + b */
 #else
-    static const uECC_word_t _3[uECC_WORDS] = {3}; /* -a = 3 */
-
     vli_modSquare_fast(result, x); /* r = x^2 */
     vli_modSub_fast(result, result, _3); /* r = x^2 - 3 */
     vli_modMult_fast(result, result, x); /* r = x^3 - 3x */
@@ -2463,15 +2448,13 @@ static void vli_modMult_n(uECC_word_t *result, const uECC_word_t *left, const uE
 }
 #endif /* (uECC_CURVE != uECC_secp160r1) */
 
-static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
+static inline int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
                             const uint8_t message_hash[uECC_BYTES],
                             uECC_word_t k[uECC_N_WORDS],
                             uint8_t signature[uECC_BYTES*2]) {
-    int ret;
-    uECC_word_t* tmp;
-    uECC_word_t* s;
-    uECC_word_t *k2[2];
-    EccPoint* p;
+    static uECC_word_t tmp[uECC_N_WORDS];
+    static uECC_word_t s[uECC_N_WORDS];
+    static EccPoint p[1]; //in case I need to switch to dynamic allocation
     uECC_word_t carry;
 
     /* Make sure 0 < k < curve_n */
@@ -2479,22 +2462,15 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
         return 0;
     }
 
-    ALLOCATE(tmp, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(s, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(p, EccPoint, 1);
-
-    k2[0] = tmp;
-    k2[1] = s;
-
 #if (uECC_CURVE == uECC_secp160r1)
     /* Make sure that we don't leak timing information about k.
        See http://eprint.iacr.org/2011/232.pdf */
     vli_add_n(tmp, k, curve_n);
-    carry = (tmp[uECC_WORDS] & (uECC_word_t)0x02);
+    carry = tmp[uECC_WORDS] & (uECC_word_t)0x02;
     vli_add_n(s, tmp, curve_n);
 
     /* p = k * G */
-    EccPoint_mult(p, &curve_G, k2[!carry], (uECC_BYTES * 8) + 2);
+    EccPoint_mult(p, &curve_G, carry == 1 ? tmp : s, (uECC_BYTES * 8) + 2);
 #else
     /* Make sure that we don't leak timing information about k.
        See http://eprint.iacr.org/2011/232.pdf */
@@ -2502,7 +2478,7 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     vli_add(s, tmp, curve_n);
 
     /* p = k * G */
-    EccPoint_mult(p, &curve_G, k2[!carry], 0, (uECC_BYTES * 8) + 1);
+    EccPoint_mult(p, &curve_G, carry == 1 ? tmp : s, (uECC_BYTES * 8) + 1);
 
     /* r = x1 (mod n) */
     if (vli_cmp(curve_n, p->x) != 1) {
@@ -2510,25 +2486,15 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     }
 #endif
     if (vli_isZero(p->x)) {
-        ret = 0;
-        goto exit;
+        return 0;
     }
 
-    vli_clear(tmp);
-    tmp[0] = 1;
+    vli_modInv_n(k, k, curve_n); /* k = 1 / k */
 
-    /* Prevent side channel analysis of vli_modInv() to determine
-       bits of k / the private key by premultiplying by a random number */
-    vli_modMult_n(k, k, tmp); /* k' = rand * k */
-    vli_modInv_n(k, k, curve_n); /* k = 1 / k' */
-    vli_modMult_n(k, k, tmp); /* k = 1 / k */
-
-    vli_nativeToBytes(signature, p->x); /* store r */
-
-    tmp[uECC_N_WORDS - 1] = 0;
     vli_bytesToNative(tmp, private_key); /* tmp = d */
-    s[uECC_N_WORDS - 1] = 0;
+    tmp[uECC_N_WORDS - 1] = 0;
     vli_set(s, p->x);
+    s[uECC_N_WORDS - 1] = 0;
     vli_modMult_n(s, tmp, s); /* s = r*d */
 
     vli_bytesToNative(tmp, message_hash);
@@ -2536,18 +2502,14 @@ static int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     vli_modMult_n(s, s, k); /* s = (e + r*d) / k */
 #if (uECC_CURVE == uECC_secp160r1)
     if (s[uECC_N_WORDS - 1]) {
-        ret = 0;
-        goto exit;
+        return 0;
     }
 #endif
-    vli_nativeToBytes(signature + uECC_BYTES, s);
-    ret = 1;
 
-    exit:
-    FREE(tmp);
-    FREE(s);
-    FREE(p);
-    return ret;
+    vli_nativeToBytes(signature, p->x); /* store r */
+    vli_nativeToBytes(signature + uECC_BYTES, s);
+
+    return 1;
 }
 
 static sha1_context_t ctx;
@@ -2602,8 +2564,8 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
                             const uint8_t message_hash[uECC_BYTES],
                             uint8_t signature[uECC_BYTES*2]) {
     uECC_word_t tries;
-    uECC_word_t* T;
-    int ret;
+    int ret = 0;
+
     memset(K, 0, SHA1_HASHSIZE);
     memset(V, 1, SHA1_HASHSIZE);
     V[SHA1_HASHSIZE] = 0;
@@ -2627,15 +2589,17 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
 
     update_V();
 
-    ALLOCATE(T, uECC_word_t, uECC_N_WORDS);
     for (tries = 0; tries < MAX_TRIES; ++tries) {
-        unsigned T_bytes = 0;
-        while (T_bytes < sizeof(T)) {
-            unsigned i;
+        static uECC_word_t T[uECC_N_BYTES];
+        uint8_t T_bytes = 0;
+        while (T_bytes <= uECC_N_BYTES - SHA1_HASHSIZE) {
             update_V();
-            for (i = 0; i < SHA1_HASHSIZE && T_bytes < sizeof(T); ++i, ++T_bytes) {
-                ((uint8_t *)T)[T_bytes] = V[i];
-            }
+            memcpy(((uint8_t *)T) + T_bytes, V, SHA1_HASHSIZE);
+            T_bytes += SHA1_HASHSIZE;
+        }
+        if(uECC_N_BYTES - T_bytes > 0) {
+            update_V();
+            memcpy(((uint8_t *)T) + T_bytes, V, uECC_N_BYTES - T_bytes);
         }
     #if (uECC_CURVE == uECC_secp160r1)
         T[uECC_WORDS] &= 0x01;
@@ -2643,7 +2607,7 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
 
         if (uECC_sign_with_k(private_key, message_hash, T, signature)) {
             ret = 1;
-            goto exit;
+            break;
         }
 
         // K = HMAC_K(V || 0x00)
@@ -2655,59 +2619,40 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
         update_V();
     }
 
-    ret = 0;
-
-    exit:
-    FREE(T);
     return ret;
 }
 
 int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
                 const uint8_t hash[uECC_BYTES],
                 const uint8_t signature[uECC_BYTES*2]) {
-    int ret;
-    uECC_word_t* u1;
-    uECC_word_t* u2;
-    uECC_word_t* z;
-    uECC_word_t* rx;
-    uECC_word_t* ry;
-    uECC_word_t* tx;
-    uECC_word_t* ty;
-    uECC_word_t* tz;
-    uECC_word_t* r;
-    uECC_word_t* s;
-    EccPoint* public;
-    EccPoint* sum;
-    const EccPoint *points[4];
+    static uECC_word_t u1[uECC_N_WORDS];
+    static uECC_word_t u2[uECC_N_WORDS];
+    static uECC_word_t z[uECC_N_WORDS];
+    static uECC_word_t rx[uECC_WORDS];
+    static uECC_word_t ry[uECC_WORDS];
+    static uECC_word_t tx[uECC_WORDS];
+    static uECC_word_t ty[uECC_WORDS];
+    static uECC_word_t tz[uECC_WORDS];
+    static uECC_word_t r[uECC_N_WORDS];
+    static uECC_word_t s[uECC_N_WORDS];
+    static EccPoint public[1]; //in case I need to switch to dynamic allocation
+    static EccPoint sum[1]; //in case I need to switch to dynamic allocation
+    static const EccPoint *points[4] = {NULL, &curve_G, public, sum};
     const EccPoint *point;
     bitcount_t numBits;
     bitcount_t i;
 
-    ALLOCATE(u1, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(u2, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(z, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(rx, uECC_word_t, uECC_WORDS);
-    ALLOCATE(ry, uECC_word_t, uECC_WORDS);
-    ALLOCATE(tx, uECC_word_t, uECC_WORDS);
-    ALLOCATE(ty, uECC_word_t, uECC_WORDS);
-    ALLOCATE(tz, uECC_word_t, uECC_WORDS);
-    ALLOCATE(r, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(s, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(public, EccPoint, 1);
-    ALLOCATE(sum, EccPoint, 1);
-
-    r[uECC_N_WORDS - 1] = 0;
-    s[uECC_N_WORDS - 1] = 0;
+    if (vli_isZero((uECC_word_t*)signature) || vli_isZero((uECC_word_t*)(signature + uECC_BYTES))) { /* r, s must not be 0. */
+        return 0;
+    }
 
     vli_bytesToNative(public->x, public_key);
     vli_bytesToNative(public->y, public_key + uECC_BYTES);
     vli_bytesToNative(r, signature);
     vli_bytesToNative(s, signature + uECC_BYTES);
 
-    if (vli_isZero(r) || vli_isZero(s)) { /* r, s must not be 0. */
-        ret = 0;
-        goto exit;
-    }
+    r[uECC_N_WORDS - 1] = 0;
+    s[uECC_N_WORDS - 1] = 0;
 
 #if (uECC_CURVE != uECC_secp160r1)
     if (vli_cmp(curve_n, r) != 1 || vli_cmp(curve_n, s) != 1) { /* r, s must be < n. */
@@ -2718,8 +2663,8 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
 
     /* Calculate u1 and u2. */
     vli_modInv_n(z, s, curve_n); /* Z = s^-1 */
-    u1[uECC_N_WORDS - 1] = 0;
     vli_bytesToNative(u1, hash);
+    u1[uECC_N_WORDS - 1] = 0;
     vli_modMult_n(u1, u1, z); /* u1 = e/s */
     vli_modMult_n(u2, r, z); /* u2 = r/s */
 
@@ -2734,10 +2679,7 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
     apply_z(sum->x, sum->y, z);
 
     /* Use Shamir's trick to calculate u1*G + u2*Q */
-    points[0] = 0;
-    points[1] = &curve_G;
-    points[2] = public;
-    points[3] = sum;
+
     //this should be a macro or an inline, but SDCC sucks
     numBits = vli_numBits(u1, uECC_N_WORDS);
     i = vli_numBits(u2, uECC_N_WORDS); //using i purely because it means avoiding another stack variable, and it's unused at this point
@@ -2778,21 +2720,5 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
 #endif
 
     /* Accept only if v == r. */
-    ret = vli_equal(rx, r);
-
-    exit:
-
-    FREE(u1);
-    FREE(u2);
-    FREE(z);
-    FREE(rx);
-    FREE(ry);
-    FREE(tx);
-    FREE(ty);
-    FREE(tz);
-    FREE(r);
-    FREE(s);
-    FREE(public);
-    FREE(sum);
-    return ret;
+    return vli_equal(rx, r);
 }
