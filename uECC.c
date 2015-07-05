@@ -5,11 +5,6 @@
 #include "sha1.h"
 
 #include <string.h>
-#include <malloc.h>
-#include <assert.h>
-
-#define ALLOCATE(obj, type, size) do { (obj) = (type *)malloc(size * sizeof(type)); assert((obj) != NULL); } while(0)
-#define FREE(obj) do { free(obj); (obj) = NULL; } while (0)
 
 #ifndef uECC_PLATFORM
     #if __AVR__
@@ -763,10 +758,9 @@ static void omega_mult(uECC_word_t * RESTRICT result, const uECC_word_t * RESTRI
 
     Note that this only works if log2(omega) < log2(p) / 2 */
 static void vli_mmod_fast(uECC_word_t *RESTRICT result, uECC_word_t *RESTRICT product) {
-    uECC_word_t* tmp;
+    static uECC_word_t tmp[2 * uECC_WORDS];
     uECC_word_t carry;
 
-    ALLOCATE(tmp, uECC_word_t, 2 * uECC_WORDS);
     vli_clear(tmp);
     vli_clear(tmp + uECC_WORDS);
 
@@ -784,8 +778,6 @@ static void vli_mmod_fast(uECC_word_t *RESTRICT result, uECC_word_t *RESTRICT pr
     if (vli_cmp(result, curve_p) > 0) {
         vli_sub(result, result, curve_p);
     }
-
-    FREE(tmp);
 }
 
 #endif
@@ -1384,27 +1376,20 @@ void vli_mmod_fast(uint32_t *RESTRICT result, uint32_t *RESTRICT product)
 static void vli_modMult_fast(uECC_word_t *result,
                              const uECC_word_t *left,
                              const uECC_word_t *right) {
-    uECC_word_t* product;
-
-    ALLOCATE(product, uECC_word_t, 2 * uECC_WORDS);
+    static uECC_word_t product[2 * uECC_WORDS];
 
     vli_mult(product, left, right);
     vli_mmod_fast(result, product);
-
-    FREE(product);
 }
 
 #if uECC_SQUARE_FUNC
 
 /* Computes result = left^2 % curve_p. */
 static void vli_modSquare_fast(uECC_word_t *result, const uECC_word_t *left) {
-    uECC_word_t* product;
+    static uECC_word_t product[2 * uECC_WORDS];
 
-    ALLOCATE(product, uECC_word_t, 2 * uECC_WORDS);
     vli_square(product, left);
     vli_mmod_fast(result, product);
-
-    FREE(product);
 }
 
 #else /* uECC_SQUARE_FUNC */
@@ -1420,10 +1405,10 @@ static void vli_modSquare_fast(uECC_word_t *result, const uECC_word_t *left) {
    https://labs.oracle.com/techrep/2001/smli_tr-2001-95.pdf */
 #if !asm_modInv
 static void vli_modInv(uECC_word_t *result, const uECC_word_t *input, const uECC_word_t *mod) {
-    uECC_word_t* a;
-    uECC_word_t* b;
-    uECC_word_t* u;
-    uECC_word_t* v;
+    static uECC_word_t a[uECC_WORDS];
+    static uECC_word_t b[uECC_WORDS];
+    static uECC_word_t u[uECC_WORDS];
+    static uECC_word_t v[uECC_WORDS];
     uECC_word_t carry;
     cmpresult_t cmpResult;
 
@@ -1431,11 +1416,6 @@ static void vli_modInv(uECC_word_t *result, const uECC_word_t *input, const uECC
         vli_clear(result);
         return;
     }
-
-    ALLOCATE(a, uECC_word_t, uECC_WORDS);
-    ALLOCATE(b, uECC_word_t, uECC_WORDS);
-    ALLOCATE(u, uECC_word_t, uECC_WORDS);
-    ALLOCATE(v, uECC_word_t, uECC_WORDS);
 
     vli_set(a, input);
     vli_set(b, mod);
@@ -1493,11 +1473,6 @@ static void vli_modInv(uECC_word_t *result, const uECC_word_t *input, const uECC
         }
     }
     vli_set(result, u);
-
-    FREE(a);
-    FREE(b);
-    FREE(u);
-    FREE(v);
 }
 #endif /* !asm_modInv */
 
@@ -1518,15 +1493,12 @@ static void EccPoint_double_jacobian(uECC_word_t * RESTRICT X1,
                                      uECC_word_t * RESTRICT Y1,
                                      uECC_word_t * RESTRICT Z1) {
     /* t1 = X, t2 = Y, t3 = Z */
-    uECC_word_t* t4;
-    uECC_word_t* t5;
+    static uECC_word_t t4[uECC_WORDS];
+    static uECC_word_t t5[uECC_WORDS];
 
     if (vli_isZero(Z1)) {
         return;
     }
-
-    ALLOCATE(t4, uECC_word_t, uECC_WORDS);
-    ALLOCATE(t5, uECC_word_t, uECC_WORDS);
 
     vli_modSquare_fast(t5, Y1);   /* t5 = y1^2 */
     vli_modMult_fast(t4, X1, t5); /* t4 = x1*y1^2 = A */
@@ -1552,24 +1524,18 @@ static void EccPoint_double_jacobian(uECC_word_t * RESTRICT X1,
     vli_modSub(t4, t4, X1, curve_p); /* t4 = A - x3 */
     vli_modMult_fast(Y1, Y1, t4);    /* t2 = B * (A - x3) */
     vli_modSub(Y1, Y1, t5, curve_p); /* t2 = B * (A - x3) - y1^4 = y3 */
-
-    FREE(t4);
-    FREE(t5);
 }
 #else
 static void EccPoint_double_jacobian(uECC_word_t * RESTRICT X1,
                                      uECC_word_t * RESTRICT Y1,
                                      uECC_word_t * RESTRICT Z1) {
     /* t1 = X, t2 = Y, t3 = Z */
-    uECC_word_t* t4;
-    uECC_word_t* t5;
+    static uECC_word_t t4[uECC_WORDS];
+    static uECC_word_t t5[uECC_WORDS];
 
     if (vli_isZero(Z1)) {
         return;
     }
-
-    ALLOCATE(t4, uECC_word_t, uECC_WORDS);
-    ALLOCATE(t5, uECC_word_t, uECC_WORDS);
 
     vli_modSquare_fast(t4, Y1);   /* t4 = y1^2 */
     vli_modMult_fast(t5, X1, t4); /* t5 = x1*y1^2 = A */
@@ -1603,9 +1569,6 @@ static void EccPoint_double_jacobian(uECC_word_t * RESTRICT X1,
     vli_set(X1, Z1);
     vli_set(Z1, Y1);
     vli_set(Y1, t4);
-
-    FREE(t4);
-    FREE(t5);
 }
 #endif
 
@@ -1613,16 +1576,12 @@ static void EccPoint_double_jacobian(uECC_word_t * RESTRICT X1,
 static void apply_z(uECC_word_t * RESTRICT X1,
                     uECC_word_t * RESTRICT Y1,
                     const uECC_word_t * RESTRICT Z) {
-    uECC_word_t* t1;
-
-    ALLOCATE(t1, uECC_word_t, uECC_WORDS);
+    static uECC_word_t t1[uECC_WORDS];
 
     vli_modSquare_fast(t1, Z);    /* z^2 */
     vli_modMult_fast(X1, X1, t1); /* x1 * z^2 */
     vli_modMult_fast(t1, t1, Z);  /* z^3 */
     vli_modMult_fast(Y1, Y1, t1); /* y1 * z^3 */
-
-    FREE(t1);
 }
 
 /* Input P = (x1, y1, Z), Q = (x2, y2, Z)
@@ -1634,9 +1593,7 @@ static void XYcZ_add(uECC_word_t * RESTRICT X1,
                      uECC_word_t * RESTRICT X2,
                      uECC_word_t * RESTRICT Y2) {
     /* t1 = X1, t2 = Y1, t3 = X2, t4 = Y2 */
-    uECC_word_t* t5;
-
-    ALLOCATE(t5, uECC_word_t, uECC_WORDS);
+    static uECC_word_t t5[uECC_WORDS];
 
     vli_modSub_fast(t5, X2, X1);  /* t5 = x2 - x1 */
     vli_modSquare_fast(t5, t5);   /* t5 = (x2 - x1)^2 = A */
@@ -1654,8 +1611,6 @@ static void XYcZ_add(uECC_word_t * RESTRICT X1,
     vli_modSub_fast(Y2, Y2, Y1);  /* t4 = y3 */
 
     vli_set(X2, t5);
-
-    FREE(t5);
 }
 
 /* Input P = (x1, y1, Z), Q = (x2, y2, Z)
@@ -1667,13 +1622,9 @@ static void XYcZ_addC(uECC_word_t * RESTRICT X1,
                       uECC_word_t * RESTRICT X2,
                       uECC_word_t * RESTRICT Y2) {
     /* t1 = X1, t2 = Y1, t3 = X2, t4 = Y2 */
-    uECC_word_t* t5;
-    uECC_word_t* t6;
-    uECC_word_t* t7;
-
-    ALLOCATE(t5, uECC_word_t, uECC_WORDS);
-    ALLOCATE(t6, uECC_word_t, uECC_WORDS);
-    ALLOCATE(t7, uECC_word_t, uECC_WORDS);
+    static uECC_word_t t5[uECC_WORDS];
+    static uECC_word_t t6[uECC_WORDS];
+    static uECC_word_t t7[uECC_WORDS];
 
     vli_modSub_fast(t5, X2, X1);     /* t5 = x2 - x1 */
     vli_modSquare_fast(t5, t5);      /* t5 = (x2 - x1)^2 = A */
@@ -1699,25 +1650,15 @@ static void XYcZ_addC(uECC_word_t * RESTRICT X1,
     vli_modSub_fast(Y1, t6, Y1);  /* t2 = (y2 + y1)*(x3' - B) - E = y3' */
 
     vli_set(X1, t7);
-
-    FREE(t5);
-    FREE(t6);
-    FREE(t7);
 }
 
 static void EccPoint_mult(EccPoint *result, const EccPoint *point, const uECC_word_t *scalar, bitcount_t numBits) {
     /* R0 and R1 */
-    uECC_word_t *z;
-    uECC_word_t *Rx[2];
-    uECC_word_t *Ry[2];
+    static uECC_word_t z[uECC_WORDS];
+    static uECC_word_t Rx[2][uECC_WORDS];
+    static uECC_word_t Ry[2][uECC_WORDS];
     bitcount_t i;
     uECC_word_t nb;
-
-    ALLOCATE( z   , uECC_word_t, uECC_WORDS);
-    ALLOCATE(Rx[0], uECC_word_t, uECC_WORDS);
-    ALLOCATE(Rx[1], uECC_word_t, uECC_WORDS);
-    ALLOCATE(Ry[0], uECC_word_t, uECC_WORDS);
-    ALLOCATE(Ry[1], uECC_word_t, uECC_WORDS);
 
     vli_set(Rx[1], point->x);
     vli_set(Ry[1], point->y);
@@ -1752,12 +1693,6 @@ static void EccPoint_mult(EccPoint *result, const EccPoint *point, const uECC_wo
 
     vli_set(result->x, Rx[0]);
     vli_set(result->y, Ry[0]);
-
-    FREE( z   );
-    FREE(Rx[0]);
-    FREE(Rx[1]);
-    FREE(Ry[0]);
-    FREE(Ry[1]);
 }
 
 #if uECC_CURVE == uECC_secp224r1
@@ -1769,9 +1704,7 @@ static void mod_sqrt_secp224r1_rs(uECC_word_t *d1,
                                   const uECC_word_t *d0,
                                   const uECC_word_t *e0,
                                   const uECC_word_t *f0) {
-    uECC_word_t* t;
-
-    ALLOCATE(t, uECC_word_t, uECC_WORDS);
+    static uECC_word_t t[uECC_WORDS];
 
     vli_modSquare_fast(t, d0);                 /* t <-- d0 ^ 2 */
     vli_modMult_fast(e1, d0, e0);              /* e1 <-- d0 * e0 */
@@ -1780,8 +1713,6 @@ static void mod_sqrt_secp224r1_rs(uECC_word_t *d1,
     vli_modMult_fast(f1, t, f0);               /* f1 <-- t  * f0 */
     vli_modAdd(f1, f1, f1, curve_p);           /* f1 <-- f1 + f1 */
     vli_modAdd(f1, f1, f1, curve_p);           /* f1 <-- f1 + f1 */
-
-    FREE(t);
 }
 
 /* Routine 3.2.5 RSS;  from http://www.nsa.gov/ia/_files/nist-routines.pdf */
@@ -1811,11 +1742,8 @@ static void mod_sqrt_secp224r1_rm(uECC_word_t *d2,
                                   const uECC_word_t *e0,
                                   const uECC_word_t *d1,
                                   const uECC_word_t *e1) {
-    uECC_word_t* t1;
-    uECC_word_t* t2;
-
-    ALLOCATE(t1, uECC_word_t, uECC_WORDS);
-    ALLOCATE(t2, uECC_word_t, uECC_WORDS);
+    static uECC_word_t t1[uECC_WORDS];
+    static uECC_word_t t2[uECC_WORDS];
 
     vli_modMult_fast(t1, e0, e1);              /* t1 <-- e0 * e1 */
     vli_modMult_fast(t1, t1, c);               /* t1 <-- t1 * c */
@@ -1829,9 +1757,6 @@ static void mod_sqrt_secp224r1_rm(uECC_word_t *d2,
     vli_modMult_fast(f2, f2, c);               /* f2 <-- f2 * c */
     vli_modSub_fast(f2, curve_p, f2);          /* f2 <-- p  - f2 */
     vli_set(d2, t2);                           /* d2 <-- t2 */
-
-    FREE(t1);
-    FREE(t2);
 }
 
 /* Routine 3.2.7 RP;  from http://www.nsa.gov/ia/_files/nist-routines.pdf */
@@ -1840,15 +1765,11 @@ static void mod_sqrt_secp224r1_rp(uECC_word_t *d1,
                                   uECC_word_t *f1,
                                   const uECC_word_t *c,
                                   const uECC_word_t *r) {
+    static uECC_word_t d0[uECC_WORDS];
+    static uECC_word_t f0[uECC_WORDS];
+    static uECC_word_t e0[uECC_WORDS];
     wordcount_t i;
     wordcount_t pow2i = 1;
-    uECC_word_t* d0;
-    uECC_word_t* f0;
-    uECC_word_t* e0;
-
-    ALLOCATE(d0, uECC_word_t, uECC_WORDS);
-    ALLOCATE(f0, uECC_word_t, uECC_WORDS);
-    ALLOCATE(e0, uECC_word_t, uECC_WORDS);
 
     memset(e0, 0, uECC_WORDS * sizeof(uECC_word_t));
     e0[0] = 1;                                      /* e0 <-- 1 */
@@ -1864,29 +1785,18 @@ static void mod_sqrt_secp224r1_rp(uECC_word_t *d1,
         vli_set(f0, f1);                       /* f0 <-- f1 */
         pow2i *= 2;
     }
-
-    FREE(d0);
-    FREE(f0);
-    FREE(e0);
 }
 
 /* Compute a = sqrt(a) (mod curve_p). */
 /* Routine 3.2.8 mp_mod_sqrt_224; from http://www.nsa.gov/ia/_files/nist-routines.pdf */
 static void mod_sqrt(uECC_word_t *a) {
+    static uECC_word_t e1[uECC_WORDS];
+    static uECC_word_t f1[uECC_WORDS];
+    static uECC_word_t d0[uECC_WORDS];
+    static uECC_word_t e0[uECC_WORDS];
+    static uECC_word_t f0[uECC_WORDS];
+    static uECC_word_t d1[uECC_WORDS];
     bitcount_t i;
-    uECC_word_t* e1;
-    uECC_word_t* f1;
-    uECC_word_t* d0;
-    uECC_word_t* e0;
-    uECC_word_t* f0;
-    uECC_word_t* d1;
-
-    ALLOCATE(e1, uECC_word_t, uECC_WORDS);
-    ALLOCATE(f1, uECC_word_t, uECC_WORDS);
-    ALLOCATE(d0, uECC_word_t, uECC_WORDS);
-    ALLOCATE(e0, uECC_word_t, uECC_WORDS);
-    ALLOCATE(f0, uECC_word_t, uECC_WORDS);
-    ALLOCATE(d1, uECC_word_t, uECC_WORDS);
 
     // s = a; using constant instead of random value
     mod_sqrt_secp224r1_rp(d0, e0, f0, a, a);           /* RP (d0, e0, f0, c, s) */
@@ -1902,28 +1812,18 @@ static void mod_sqrt(uECC_word_t *a) {
     }
     vli_modInv(f1, e0, curve_p);                       /* f1 <-- 1 / e0 */
     vli_modMult_fast(a, d0, f1);                       /* a  <-- d0 / e0 */
-
-    FREE(e1);
-    FREE(f1);
-    FREE(d0);
-    FREE(e0);
-    FREE(f0);
-    FREE(d1);
 }
 
 #else /* uECC_CURVE */
 
 /* Compute a = sqrt(a) (mod curve_p). */
-static void mod_sqrt(uECC_word_t *a) {
+static inline void mod_sqrt(uECC_word_t *a) {
+    static uECC_word_t p1[uECC_WORDS];
+    static uECC_word_t l_result[uECC_WORDS];
     bitcount_t i;
-    uECC_word_t* p1;
-    uECC_word_t* l_result;
 
-    ALLOCATE(p1, uECC_word_t, uECC_WORDS);
-    ALLOCATE(l_result, uECC_word_t, uECC_WORDS);
-
-    memset(p1, 0, uECC_WORDS * sizeof(uECC_word_t));
-    memset(l_result, 0, uECC_WORDS * sizeof(uECC_word_t));
+    vli_clear(p1);
+    vli_clear(l_result);
     p1[0] = 1;
     l_result[0] = 1;
 
@@ -1937,9 +1837,6 @@ static void mod_sqrt(uECC_word_t *a) {
         }
     }
     vli_set(a, l_result);
-
-    FREE(p1);
-    FREE(l_result);
 }
 #endif /* uECC_CURVE */
 
@@ -2007,23 +1904,18 @@ static void vli_bytesToNative(uint64_t *native, const uint8_t *bytes) {
 #endif /* uECC_WORD_SIZE */
 
 int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uECC_BYTES]) {
-    uECC_word_t *private;
-    EccPoint *public;
-    int ret = 1;
+    static uECC_word_t private[uECC_WORDS];
+    static EccPoint public[1];
 #if (uECC_CURVE != uECC_secp160r1)
-    uECC_word_t *p2[2];
+    static uECC_word_t p2[2][uECC_WORDS];
     uECC_word_t carry;
 #endif
-
-    ALLOCATE(private, uECC_word_t, uECC_WORDS);
-    ALLOCATE(public, EccPoint, 1);
 
     vli_bytesToNative(private, private_key);
 
     /* Make sure the private key is in the range [1, n-1]. */
     if (vli_isZero(private)) {
-        ret = 0;
-        goto exit;
+        return 0;
     }
 
 #if (uECC_CURVE == uECC_secp160r1)
@@ -2034,52 +1926,36 @@ int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uE
     EccPoint_mult(public, &curve_G, private, vli_numBits(private, uECC_WORDS));
 #else
     if (vli_cmp(curve_n, private) != 1) {
-        ret = 0;
-        goto exit;
+        return 0;
     }
-
-    ALLOCATE(p2[0], uECC_word_t, uECC_WORDS);
-    ALLOCATE(p2[1], uECC_word_t, uECC_WORDS);
 
     // Regularize the bitcount for the private key so that attackers cannot use a side channel
     // attack to learn the number of leading zeros.
     carry = vli_add(p2[0], private, curve_n);
     vli_add(p2[1], p2[0], curve_n);
     EccPoint_mult(public, &curve_G, p2[!carry], 0, (uECC_BYTES * 8) + 1);
-
-    FREE(p2[0]);
-    FREE(p2[1]);
 #endif
 
     if (EccPoint_isZero(public)) {
-        ret = 0;
-        goto exit;
+        return 0;
     }
 
     vli_nativeToBytes(public_key, public->x);
     vli_nativeToBytes(public_key + uECC_BYTES, public->y);
 
-    exit:
-    FREE(public);
-    FREE(private);
-    return ret;
+    return 1;
 }
 
 int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
                        const uint8_t private_key[uECC_BYTES],
                        uint8_t secret[uECC_BYTES]) {
-    int ret;
-    EccPoint* public;
-    EccPoint* product;
-    uECC_word_t* private;
+    static EccPoint public[1];
+    static EccPoint product[1];
+    static uECC_word_t private[uECC_WORDS];
 #if (uECC_CURVE != uECC_secp160r1)
     uECC_word_t *p2[2];
     uECC_word_t carry;
 #endif
-
-    ALLOCATE(public, EccPoint, 1);
-    ALLOCATE(product, EccPoint, 1);
-    ALLOCATE(private, uECC_word_t, uECC_WORDS);
 
     vli_bytesToNative(private, private_key);
     vli_bytesToNative(public->x, public_key);
@@ -2095,20 +1971,14 @@ int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
     // Regularize the bitcount for the private key so that attackers cannot use a side channel
     // attack to learn the number of leading zeros.
     carry = vli_add(private, private, curve_n);
-    vli_add(tmp, private, curve_n);
+    vli_add(p2[1], private, curve_n);
     EccPoint_mult(product, public, p2[!carry], initial_Z, (uECC_BYTES * 8) + 1);
 
     FREE(p2[1]);
 #endif
 
     vli_nativeToBytes(secret, product->x);
-    ret = !EccPoint_isZero(product);
-
-    FREE(public);
-    FREE(product);
-    FREE(private);
-
-    return ret;
+    return !EccPoint_isZero(product);
 }
 
 void uECC_compress(const uint8_t public_key[uECC_BYTES*2], uint8_t compressed[uECC_BYTES+1]) {
@@ -2134,9 +2004,7 @@ static void curve_x_side(uECC_word_t * RESTRICT result, const uECC_word_t * REST
 }
 
 void uECC_decompress(const uint8_t compressed[uECC_BYTES+1], uint8_t public_key[uECC_BYTES*2]) {
-    EccPoint* point;
-
-    ALLOCATE(point, EccPoint, 1);
+    static EccPoint point[1];
 
     vli_bytesToNative(point->x, compressed + 1);
     curve_x_side(point->y, point->x);
@@ -2148,17 +2016,12 @@ void uECC_decompress(const uint8_t compressed[uECC_BYTES+1], uint8_t public_key[
 
     vli_nativeToBytes(public_key, point->x);
     vli_nativeToBytes(public_key + uECC_BYTES, point->y);
-
-    FREE(point);
 }
 
 /* -------- ECDSA code -------- */
 
 #if (uECC_CURVE == uECC_secp160r1)
-static void vli_clear_n(uECC_word_t *vli) {
-    vli_clear(vli);
-    vli[uECC_N_WORDS - 1] = 0;
-}
+#define vli_clear_n(vli) memset(vli, 0, uECC_N_WORDS * sizeof(uECC_word_t))
 
 static uECC_word_t vli_isZero_n(const uECC_word_t *vli) {
     if (vli[uECC_N_WORDS - 1]) {
@@ -2167,10 +2030,7 @@ static uECC_word_t vli_isZero_n(const uECC_word_t *vli) {
     return vli_isZero(vli);
 }
 
-static void vli_set_n(uECC_word_t *dest, const uECC_word_t *src) {
-    vli_set(dest, src);
-    dest[uECC_N_WORDS - 1] = src[uECC_N_WORDS - 1];
-}
+#define vli_set_n(dest, src) memcpy(dest, src, uECC_N_WORDS * sizeof(uECC_word_t))
 
 static cmpresult_t vli_cmp_n(const uECC_word_t *left, const uECC_word_t *right) {
     if (left[uECC_N_WORDS - 1] > right[uECC_N_WORDS - 1]) {
@@ -2251,17 +2111,16 @@ static void vli_modAdd_n(uECC_word_t *result,
                          const uECC_word_t *left,
                          const uECC_word_t *right,
                          const uECC_word_t *mod) {
-    uECC_word_t carry = vli_add_n(result, left, right);
-    if (carry || vli_cmp_n(result, mod) >= 0) {
+    if (vli_add_n(result, left, right) || vli_cmp_n(result, mod) >= 0) {
         vli_sub_n(result, result, mod);
     }
 }
 
 static void vli_modInv_n(uECC_word_t *result, const uECC_word_t *input, const uECC_word_t *mod) {
-    uECC_word_t* a;
-    uECC_word_t* b;
-    uECC_word_t* u;
-    uECC_word_t* v;
+    static uECC_word_t a[uECC_N_WORDS];
+    static uECC_word_t b[uECC_N_WORDS];
+    static uECC_word_t u[uECC_N_WORDS];
+    static uECC_word_t v[uECC_N_WORDS];
     uECC_word_t carry;
     cmpresult_t cmpResult;
 
@@ -2269,11 +2128,6 @@ static void vli_modInv_n(uECC_word_t *result, const uECC_word_t *input, const uE
         vli_clear_n(result);
         return;
     }
-
-    ALLOCATE(a, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(b, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(u, uECC_word_t, uECC_N_WORDS);
-    ALLOCATE(v, uECC_word_t, uECC_N_WORDS);
 
     vli_set_n(a, input);
     vli_set_n(b, mod);
@@ -2331,11 +2185,6 @@ static void vli_modInv_n(uECC_word_t *result, const uECC_word_t *input, const uE
         }
     }
     vli_set_n(result, u);
-
-    FREE(a);
-    FREE(b);
-    FREE(u);
-    FREE(v);
 }
 
 static void vli2_rshift1_n(uECC_word_t *vli) {
@@ -2361,16 +2210,12 @@ static uECC_word_t vli2_sub_n(uECC_word_t *result,
 
 /* Computes result = (left * right) % curve_n. */
 static void vli_modMult_n(uECC_word_t *result, const uECC_word_t *left, const uECC_word_t *right) {
-    bitcount_t i;
-    uECC_word_t* product;
-    uECC_word_t* modMultiple;
-    uECC_word_t *v[2];
+    static uECC_word_t product[2 * uECC_N_WORDS];
+    static uECC_word_t modMultiple[2 * uECC_N_WORDS];
+    static uECC_word_t tmp[2 * uECC_N_WORDS];
+    uECC_word_t *v[2] = {tmp, product};
     uECC_word_t index = 1;
-
-    ALLOCATE(product, uECC_word_t, 2 * uECC_N_WORDS);
-    ALLOCATE(modMultiple, uECC_word_t, 2 * uECC_N_WORDS);
-    ALLOCATE(v[0], uECC_word_t, 2 * uECC_N_WORDS);
-    v[1] = product;
+    bitcount_t i;
 
     vli_mult_n(product, left, right);
     vli_clear_n(modMultiple);
@@ -2385,10 +2230,6 @@ static void vli_modMult_n(uECC_word_t *result, const uECC_word_t *left, const uE
         vli2_rshift1_n(modMultiple);
     }
     vli_set_n(result, v[index]);
-
-    FREE(product);
-    FREE(modMultiple);
-    FREE(v[0]);
 }
 
 #else
@@ -2454,7 +2295,7 @@ static inline int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
                             uint8_t signature[uECC_BYTES*2]) {
     static uECC_word_t tmp[uECC_N_WORDS];
     static uECC_word_t s[uECC_N_WORDS];
-    static EccPoint p[1]; //in case I need to switch to dynamic allocation
+    static EccPoint p[1];
     uECC_word_t carry;
 
     /* Make sure 0 < k < curve_n */
@@ -2635,8 +2476,8 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
     static uECC_word_t tz[uECC_WORDS];
     static uECC_word_t r[uECC_N_WORDS];
     static uECC_word_t s[uECC_N_WORDS];
-    static EccPoint public[1]; //in case I need to switch to dynamic allocation
-    static EccPoint sum[1]; //in case I need to switch to dynamic allocation
+    static EccPoint public[1];
+    static EccPoint sum[1];
     static const EccPoint *points[4] = {NULL, &curve_G, public, sum};
     const EccPoint *point;
     bitcount_t numBits;
@@ -2694,11 +2535,9 @@ int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
     z[0] = 1;
 
     for (i = numBits - (bitcount_t)2; i >= 0; --i) {
-        uECC_word_t index;
         EccPoint_double_jacobian(rx, ry, z);
 
-        index = BOOL_TO_BYTE(vli_testBit(u1, i) != 0) | (BOOL_TO_BYTE(vli_testBit(u2, i) != 0) << 1);
-        point = points[index];
+        point = points[BOOL_TO_BYTE(vli_testBit(u1, i) != 0) | (BOOL_TO_BYTE(vli_testBit(u2, i) != 0) << 1)];
         if (point) {
             vli_set(tx, point->x);
             vli_set(ty, point->y);
