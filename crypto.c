@@ -73,7 +73,7 @@ int SN_Crypto_sign ( //sign data into sigbuf
     }
 
     //hash data
-    SN_Crypto_hash(data, data_len, &hashbuf, 0);
+    SN_Crypto_hash(data, data_len, &hashbuf);
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
@@ -103,7 +103,7 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
     }
 
     //hash data
-    SN_Crypto_hash(data, data_len, &hashbuf, 0);
+    SN_Crypto_hash(data, data_len, &hashbuf);
 
     //unpack public key
     uECC_decompress(public_key->data, temp.unpacked_public_key);
@@ -168,23 +168,12 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     return SN_OK;
 }
 
-void SN_Crypto_hash (
-    const uint8_t*   data,
-    size_t     data_len,
-    SN_Hash_t* hash,
-    size_t     repeat_count
-) {
+void SN_Crypto_hash(const uint8_t* data, size_t data_len, SN_Hash_t* hash) {
     SN_InfoPrintf("enter\n");
 
     sha1_starts(&temp.ctx);
     sha1_update(&temp.ctx, data, data_len);
     sha1_finish(&temp.ctx, hash->data);
-
-    while(repeat_count-- > 0) {
-        sha1_starts(&temp.ctx);
-        sha1_update(&temp.ctx, hash->data, SN_Hash_size);
-        sha1_finish(&temp.ctx, hash->data);
-    }
 
     SN_InfoPrintf("exit\n");
 }

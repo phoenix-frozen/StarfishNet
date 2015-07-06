@@ -244,20 +244,11 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
         key_confirmation_header = PACKET_ENTRY(*packet, key_confirmation_header, request);
         assert(key_confirmation_header != NULL);
 
+        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data),
+                       &key_confirmation_header->challenge);
         if(CONTROL_ATTRIBUTE(network_header, associate)) {
             //this is a reply; do challenge1 (double-hash)
-            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 1);
-            SN_DebugPrintf("challenge1 = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n",
-                *(uint64_t*)key_confirmation_header->challenge.data,
-                *((uint64_t*)key_confirmation_header->challenge.data + 1),
-                *((uint32_t*)key_confirmation_header->challenge.data + 4));
-        } else {
-            //this is a finalise; do challenge2 (single-hash)
-            SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &key_confirmation_header->challenge, 0);
-            SN_DebugPrintf("challenge2 = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n",
-                *(uint64_t*)key_confirmation_header->challenge.data,
-                *((uint64_t*)key_confirmation_header->challenge.data + 1),
-                *((uint32_t*)key_confirmation_header->challenge.data + 4));
+            SN_Crypto_hash(key_confirmation_header->challenge.data, SN_Hash_size, &key_confirmation_header->challenge);
         }
     }
 
@@ -832,15 +823,10 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
         assert(table_entry->state == SN_Awaiting_reply);
 
         //do the challenge1 check (double-hash)
-        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf, challengenumber == 2 ? 0 : 1);
-        SN_DebugPrintf("challenge%d (received)   = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n", challengenumber,
-                       *(uint64_t *) PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data,
-                       *((uint64_t *)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 1),
-                       *((uint32_t *)PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data + 4));
-        SN_DebugPrintf("challenge%d (calculated) = 0x%016"PRIx64"%016"PRIx64"%08"PRIx32"\n", challengenumber,
-                       *(uint64_t *) hashbuf.data,
-                       *((uint64_t *)hashbuf.data + 1),
-                       *((uint32_t *)hashbuf.data + 4));
+        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf);
+        if(challengenumber == 2) {
+            SN_Crypto_hash(hashbuf.data, SN_Hash_size, &hashbuf);
+        }
         if(memcmp(hashbuf.data, PACKET_ENTRY(*packet, key_confirmation_header, indication)->challenge.data, sizeof(hashbuf.data)) != 0) {
             SN_ErrPrintf("key confirmation (challenge%d) failed.\n", challengenumber);
             return -SN_ERR_KEYGEN;

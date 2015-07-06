@@ -59,7 +59,8 @@ void SN_Beacon_update(void) {
     self_beacon_payload.beacon_data.network_config.router_address = starfishnet_config.short_address;
 
     //hash
-    SN_Crypto_hash((uint8_t*)&self_beacon_payload.beacon_data, sizeof(self_beacon_payload.beacon_data), &self_beacon_payload.hash, 0);
+    SN_Crypto_hash((uint8_t *) &self_beacon_payload.beacon_data, sizeof(self_beacon_payload.beacon_data),
+                   &self_beacon_payload.hash);
 }
 
 static struct {
@@ -236,7 +237,7 @@ void SN_Beacon_input(void) {
                   *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 3),
                   *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 4));
 
-    SN_Crypto_hash((uint8_t*)&beacon_payload->beacon_data, sizeof(beacon_payload->beacon_data), &protohash, 0);
+    SN_Crypto_hash((uint8_t *) &beacon_payload->beacon_data, sizeof(beacon_payload->beacon_data), &protohash);
     if(memcmp(beacon_payload->hash.data, protohash.data, SN_Hash_size) != 0) {
         SN_WarnPrintf("Beacon hash check failed.\n");
         return;

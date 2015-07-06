@@ -62,11 +62,6 @@ int SN_Crypto_check_certificate ( //check the signature on a certificate
     const SN_Certificate_t* certificate
 );
 
-void SN_Crypto_hash (
-    const uint8_t*   data,
-    size_t     data_len,
-    SN_Hash_t* hash,
-    size_t     repeat_count
-);
+void SN_Crypto_hash(const uint8_t* data, size_t data_len, SN_Hash_t* hash);
 
 #endif /* __SN_CRYPTO_H__ */
