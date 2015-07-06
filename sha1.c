@@ -106,15 +106,13 @@ void sha1_finish(sha1_context_t *ctx, uint8_t hash[])
     uint8_t i = ctx->datalen;
 
     // Pad whatever data is left in the buffer.
-    if (ctx->datalen < 56) {
+    if (i < 56) {
         ctx->data[i++] = 0x80;
-        while (i < 56)
-            ctx->data[i++] = 0x00;
+        memset(ctx->data + i, 0, (uint8_t)56 - i);
     }
     else {
         ctx->data[i++] = 0x80;
-        while (i < 64)
-            ctx->data[i++] = 0x00;
+        memset(ctx->data + i, 0, (uint8_t)64 - i);
         sha1_transform(ctx,ctx->data);
         memset(ctx->data,0,56);
     }
