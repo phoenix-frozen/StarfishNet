@@ -9,6 +9,7 @@
 #include "net/netstack.h"
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
+#include "net/linkaddr.h"
 
 #include <string.h>
 #include <assert.h>
@@ -74,9 +75,9 @@ static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
         src_address.u16 = starfishnet_config.short_address;
     } else {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_InfoPrintf("sending from our long address, 0x%08"PRIx32"%08"PRIx32"\n", *(uint32_t*)starfishnet_config.long_address, *(((uint32_t*)starfishnet_config.long_address) + 1));
+        SN_InfoPrintf("sending from our long address, 0x%08"PRIx32"%08"PRIx32"\n", *(uint32_t*)linkaddr_node_addr.u8, *(((uint32_t*)linkaddr_node_addr.u8) + 1));
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
-        memcpy(src_address.u8, starfishnet_config.long_address, 8);
+        memcpy(src_address.u8, linkaddr_node_addr.u8, 8);
     }
 
     //perform routing calculations to determine destination address

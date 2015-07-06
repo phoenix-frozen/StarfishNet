@@ -41,7 +41,6 @@ typedef struct SN_Config {
     //local node configuration
     uint16_t pan_id;
     uint16_t short_address;
-    uint8_t  long_address[8];
 } SN_Config_t;
 
 extern SN_Config_t starfishnet_config;

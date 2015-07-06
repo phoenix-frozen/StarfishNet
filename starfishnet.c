@@ -31,10 +31,9 @@ static void init(void) {
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 3),
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 4));
 
-    NETSTACK_RADIO.get_object(RADIO_PARAM_64BIT_ADDR, starfishnet_config.long_address, 8);
     SN_InfoPrintf("long address is 0x%08"PRIx32"%08"PRIx32"\n",
-                  *(uint32_t*)starfishnet_config.long_address,
-                  *(((uint32_t*)starfishnet_config.long_address) + 1));
+                  *(uint32_t*)linkaddr_node_addr.u8,
+                  *(((uint32_t*)linkaddr_node_addr.u8) + 1));
 
     //set up the radio with an invalid short address
     NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR);
@@ -50,7 +49,9 @@ static void input(void) {
     //print some debugging information
     if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 8) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("received frame to 0x%016"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8));
+        SN_DebugPrintf("received frame to 0x%08"PRIx32"%08"PRIx32"\n",
+                      *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8,
+                      *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8) + 1));
     } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {
         SN_DebugPrintf("received frame to 0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16);
     } else {
@@ -58,7 +59,9 @@ static void input(void) {
     }
     if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 8) {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
-        SN_DebugPrintf("received frame from 0x%016"PRIx64"\n", *(uint64_t*)(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
+        SN_DebugPrintf("received frame to 0x%08"PRIx32"%08"PRIx32"\n",
+                       *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8,
+                       *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8) + 1));
     } else if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 2) {
         SN_DebugPrintf("received frame from 0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
     } else {
@@ -75,7 +78,7 @@ static void input(void) {
             if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 8) {
                 const linkaddr_t* dst_addr = packetbuf_addr(PACKETBUF_ADDR_RECEIVER);
 
-                if(memcmp(dst_addr->u8, starfishnet_config.long_address, 8) != 0) {
+                if(memcmp(dst_addr->u8, linkaddr_node_addr.u8, 8) != 0) {
                     break;
                 }
             } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {

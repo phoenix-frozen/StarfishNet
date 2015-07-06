@@ -90,10 +90,14 @@ static void beacon_request_tx() {
     packetbuf_clear();
 
     packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 0);
+    packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_null); //signal to the framer that we're sending a broadcast
     packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, FRAME802154_BROADCASTPANDID);
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_CMDFRAME);
 
     *(uint8_t*)packetbuf_dataptr() = FRAME802154_BEACONREQ;
+    packetbuf_set_datalen(1);
+
+    NETSTACK_LLSEC.send(NULL, NULL);
 }
 
 PROCESS_THREAD(starfishnet_discovery_process, ev, data)

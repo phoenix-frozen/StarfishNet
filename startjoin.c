@@ -36,22 +36,20 @@ int SN_Start(SN_Network_descriptor_t* network) {
         return ret;
     }
 
-    //update the MIB and PIB
-    SN_InfoPrintf("filling [MP]IB...\n");
+    SN_InfoPrintf("setting channel...\n");
     if(NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, network->radio_channel) != RADIO_RESULT_OK) {
         SN_ErrPrintf("tried to set channel to %d; radio said no\n", network->radio_channel);
         return -SN_ERR_RADIO;
     }
 
-    //set radio channel
-    SN_InfoPrintf("configuring radio...\n");
+    SN_InfoPrintf("setting short address...\n");
     if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, SN_COORDINATOR_ADDRESS) != RADIO_RESULT_OK) {
         SN_ErrPrintf("tried to set short address to %d; radio said no\n", SN_COORDINATOR_ADDRESS);
         return -SN_ERR_RADIO;
     }
     starfishnet_config.short_address = SN_COORDINATOR_ADDRESS;
 
-    //set PAN ID
+    SN_InfoPrintf("setting PAN ID...\n");
     if(NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, network->pan_id) != RADIO_RESULT_OK) {
         SN_ErrPrintf("tried to set PAN ID to %d; radio said no\n", network->pan_id);
         return -SN_ERR_RADIO;
