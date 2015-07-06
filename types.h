@@ -1,8 +1,6 @@
 #ifndef __SN_TYPES_H__
 #define __SN_TYPES_H__
 
-#include "lib/aes-128.h"
-
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -13,8 +11,8 @@
 #define SN_Tag_bits      64 //matches IEEE 802.15.4 required security mode
 
 #define SN_PK_key_size    (SN_PK_key_bits/8)
-#define SN_AES_block_size AES_128_BLOCK_SIZE
-#define SN_AES_key_size   AES_128_KEY_LENGTH
+#define SN_AES_block_size (128/8)
+#define SN_AES_key_size   (128/8)
 #define SN_Hash_size      (SN_Hash_bits/8)
 #define SN_Tag_size       (SN_Tag_bits/8)
 

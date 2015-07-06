@@ -5,11 +5,20 @@
 #include "uECC.h"
 
 #include "lib/random.h"
+#include "lib/aes-128.h"
 #include "lib/ccm-star.h"
 
 #if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"
 #endif //SN_PK_key_size != uECC_BYTES
+
+#if SN_AES_block_size != AES_128_BLOCK_SIZE
+#error "Contiki and StarfishNet disagree on AES block size!"
+#endif //SN_AES_block_size != AES_128_BLOCK_SIZE
+
+#if SN_AES_key_size != AES_128_KEY_LENGTH
+#error "Contiki and StarfishNet disagree on AES key size!"
+#endif //SN_AES_key_size != AES_128_KEY_LENGTH
 
 //some temporary buffers to store intermediate values
 static union {
