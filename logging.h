@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include "sys/clock.h"
 #include "cc253x.h"
-#define SN_Printf(level, fmt, x...) printf("[T=% 6d](SP=0x%02x) SN_" level " %s: " fmt, clock_time(), SP, __FUNCTION__, ##x)
+#define SN_Printf(level, fmt, x...) printf("[T=% 6u](SP=0x%02x) SN_" level " %s: " fmt, clock_time(), SP, __FUNCTION__, ##x)
 #else /* SN_DEBUG */
 #define SN_Printf(x...)
 #endif /* SN_DEBUG */

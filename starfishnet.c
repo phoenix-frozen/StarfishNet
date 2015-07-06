@@ -31,13 +31,6 @@ static void init(void) {
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 3),
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 4));
 
-    SN_InfoPrintf("long address is 0x%08"PRIx32"%08"PRIx32"\n",
-                  *(uint32_t*)linkaddr_node_addr.u8,
-                  *(((uint32_t*)linkaddr_node_addr.u8) + 1));
-
-    //set up the radio with an invalid short address
-    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR);
-
     SN_InfoPrintf("exit\n");
 }
 
@@ -93,7 +86,7 @@ static void input(void) {
             break;
 
         case FRAME802154_CMDFRAME:
-            if(*(uint8_t*)packetbuf_dataptr() == FRAME802154_BEACONREQ) {
+            if(starfishnet_config.enable_routing && *(uint8_t*)packetbuf_dataptr() == FRAME802154_BEACONREQ) {
                 SN_Beacon_TX();
             }
             break;
