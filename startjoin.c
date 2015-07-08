@@ -9,6 +9,7 @@
 #include "net/mac/frame802154.h"
 
 #include <string.h>
+#include <malloc.h>
 
 //start a new StarfishNet network as coordinator
 int SN_Start(SN_Network_descriptor_t* network) {
@@ -70,7 +71,7 @@ int SN_Start(SN_Network_descriptor_t* network) {
  *
  * (fill_node_table is a callback for SN_Discover)
  */
-static void fill_node_table(SN_Network_descriptor_t* network, void* extradata) {
+/*static void fill_node_table(SN_Network_descriptor_t* network, void* extradata) {
     SN_Table_entry_t router_table_entry = {
         .short_address = network->network_config->router_address,
         .neighbor      = 1,
@@ -82,15 +83,15 @@ static void fill_node_table(SN_Network_descriptor_t* network, void* extradata) {
 
     SN_InfoPrintf("adding neighbor to node table...\n");
     SN_Table_insert(&router_table_entry);
-}
+}*/
 int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
-    int ret;
+    int ret = SN_OK;
 
     SN_InfoPrintf("enter\n");
 
     //perform extra discovery step to fill in node table
     SN_Table_clear_all_neighbors();
-    ret = SN_Discover(&fill_node_table, 1u << network->radio_channel, 2000, 1, NULL);
+    //ret = SN_Discover(&fill_node_table, 1u << network->radio_channel, 2000, 1, NULL);
 
     //Fill NIB
     if(ret == SN_OK) {
@@ -101,6 +102,11 @@ int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
         starfishnet_config.leaf_blocks           = network->network_config->leaf_blocks;
         starfishnet_config.parent_address        = network->network_config->router_address;
         memcpy(&starfishnet_config.parent_public_key, &network->network_config->router_public_key, sizeof(starfishnet_config.parent_public_key));
+        SN_InfoPrintf("starfishnet_config.tree_branching_factor = %d\n", starfishnet_config.tree_branching_factor);
+        SN_InfoPrintf("starfishnet_config.tree_position         = %d\n", starfishnet_config.tree_position        );
+        SN_InfoPrintf("starfishnet_config.enable_routing        = %d\n", starfishnet_config.enable_routing       );
+        SN_InfoPrintf("starfishnet_config.leaf_blocks           = %d\n", starfishnet_config.leaf_blocks          );
+        SN_InfoPrintf("starfishnet_config.parent_address        = 0x%04x\n", starfishnet_config.parent_address       );
     }
 
     //Do routing tree math and set up address allocation
@@ -119,7 +125,7 @@ int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
 
     //Set our PAN ID
     if(ret == SN_OK) {
-        SN_InfoPrintf("setting PAN ID to %d...\n", network->pan_id);
+        SN_InfoPrintf("setting PAN ID to 0x%04x...\n", network->pan_id);
         if(NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, network->pan_id) != RADIO_RESULT_OK) {
             ret = -SN_ERR_RADIO;
         } else {
@@ -127,30 +133,21 @@ int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
         }
     }
 
-    //Set our short address to the no-short-address marker address
-    if(ret == SN_OK) {
-        SN_InfoPrintf("setting short address to 0x%04x...\n", FRAME802154_INVALIDADDR);
-        if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR) != RADIO_RESULT_OK) {
-            ret = -SN_ERR_RADIO;
-        } else {
-            starfishnet_config.short_address = FRAME802154_INVALIDADDR;
-        }
-    }
-
     //add parent to node table
     if(ret == SN_OK) {
-        SN_Table_entry_t parent_table_entry = {
-            .short_address = starfishnet_config.parent_address,
-            .neighbor      = 1,
-            .details_known = 1,
-        };
-        memcpy(&parent_table_entry.public_key, &starfishnet_config.parent_public_key, sizeof(parent_table_entry.public_key));
+        SN_Table_entry_t* parent_table_entry = malloc(sizeof(SN_Table_entry_t));
+        memset(parent_table_entry, 0, sizeof(*parent_table_entry));
+        parent_table_entry->short_address = starfishnet_config.parent_address;
+        parent_table_entry->neighbor = 1;
+        parent_table_entry->details_known = 1;
+        memcpy(&parent_table_entry->public_key, &starfishnet_config.parent_public_key, sizeof(parent_table_entry->public_key));
         SN_InfoPrintf("adding parent to node table...\n");
-        ret = SN_Table_insert(&parent_table_entry);
+        ret = SN_Table_insert(parent_table_entry);
         if(ret == -SN_ERR_UNEXPECTED) {
             //it's ok if the entry already exists, since the earlier discovery should have added it
             ret = SN_OK;
         }
+        free(parent_table_entry);
     }
 
     //start security association with our parent (implicitly requesting an address)

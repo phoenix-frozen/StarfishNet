@@ -31,6 +31,9 @@ static void init(void) {
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 3),
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 4));
 
+    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, FRAME802154_INVALIDADDR);
+    NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, FRAME802154_BROADCASTPANDID);
+
     SN_InfoPrintf("exit\n");
 }
 

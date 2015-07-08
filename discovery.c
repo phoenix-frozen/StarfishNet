@@ -14,6 +14,8 @@
 
 #include <string.h>
 
+#define IEEE802514_BEACON_OVERHEAD 4
+
 typedef struct beacon_payload {
     struct {
         //protocol ID information
@@ -90,6 +92,7 @@ static void beacon_request_tx() {
     packetbuf_clear();
 
     packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 0);
+    packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_null); //signal to the framer that we're sending a broadcast
     packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, FRAME802154_BROADCASTPANDID);
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_CMDFRAME);
@@ -102,7 +105,7 @@ static void beacon_request_tx() {
 
 PROCESS_THREAD(starfishnet_discovery_process, ev, data)
 {
-    struct etimer timer = {
+    static struct etimer timer = {
         .p = &starfishnet_discovery_process,
         .next = NULL,
     };
@@ -113,29 +116,35 @@ PROCESS_THREAD(starfishnet_discovery_process, ev, data)
     (void)data; //shut up GCC
 
     while(1) {
-        PROCESS_WAIT_EVENT();
+        SN_InfoPrintf("waiting...\n");
+        PROCESS_WAIT_EVENT_UNTIL(ev == discovery_event || ev == PROCESS_EVENT_TIMER);
+        SN_InfoPrintf("event received\n");
 
-        if(ev == discovery_event || ev == PROCESS_EVENT_TIMER) {
-            /* if we have more channels to scan
-             *  1. set the channel
-             *  3. set a timer
-             */
-            if(discovery_configuration.channel_mask) {
-                uint8_t current_channel = 0;
-                current_channel = ctz(discovery_configuration.channel_mask);
-                discovery_configuration.channel_mask &= ~(1 << current_channel);
+        /* if we have more channels to scan
+         *  1. set the channel
+         *  3. set a timer
+         */
+        if (discovery_configuration.channel_mask) {
+            uint8_t current_channel = 0;
+            current_channel = ctz(discovery_configuration.channel_mask);
+            discovery_configuration.channel_mask &= ~(1 << current_channel);
 
-                SN_InfoPrintf("beginning discovery on channel %d\n", current_channel);
-                if(NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, current_channel) != RADIO_RESULT_OK) {
-                    SN_ErrPrintf("radio returned error on channel set; aborting\n");
-                    discovery_configuration.callback = NULL;
-                } else {
-                    beacon_request_tx();
-                    etimer_set(&timer, discovery_configuration.timeout);
-                }
-            } else {
+            SN_InfoPrintf("beginning discovery on channel %d\n", current_channel);
+            /*if(NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, 0) != RADIO_RESULT_OK) {
+                SN_ErrPrintf("radio returned error on RX mode set; aborting\n");
                 discovery_configuration.callback = NULL;
+            } else */
+            if(NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, current_channel) != RADIO_RESULT_OK) {
+                SN_ErrPrintf("radio returned error on channel set; aborting\n");
+                discovery_configuration.callback = NULL;
+            } else {
+                beacon_request_tx();
+                etimer_set(&timer, discovery_configuration.timeout / 8); //8 ms per clock tick
             }
+        } else {
+            SN_InfoPrintf("ending discovery\n");
+            //NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, RADIO_RX_MODE_ADDRESS_FILTER);
+            discovery_configuration.callback = NULL;
         }
     }
 
@@ -187,7 +196,7 @@ int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_
     }
 
     discovery_configuration.channel_mask = channel_mask;
-    discovery_configuration.show_full_networks = show_full_networks ? 1 : 0;
+    discovery_configuration.show_full_networks = (uint8_t)show_full_networks;
     discovery_configuration.callback     = callback;
     discovery_configuration.extradata    = extradata;
 
@@ -208,16 +217,16 @@ void SN_Beacon_input(void) {
                   packetbuf_attr(PACKETBUF_ATTR_NETWORK_ID));
 
     //check beacon payload is of the correct length and router is broadcasting with a short address
-    if(packetbuf_datalen() != sizeof(beacon_payload_t)) {
+    if(packetbuf_datalen() != sizeof(beacon_payload_t) + IEEE802514_BEACON_OVERHEAD) {
         SN_InfoPrintf("packetbuf is the wrong size (%d, should be %d). aborting\n", packetbuf_datalen(),
-                      sizeof(beacon_payload_t));
+                      sizeof(beacon_payload_t) + IEEE802514_BEACON_OVERHEAD);
         return;
     }
 
     //set up some pointers, and then do a hash check
-    beacon_payload = (beacon_payload_t*)packetbuf_dataptr();
+    beacon_payload = (beacon_payload_t*)((uint8_t*)packetbuf_dataptr() + IEEE802514_BEACON_OVERHEAD);
     if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) != 2) {
-        SN_InfoPrintf("Router is using its long address; a StarfishNet node should be using its short address.\n");
+        SN_InfoPrintf("Router is using its long address (addr_size = %d); a StarfishNet node should be using its short address.\n", packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE));
         return;
     }
 
@@ -234,18 +243,13 @@ void SN_Beacon_input(void) {
         return;
     }
 
-    SN_InfoPrintf("    key=0x%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"%08"PRIx32"\n",
-                  *(uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data,
-                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 1),
-                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 2),
-                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 3),
-                  *(((uint32_t*)beacon_payload->beacon_data.network_config.router_public_key.data) + 4));
-
     SN_Crypto_hash((uint8_t *) &beacon_payload->beacon_data, sizeof(beacon_payload->beacon_data), &protohash);
     if(memcmp(beacon_payload->hash.data, protohash.data, SN_Hash_size) != 0) {
         SN_WarnPrintf("Beacon hash check failed.\n");
         return;
     }
+
+    SN_InfoPrintf("test\n");
 
     if(beacon_payload->beacon_data.router_capacity == 0 && beacon_payload->beacon_data.leaf_capacity == 0) {
         SN_WarnPrintf("Router is full.\n");
@@ -275,6 +279,8 @@ void SN_Beacon_TX(void) {
     linkaddr_t src_address;
     uint8_t* packetbuf_ptr;
 
+    SN_InfoPrintf("enter\n");
+
     packetbuf_clear();
 
     packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
@@ -296,11 +302,13 @@ void SN_Beacon_TX(void) {
 
     packetbuf_ptr = packetbuf_dataptr();
 
-    memset(packetbuf_ptr, 0, 4); //no superframe, GTS, or pending frames
+    memset(packetbuf_ptr, 0, IEEE802514_BEACON_OVERHEAD); //no superframe, GTS, or pending frames
 
-    memcpy(packetbuf_ptr + 4, &self_beacon_payload, sizeof(self_beacon_payload));
+    memcpy(packetbuf_ptr + IEEE802514_BEACON_OVERHEAD, &self_beacon_payload, sizeof(self_beacon_payload));
 
-    packetbuf_set_datalen(sizeof(self_beacon_payload) + 4);
+    packetbuf_set_datalen(sizeof(self_beacon_payload) + IEEE802514_BEACON_OVERHEAD);
 
     NETSTACK_LLSEC.send(NULL, NULL);
+
+    SN_InfoPrintf("exit\n");
 }
