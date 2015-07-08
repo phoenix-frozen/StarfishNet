@@ -10,6 +10,7 @@
 #define __STARFISHNET_H__
 
 #include "types.h"
+#include "status.h"
 
 #include "net/netstack.h"
 
