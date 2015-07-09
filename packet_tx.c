@@ -58,61 +58,76 @@ int packet_encrypt_authenticate(packet_t* packet, const SN_Public_key_t* key_agr
     return SN_OK;
 }
 
-int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, const SN_Message_t* message) {
-    network_header_t* network_header;
+static void allocate_address(packet_t* packet, SN_Table_entry_t* table_entry) {
+    uint8_t block = PACKET_ENTRY(*packet, association_header, request)->router;
+    uint16_t address;
+    int ret = SN_Tree_allocate_address(&address, &block);
 
-    SN_DebugPrintf("enter\n");
+    if(ret == SN_OK) {
+        PACKET_ENTRY(*packet, network_header, request)->dst_addr   = address;
+        PACKET_ENTRY(*packet, association_header, request)->router = (uint8_t)(block ? 1 : 0);
+
+        SN_InfoPrintf("allocated %s address 0x%04x\n", block ? "router" : "leaf", address);
+
+        table_entry->short_address = address;
+        SN_Beacon_update();
+    } else {
+        SN_WarnPrintf("address allocation failed; proceeding without\n");
+
+        PACKET_ENTRY(*packet, association_header, request)->child  = 0;
+        PACKET_ENTRY(*packet, association_header, request)->router = 0;
+    }
+}
+
+int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, const SN_Message_t* message) {
+    SN_InfoPrintf("enter\n");
 
     if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry, crypto_margin, and packet must all be valid\n");
+        SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
     }
 
     //network_header_t
     packet->layout.network_header         = 0;
     packet->layout.present.network_header = 1;
-    network_header = PACKET_ENTRY(*packet, network_header, request);
-    if(PACKET_SIZE(*packet, request) != sizeof(network_header_t)) {
-        SN_ErrPrintf("packet doesn't appear to have a valid network header, aborting\n");
-        return -SN_ERR_END_OF_DATA;
-    }
-    network_header->protocol_id  = STARFISHNET_PROTOCOL_ID;
-    network_header->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
-    network_header->src_addr     = starfishnet_config.short_address;
-    network_header->dst_addr     = table_entry->short_address;
-    network_header->attributes   = 0;
-    network_header->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
-    network_header->data         = (uint8_t)(message == NULL || message->type != SN_Association_request);
-    if(network_header->data) { //data packet
-        network_header->data_attributes.ack      = (uint8_t)((table_entry->ack && network_header->data) || message == NULL);
-        network_header->data_attributes.evidence = (uint8_t)(message != NULL && message->type > SN_Data_message);
+#define NETWORK_HEADER PACKET_ENTRY(*packet, network_header, request)
+    assert(NETWORK_HEADER != NULL);
+    NETWORK_HEADER->protocol_id  = STARFISHNET_PROTOCOL_ID;
+    NETWORK_HEADER->protocol_ver = STARFISHNET_PROTOCOL_VERSION;
+    NETWORK_HEADER->src_addr     = starfishnet_config.short_address;
+    NETWORK_HEADER->dst_addr     = table_entry->short_address;
+    NETWORK_HEADER->attributes   = 0;
+    NETWORK_HEADER->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
+    if(message == NULL || (message->type != SN_Association_request && message->type != SN_Dissociation_request)) { //data packet
+        NETWORK_HEADER->data = 1;
+        NETWORK_HEADER->data_attributes.ack      = (uint8_t)((table_entry->ack && NETWORK_HEADER->data) || message == NULL);
+        NETWORK_HEADER->data_attributes.evidence = (uint8_t)(message != NULL && message->type > SN_Data_message);
 
         if(table_entry->state == SN_Send_finalise) {
-            network_header->data_attributes.key_confirm = 1;
+            NETWORK_HEADER->data_attributes.key_confirm = 1;
             table_entry->state = SN_Associated;
         }
 
         table_entry->ack = 0;
     } else { //control packet
-        network_header->control_attributes.associate   = (uint8_t)(uint8_t)(message->type == SN_Association_request || message->type == SN_Dissociation_request);
-        network_header->control_attributes.req_details = (uint8_t)!table_entry->details_known;
-        network_header->control_attributes.details     = (uint8_t)!table_entry->knows_details;
+        NETWORK_HEADER->data = 0;
+        NETWORK_HEADER->control_attributes.associate   = (uint8_t)(uint8_t)(message->type == SN_Association_request || message->type == SN_Dissociation_request);
+        NETWORK_HEADER->control_attributes.req_details = (uint8_t)!table_entry->details_known;
+        NETWORK_HEADER->control_attributes.details     = (uint8_t)!table_entry->knows_details;
 
-        if(network_header->control_attributes.associate && table_entry->state == SN_Associate_received) {
-            network_header->data_attributes.key_confirm = 1;
+        if(NETWORK_HEADER->control_attributes.associate && table_entry->state == SN_Associate_received) {
+            NETWORK_HEADER->data_attributes.key_confirm = 1;
             table_entry->state = SN_Awaiting_finalise;
         }
 
-        if(network_header->control_attributes.details) {
+        if(NETWORK_HEADER->control_attributes.details) {
             table_entry->knows_details = 1;
         }
     }
     PACKET_SIZE(*packet, request) = sizeof(network_header_t);
 
     //alt_stream_header_t
-    if(ATTRIBUTE(network_header, alt_stream)) {
-        alt_stream_header_t* alt_stream_header;
-
+    if(ATTRIBUTE(NETWORK_HEADER, alt_stream)) {
         SN_InfoPrintf("generating alternate stream header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(alt_stream_header_t) + table_entry->altstream.stream_idx_length >
            SN_MAXIMUM_PACKET_SIZE) {
@@ -123,17 +138,13 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.alt_stream_header = PACKET_SIZE(*packet, request);
         packet->layout.present.alt_stream_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(alt_stream_header_t) + table_entry->altstream.stream_idx_length;
-        alt_stream_header = PACKET_ENTRY(*packet, alt_stream_header, request);
-        assert(alt_stream_header != NULL);
 
-        alt_stream_header->length = table_entry->altstream.stream_idx_length;
-        memcpy(alt_stream_header->stream_idx, table_entry->altstream.stream_idx, alt_stream_header->length);
+        PACKET_ENTRY(*packet, alt_stream_header, request)->length = table_entry->altstream.stream_idx_length;
+        memcpy(PACKET_ENTRY(*packet, alt_stream_header, request)->stream_idx, table_entry->altstream.stream_idx, table_entry->altstream.stream_idx_length);
     }
 
     //node_details_header_t
-    if(CONTROL_ATTRIBUTE(network_header, details)) {
-        node_details_header_t* node_details_header;
-
+    if(CONTROL_ATTRIBUTE(NETWORK_HEADER, details)) {
         SN_InfoPrintf("generating node details header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(node_details_header_t) > SN_MAXIMUM_PACKET_SIZE) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
@@ -143,16 +154,12 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.node_details_header = PACKET_SIZE(*packet, request);
         packet->layout.present.node_details_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(node_details_header_t);
-        node_details_header = PACKET_ENTRY(*packet, node_details_header, request);
-        assert(node_details_header != NULL);
 
-        memcpy(&node_details_header->signing_key, &starfishnet_config.device_root_key.public_key, sizeof(starfishnet_config.device_root_key.public_key));
+        memcpy(&PACKET_ENTRY(*packet, node_details_header, request)->signing_key, &starfishnet_config.device_root_key.public_key, sizeof(starfishnet_config.device_root_key.public_key));
     }
 
     //association_header_t
-    if(CONTROL_ATTRIBUTE(network_header, associate)) {
-        association_header_t* association_header;
-
+    if(CONTROL_ATTRIBUTE(NETWORK_HEADER, associate)) {
         SN_InfoPrintf("generating association header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(association_header_t) > SN_MAXIMUM_PACKET_SIZE) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
@@ -162,65 +169,38 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.association_header = PACKET_SIZE(*packet, request);
         packet->layout.present.association_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(association_header_t);
-        association_header = PACKET_ENTRY(*packet, association_header, request);
-        assert(association_header != NULL);
+#define ASSOCIATION_HEADER PACKET_ENTRY(*packet, association_header, request)
+        assert(ASSOCIATION_HEADER != NULL);
         assert(message != NULL);
 
-        association_header->flags             = 0;
-        association_header->dissociate        = (uint8_t)(message->type == SN_Dissociation_request ? 1 : 0);
+        ASSOCIATION_HEADER->flags             = 0;
+        ASSOCIATION_HEADER->dissociate        = (uint8_t)(message->type == SN_Dissociation_request ? 1 : 0);
 
-        if(!association_header->dissociate) {
+        if(!ASSOCIATION_HEADER->dissociate) {
             //key_agreement_header_t
-            key_agreement_header_t* key_agreement_header;
-
             packet->layout.key_agreement_header = PACKET_SIZE(*packet, request);
             packet->layout.present.key_agreement_header = 1;
             PACKET_SIZE(*packet, request) += sizeof(key_agreement_header_t);
-            key_agreement_header = PACKET_ENTRY(*packet, key_agreement_header, request);
-            assert(key_agreement_header != NULL);
 
-            memcpy(&key_agreement_header->key_agreement_key, &table_entry->local_key_agreement_keypair.public_key, sizeof(table_entry->local_key_agreement_keypair.public_key));
+            memcpy(&PACKET_ENTRY(*packet, key_agreement_header, request)->key_agreement_key, &table_entry->local_key_agreement_keypair.public_key, sizeof(table_entry->local_key_agreement_keypair.public_key));
 
             //parent/child handling
-            if(CONTROL_ATTRIBUTE(network_header, key_confirm)) {
+            if(CONTROL_ATTRIBUTE(NETWORK_HEADER, key_confirm)) {
                 //this is a reply
 
                 //address bits
-                association_header->child  = (uint8_t)table_entry->child;
-                association_header->router = (uint8_t)table_entry->router;
+                ASSOCIATION_HEADER->child  = (uint8_t)table_entry->child;
+                ASSOCIATION_HEADER->router = (uint8_t)table_entry->router;
 
                 //address allocation
-                if(association_header->child) {
-                    uint8_t block = association_header->router;
-                    uint16_t address;
-                    int ret = SN_Tree_allocate_address(&address, &block);
-
+                if(ASSOCIATION_HEADER->child) {
                     SN_InfoPrintf("node is our child; allocating it an address...\n");
-
-                    if(ret == SN_OK) {
-                        network_header->dst_addr   = address;
-                        association_header->router = (uint8_t)(block ? 1 : 0);
-
-                        SN_InfoPrintf("allocated %s address 0x%04x\n", block ? "router" : "leaf", address);
-
-                        table_entry->short_address = address;
-                        SN_Beacon_update();
-                    } else {
-                        SN_WarnPrintf("address allocation failed; proceeding without\n");
-
-                        association_header->child  = 0;
-                        association_header->router = 0;
-                    }
-
-                    if(ret != SN_OK) {
-                        SN_ErrPrintf("address allocation failed: %d\n", -ret);
-                        return ret;
-                    }
+                    allocate_address(packet, table_entry);
                 }
             } else {
                 //this is a request
-                association_header->router = starfishnet_config.enable_routing;
-                association_header->child =
+                ASSOCIATION_HEADER->router = starfishnet_config.enable_routing;
+                ASSOCIATION_HEADER->child =
                     memcmp(
                         starfishnet_config.parent_public_key.data,
                         table_entry->public_key.data,
@@ -228,13 +208,12 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
                     ) == 0 ? (uint8_t)1 : (uint8_t)0;
             }
         }
+#undef ASSOCIATION_HEADER
     }
 
     //key_confirmation_header_t
-    if(ATTRIBUTE(network_header, key_confirm)) {
-        key_confirmation_header_t* key_confirmation_header;
-
-        SN_InfoPrintf("generating key confirmation header (challenge%d) at %d\n", CONTROL_ATTRIBUTE(network_header, associate) ? 1 : 2, PACKET_SIZE(*packet, request));
+    if(ATTRIBUTE(NETWORK_HEADER, key_confirm)) {
+        SN_InfoPrintf("generating key confirmation header (challenge%d) at %d\n", CONTROL_ATTRIBUTE(NETWORK_HEADER, associate) ? 1 : 2, PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(key_confirmation_header_t) > SN_MAXIMUM_PACKET_SIZE) {
             SN_ErrPrintf("adding node details header would make packet too large, aborting\n");
             return -SN_ERR_END_OF_DATA;
@@ -242,22 +221,16 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.key_confirmation_header = PACKET_SIZE(*packet, request);
         packet->layout.present.key_confirmation_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(key_confirmation_header_t);
-        key_confirmation_header = PACKET_ENTRY(*packet, key_confirmation_header, request);
-        assert(key_confirmation_header != NULL);
 
-        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data),
-                       &key_confirmation_header->challenge);
-        if(CONTROL_ATTRIBUTE(network_header, associate)) {
+        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &PACKET_ENTRY(*packet, key_confirmation_header, request)->challenge);
+        if(CONTROL_ATTRIBUTE(NETWORK_HEADER, associate)) {
             //this is a reply; do challenge1 (double-hash)
-            SN_Crypto_hash(key_confirmation_header->challenge.data, SN_Hash_size, &key_confirmation_header->challenge);
+            SN_Crypto_hash(PACKET_ENTRY(*packet, key_confirmation_header, request)->challenge.data, SN_Hash_size, &PACKET_ENTRY(*packet, key_confirmation_header, request)->challenge);
         }
     }
 
     //encrypted_ack_header_t
-    if(DATA_ATTRIBUTE(network_header, ack)) {
-        encrypted_ack_header_t* encrypted_ack_header;
-
-        //encrypted_ack_header_t
+    if(DATA_ATTRIBUTE(NETWORK_HEADER, ack)) {
         SN_InfoPrintf("generating encrypted-ack header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(encrypted_ack_header_t) > SN_MAXIMUM_PACKET_SIZE) {
             SN_ErrPrintf("adding encrypted_ack header would make packet too large, aborting\n");
@@ -266,16 +239,12 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.encrypted_ack_header         = PACKET_SIZE(*packet, request);
         packet->layout.present.encrypted_ack_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(encrypted_ack_header_t);
-        encrypted_ack_header = PACKET_ENTRY(*packet, encrypted_ack_header, request);
-        assert(encrypted_ack_header != NULL);
 
-        encrypted_ack_header->counter = table_entry->packet_rx_counter - 1;
+        PACKET_ENTRY(*packet, encrypted_ack_header, request)->counter = table_entry->packet_rx_counter - 1;
     }
 
     //evidence_header_t
-    if(DATA_ATTRIBUTE(network_header, evidence)) {
-        evidence_header_t* evidence_header;
-
+    if(DATA_ATTRIBUTE(NETWORK_HEADER, evidence)) {
         SN_InfoPrintf("generating evidence header at %d\n", PACKET_SIZE(*packet, request));
 
         if(PACKET_SIZE(*packet, request) + sizeof(evidence_header_t) > SN_MAXIMUM_PACKET_SIZE) {
@@ -285,16 +254,12 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.evidence_header = PACKET_SIZE(*packet, request);
         packet->layout.present.evidence_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(evidence_header_t);
-        evidence_header = PACKET_ENTRY(*packet, evidence_header, request);
-        assert(evidence_header != NULL);
 
-        evidence_header->flags = 0;
+        PACKET_ENTRY(*packet, evidence_header, request)->flags = 0;
     }
 
     //{encryption,signature}_header_t
-    if(ATTRIBUTE(network_header, data)) {
-        encryption_header_t* encryption_header;
-
+    if(ATTRIBUTE(NETWORK_HEADER, data)) {
         SN_InfoPrintf("generating encryption header at %d\n", PACKET_SIZE(*packet, request));
         if(PACKET_SIZE(*packet, request) + sizeof(encryption_header_t) > SN_MAXIMUM_PACKET_SIZE) {
             SN_ErrPrintf("adding encryption header would make packet too large, aborting\n");
@@ -303,13 +268,7 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.encryption_header = PACKET_SIZE(*packet, request);
         packet->layout.present.encryption_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(encryption_header_t);
-        encryption_header = PACKET_ENTRY(*packet, encryption_header, request);
-        assert(encryption_header != NULL);
-
-        (void)encryption_header; //shut up CLion
     } else {
-        signature_header_t* signature_header;
-
         SN_InfoPrintf("generating signature header at %d\n", PACKET_SIZE(*packet, request));
 
         if(PACKET_SIZE(*packet, request) + sizeof(signature_header_t) > SN_MAXIMUM_PACKET_SIZE) {
@@ -319,22 +278,21 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, con
         packet->layout.signature_header = PACKET_SIZE(*packet, request);
         packet->layout.present.signature_header = 1;
         PACKET_SIZE(*packet, request) += sizeof(signature_header_t);
-        signature_header = PACKET_ENTRY(*packet, signature_header, request);
-        assert(signature_header != NULL);
 
         //signs everything before the signature header occurs
         if(SN_Crypto_sign(
             &starfishnet_config.device_root_key.private_key,
             packet->data,
             packet->layout.signature_header,
-            &signature_header->signature) != SN_OK) {
+            &PACKET_ENTRY(*packet, signature_header, request)->signature) != SN_OK) {
             SN_ErrPrintf("could not sign packet\n");
             return -SN_ERR_SIGNATURE;
         }
     }
 
-    SN_DebugPrintf("exit\n");
+    SN_InfoPrintf("exit\n");
     return SN_OK;
+#undef NETWORK_HEADER
 }
 
 int packet_generate_payload(packet_t* packet, const SN_Message_t* message) {
@@ -374,20 +332,15 @@ int packet_generate_payload(packet_t* packet, const SN_Message_t* message) {
         return -SN_ERR_RESOURCES;
     }
 
-    assert(payload != NULL);
-
     packet->layout.payload_length = payload_length;
     if(payload_length > 0) {
-        uint8_t* packet_data;
+        assert(payload != NULL);
 
         packet->layout.payload_data = PACKET_SIZE(*packet, request);
         packet->layout.present.payload_data = 1;
         PACKET_SIZE(*packet, request) += payload_length;
 
-        packet_data = PACKET_ENTRY(*packet, payload_data, request);
-        assert(packet_data != NULL);
-
-        memcpy(packet_data, payload, payload_length);
+        memcpy(PACKET_ENTRY(*packet, payload_data, request), payload, payload_length);
     } else {
         SN_WarnPrintf("no payload to generate\n");
     }

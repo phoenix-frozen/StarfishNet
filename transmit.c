@@ -64,8 +64,8 @@
 int SN_Send(const SN_Endpoint_t* dst_addr, const SN_Message_t* message) {
     static SN_Table_entry_t table_entry;
     static packet_t packet;
+    uint32_t encryption_counter;
     int ret;
-    uint32_t encryption_counter = 0;
 
     //initial NULL-checks
     if (dst_addr == NULL) {
@@ -151,7 +151,8 @@ int SN_Send(const SN_Endpoint_t* dst_addr, const SN_Message_t* message) {
                 SN_InfoPrintf("no relationship. generating ECDH keypair\n");
 
                 //generate ephemeral keypair
-                if (SN_Crypto_generate_keypair(&table_entry.local_key_agreement_keypair) != SN_OK) {
+                ret = SN_Crypto_generate_keypair(&table_entry.local_key_agreement_keypair);
+                if (ret != SN_OK) {
                     SN_ErrPrintf("error during key generation, aborting send\n");
                     return -SN_ERR_KEYGEN;
                 }
@@ -161,30 +162,27 @@ int SN_Send(const SN_Endpoint_t* dst_addr, const SN_Message_t* message) {
                 break;
 
             case SN_Associate_received: {
-                SN_Kex_result_t *kex_result = malloc(sizeof(SN_Kex_result_t));
-                if (kex_result == NULL)
-                    return -SN_ERR_RESOURCES;
-
                 SN_InfoPrintf("received association request, finishing ECDH\n");
 
                 //generate ephemeral keypair
-                if (SN_Crypto_generate_keypair(&table_entry.local_key_agreement_keypair) != SN_OK) {
+                ret = SN_Crypto_generate_keypair(&table_entry.local_key_agreement_keypair);
+                if (ret != SN_OK) {
                     SN_ErrPrintf("error during key generation, aborting send\n");
                     return -SN_ERR_KEYGEN;
                 }
 
                 //do ECDH math
-                if (SN_Crypto_key_agreement(
+                ret = SN_Crypto_key_agreement(
                     &table_entry.public_key,
                     &starfishnet_config.device_root_key.public_key,
                     &table_entry.remote_key_agreement_key,
                     &table_entry.local_key_agreement_keypair.private_key,
-                    kex_result
-                ) != SN_OK) {
+                    &table_entry.link_key_kex
+                );
+                if (ret != SN_OK) {
                     SN_ErrPrintf("error during key agreement, aborting send\n");
                     return -SN_ERR_KEYGEN;
                 }
-                memcpy(table_entry.link_key.data, kex_result->key.data, sizeof(kex_result->key.data));
                 table_entry.packet_rx_counter = table_entry.packet_tx_counter = 0;
 
                 //advance state
@@ -208,24 +206,23 @@ int SN_Send(const SN_Endpoint_t* dst_addr, const SN_Message_t* message) {
         return ret;
     }
 
-    if (message != NULL && message->type != SN_Association_request) {
-        SN_InfoPrintf("generating payload...\n");
-        ret = packet_generate_payload(&packet, message);
-        if (ret != SN_OK) {
-            SN_ErrPrintf("payload generation failed with %d\n", -ret);
-            return ret;
-        }
-        SN_InfoPrintf("packet data generation complete\n");
-    } else {
-        SN_WarnPrintf("no payload to generate\n");
+    SN_InfoPrintf("generating payload...\n");
+    ret = packet_generate_payload(&packet, message);
+    if (ret == -SN_ERR_NULL || ret == -SN_ERR_INVALID) {
+        ret = SN_OK;
     }
+    if (ret != SN_OK) {
+        SN_ErrPrintf("payload generation failed with %d\n", -ret);
+        return ret;
+    }
+    SN_InfoPrintf("packet data generation complete\n");
 
     SN_InfoPrintf("beginning packet crypto...\n");
     encryption_counter = table_entry.packet_tx_counter;
 
-    if (PACKET_ENTRY(packet, key_confirmation_header, request) == NULL &&
-        PACKET_ENTRY(packet, encrypted_ack_header, request) != NULL &&
-        PACKET_ENTRY(packet, payload_data, request) == NULL) {
+    if (!packet.layout.present.key_confirmation_header &&
+        packet.layout.present.encrypted_ack_header &&
+        !packet.layout.present.payload_data) {
         //this is a pure-acknowledgement packet; don't change the counter
         assert(PACKET_ENTRY(packet, encrypted_ack_header, request)->counter + 1 == table_entry.packet_rx_counter);
         ret = packet_encrypt_authenticate(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
@@ -233,12 +230,12 @@ int SN_Send(const SN_Endpoint_t* dst_addr, const SN_Message_t* message) {
     } else {
         ret = packet_encrypt_authenticate(&packet, &table_entry.local_key_agreement_keypair.public_key,
                                           &table_entry.link_key, encryption_counter, 0);
-        if(ret == SN_OK) {
+        if (ret == SN_OK) {
             table_entry.packet_tx_counter++;
         }
     }
 
-    if(-ret == SN_ERR_INVALID) {
+    if (-ret == SN_ERR_INVALID) {
         ret = SN_OK; //this means the packet was an association packet
     }
 

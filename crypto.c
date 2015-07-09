@@ -20,6 +20,10 @@
 #error "Contiki and StarfishNet disagree on AES key size!"
 #endif //SN_AES_key_size != AES_128_KEY_LENGTH
 
+#if SN_Hash_size < SN_AES_key_size
+#error "Hashes need to be bigger than or equal to AES keys!"
+#endif //SN_Hash_size < SN_AES_key_size
+
 //some temporary buffers to store intermediate values
 static union {
     uint8_t        unpacked_public_key[SN_PK_key_size * 2];
@@ -86,7 +90,9 @@ int SN_Crypto_sign ( //sign data into sigbuf
 
     //generate signature
     //XXX: this works because the hash and keys are the same length
-    if(uECC_sign(private_key->data, hashbuf.data, signature->data) == 0) {
+    //XXX: reusing data_len to avoid allocating another stack member
+    data_len = uECC_sign(private_key->data, hashbuf.data, signature->data);
+    if(data_len == 0) {
         SN_ErrPrintf("error generating digital signature\n");
         return -SN_ERR_SIGNATURE;
     }
