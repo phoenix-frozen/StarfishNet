@@ -74,9 +74,9 @@ void SN_Beacon_update(void) {
 static void neighbor_discovered(SN_Network_descriptor_t *network, void *extradata) {
     static SN_Table_entry_t router_table_entry;
 
-    (void)extradata; //shut up GCC
+    (void) extradata; //shut up GCC
 
-    if(network == NULL || network->network_config == NULL)
+    if (network == NULL || network->network_config == NULL)
         return;
 
     SN_InfoPrintf("enter\n");
@@ -88,14 +88,15 @@ static void neighbor_discovered(SN_Network_descriptor_t *network, void *extradat
     memcpy(&router_table_entry.public_key, &network->network_config->router_public_key, sizeof(router_table_entry.public_key));
 
     if(SN_Table_lookup(NULL, &router_table_entry) == SN_OK) {
-        //this node is already in the neighbor table
-        router_table_entry.neighbor = 1;
-        SN_Table_update(&router_table_entry);
-    } else {
-        //node is not in the neighbor table
-        router_table_entry.neighbor = 1;
-        SN_Table_insert(&router_table_entry);
+        router_table_entry.details_known = 1;
+        router_table_entry.short_address = network->network_config->router_address;
+        memcpy(&router_table_entry.public_key, &network->network_config->router_public_key, sizeof(router_table_entry.public_key));
     }
+
+    router_table_entry.neighbor = 1;
+
+    SN_Table_update(&router_table_entry);
+    SN_Table_insert(&router_table_entry);
 
     SN_InfoPrintf("exit\n");
 }
@@ -321,8 +322,6 @@ void SN_Beacon_input(void) {
         SN_WarnPrintf("Beacon hash check failed.\n");
         return;
     }
-
-    SN_InfoPrintf("test\n");
 
     if(beacon_payload->beacon_data.router_capacity == 0 && beacon_payload->beacon_data.leaf_capacity == 0) {
         SN_WarnPrintf("Router is full.\n");

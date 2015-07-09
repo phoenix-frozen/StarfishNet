@@ -475,7 +475,7 @@ int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry) {
  * margin: how much data to skip (after the network header, before the payload) for encryption
  * safe  : if true, arrange so that the original data is untouched on a decryption failure
  */
-int packet_decrypt_verify(packet_t* packet, SN_Public_key_t* key_agreement_key, SN_AES_key_t* link_key,
+int packet_decrypt_verify(packet_t* packet, const SN_Public_key_t* key_agreement_key, const SN_AES_key_t* link_key,
                           uint32_t encryption_counter, bool pure_ack) {
     encryption_header_t* encryption_header;
     uint8_t skip_size;

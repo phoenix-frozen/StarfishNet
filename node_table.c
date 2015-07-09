@@ -18,7 +18,7 @@ typedef uint32_t table_bitmap_t;
 static SN_Table_entry_t table[SN_TABLE_SIZE];
 static table_bitmap_t entry_bitmap = 0;
 
-static int lookup_by_long_address(uint8_t* address, uint8_t stream_idx_len, uint8_t* stream_idx) {
+static int lookup_by_long_address(const uint8_t* address, uint8_t stream_idx_len, uint8_t* stream_idx) {
     table_bitmap_t i;
 
     if(address == NULL) {
@@ -54,7 +54,7 @@ static int lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, uin
     return -1;
 }
 
-static int lookup_by_public_key(SN_Public_key_t* public_key) {
+static int lookup_by_public_key(const SN_Public_key_t* public_key) {
     table_bitmap_t i;
 
     if(public_key == NULL) {
@@ -75,7 +75,7 @@ static int lookup_by_public_key(SN_Public_key_t* public_key) {
     return -1;
 }
 
-static int lookup_by_public_key_and_stream(SN_Public_key_t* public_key, uint8_t stream_idx_len, uint8_t* stream_idx) {
+static int lookup_by_public_key_and_stream(const SN_Public_key_t* public_key, uint8_t stream_idx_len, uint8_t* stream_idx) {
     table_bitmap_t i;
 
     if(public_key == NULL) {
@@ -230,7 +230,7 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-int SN_Table_lookup(SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
+int SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
     int ret = -1;
 
     if (entry == NULL) {

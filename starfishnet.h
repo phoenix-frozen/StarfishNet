@@ -17,9 +17,7 @@
 extern const struct network_driver starfishnet_driver;
 
 //primitives that send messages
-int SN_Send(SN_Endpoint_t *dst_addr, SN_Message_t *message);
-int SN_Associate(SN_Endpoint_t *dst_addr);
-int SN_Dissociate(SN_Endpoint_t *dst_addr);
+int SN_Send(const SN_Endpoint_t* dst_addr, const SN_Message_t *message);
 
 //primitive for configuring the reception of messages
 typedef void (SN_Receive_callback_t)(SN_Endpoint_t* src_addr, SN_Message_t* message);
@@ -36,10 +34,10 @@ int SN_Discover( //scan for StarfishNet networks. also serves as a nearest-neigh
 );
 
 //start a new StarfishNet network as coordinator
-int SN_Start(SN_Network_descriptor_t* network);
+int SN_Start(const SN_Network_descriptor_t* network);
 
 //tune the radio to a StarfishNet network and listen for packets with its PAN ID
-int SN_Join(SN_Network_descriptor_t* network, bool disable_routing);
+int SN_Join(const SN_Network_descriptor_t* network, bool disable_routing);
 
 
 #endif //__STARFISHNET_H__

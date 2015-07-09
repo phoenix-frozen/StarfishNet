@@ -66,7 +66,7 @@ void SN_Table_clear();
  * which will then be filled with information from the table.
  * entry->session and entry->stream_idx[_length] must be valid
  */
-int SN_Table_lookup(SN_Endpoint_t *endpoint, SN_Table_entry_t *entry);
+int SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry);
 
 //indicate that no entries belonging to this session should be considered neighbors anymore
 void SN_Table_clear_all_neighbors();

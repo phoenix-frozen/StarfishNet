@@ -14,7 +14,7 @@
 #include <assert.h>
 
 //argument note: margin means the amount of data to skip (after the network header, before the payload) for encryption
-int packet_encrypt_authenticate(packet_t* packet, SN_Public_key_t* key_agreement_key, SN_AES_key_t* link_key,
+int packet_encrypt_authenticate(packet_t* packet, const SN_Public_key_t* key_agreement_key, const SN_AES_key_t* link_key,
                                 uint32_t encryption_counter, bool pure_ack) {
     encryption_header_t* encryption_header;
     uint8_t skip_size;
@@ -58,7 +58,8 @@ int packet_encrypt_authenticate(packet_t* packet, SN_Public_key_t* key_agreement
     return SN_OK;
 }
 
-int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_Message_t* message) { network_header_t* network_header;
+int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, const SN_Message_t* message) {
+    network_header_t* network_header;
 
     SN_DebugPrintf("enter\n");
 
@@ -336,11 +337,13 @@ int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, SN_
     return SN_OK;
 }
 
-int packet_generate_payload(packet_t* packet, SN_Message_t* message) {
+int packet_generate_payload(packet_t* packet, const SN_Message_t* message) {
     uint8_t* payload = NULL;
     uint8_t payload_length = 0;
 
-    assert(message != NULL);
+    if(message == NULL) {
+        return -SN_ERR_NULL;
+    }
 
     switch(message->type) {
         case SN_Data_message:

@@ -31,8 +31,8 @@ static void init(void) {
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 3),
                   *(((uint32_t*)starfishnet_config.device_root_key.public_key.data) + 4));
 
-    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, FRAME802154_INVALIDADDR);
-    NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, FRAME802154_BROADCASTPANDID);
+    NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR);
+    NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, (radio_value_t)FRAME802154_BROADCASTPANDID);
 
     SN_InfoPrintf("exit\n");
 }
@@ -89,7 +89,7 @@ static void input(void) {
             break;
 
         case FRAME802154_CMDFRAME:
-            if(starfishnet_config.enable_routing && *(uint8_t*)packetbuf_dataptr() == FRAME802154_BEACONREQ) {
+            if(starfishnet_config.enable_routing && *(uint8_t*)packetbuf_dataptr() == FRAME802154_BEACONREQ && starfishnet_config.short_address != FRAME802154_INVALIDADDR) {
                 SN_Beacon_TX();
             }
             break;
