@@ -10,4 +10,6 @@ void SN_Beacon_input(void);
 void SN_Beacon_update(void);
 void SN_Beacon_TX(void);
 
+int SN_Discover_neighbors(void);
+
 #endif //STARFISHNET_DISCOVERY_H

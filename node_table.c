@@ -66,7 +66,7 @@ static int lookup_by_public_key(SN_Public_key_t* public_key) {
     }
 
     for(i = 0; i < SN_TABLE_SIZE; i++) {
-        if((entry_bitmap & BIT(i)) &&
+        if((entry_bitmap & BIT(i)) && table[i].details_known &&
            !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data))) {
             return i;
         }
@@ -87,7 +87,7 @@ static int lookup_by_public_key_and_stream(SN_Public_key_t* public_key, uint8_t 
     }
 
     for(i = 0; i < SN_TABLE_SIZE; i++) {
-        if((entry_bitmap & BIT(i)) &&
+        if((entry_bitmap & BIT(i)) && table[i].details_known &&
            !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data)) &&
             table[i].altstream.stream_idx_length == stream_idx_len &&
             (stream_idx_len > 0 ? !memcmp(table[i].altstream.stream_idx, stream_idx, stream_idx_len) : 1)) {

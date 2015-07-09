@@ -68,52 +68,32 @@ int SN_Start(SN_Network_descriptor_t* network) {
  * Finally, associate with our new parent and get an address.
  *
  * Note that if routing is disabled, we don't transmit beacons.
- *
- * (fill_node_table is a callback for SN_Discover)
  */
-/*static void fill_node_table(SN_Network_descriptor_t* network, void* extradata) {
-    SN_Table_entry_t router_table_entry = {
-        .short_address = network->network_config->router_address,
-        .neighbor      = 1,
-        .details_known = 1,
-    };
-    memcpy(&router_table_entry.public_key, &network->network_config->router_public_key, sizeof(router_table_entry.public_key));
-
-    (void)extradata; //shut up GCC
-
-    SN_InfoPrintf("adding neighbor to node table...\n");
-    SN_Table_insert(&router_table_entry);
-}*/
 int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
-    int ret = SN_OK;
+    int ret;
 
     SN_InfoPrintf("enter\n");
 
-    //perform extra discovery step to fill in node table
+    //we're joining a new network, so assume we have no neighbors
     SN_Table_clear_all_neighbors();
-    //ret = SN_Discover(&fill_node_table, 1u << network->radio_channel, 2000, 1, NULL);
 
     //Fill NIB
-    if(ret == SN_OK) {
-        SN_InfoPrintf("filling NIB...\n");
-        starfishnet_config.tree_branching_factor = network->network_config->routing_tree_branching_factor;
-        starfishnet_config.tree_position         = network->network_config->routing_tree_position;
-        starfishnet_config.enable_routing        = (uint8_t)(disable_routing ? 0 : 1);
-        starfishnet_config.leaf_blocks           = network->network_config->leaf_blocks;
-        starfishnet_config.parent_address        = network->network_config->router_address;
-        memcpy(&starfishnet_config.parent_public_key, &network->network_config->router_public_key, sizeof(starfishnet_config.parent_public_key));
-        SN_InfoPrintf("starfishnet_config.tree_branching_factor = %d\n", starfishnet_config.tree_branching_factor);
-        SN_InfoPrintf("starfishnet_config.tree_position         = %d\n", starfishnet_config.tree_position        );
-        SN_InfoPrintf("starfishnet_config.enable_routing        = %d\n", starfishnet_config.enable_routing       );
-        SN_InfoPrintf("starfishnet_config.leaf_blocks           = %d\n", starfishnet_config.leaf_blocks          );
-        SN_InfoPrintf("starfishnet_config.parent_address        = 0x%04x\n", starfishnet_config.parent_address       );
-    }
+    SN_InfoPrintf("filling NIB...\n");
+    starfishnet_config.tree_branching_factor = network->network_config->routing_tree_branching_factor;
+    starfishnet_config.tree_position = network->network_config->routing_tree_position;
+    starfishnet_config.enable_routing = (uint8_t) (disable_routing ? 0 : 1);
+    starfishnet_config.leaf_blocks = network->network_config->leaf_blocks;
+    starfishnet_config.parent_address = network->network_config->router_address;
+    memcpy(&starfishnet_config.parent_public_key, &network->network_config->router_public_key, sizeof(starfishnet_config.parent_public_key));
+    SN_InfoPrintf("starfishnet_config.tree_branching_factor = %d\n", starfishnet_config.tree_branching_factor);
+    SN_InfoPrintf("starfishnet_config.tree_position         = %d\n", starfishnet_config.tree_position);
+    SN_InfoPrintf("starfishnet_config.enable_routing        = %d\n", starfishnet_config.enable_routing);
+    SN_InfoPrintf("starfishnet_config.leaf_blocks           = %d\n", starfishnet_config.leaf_blocks);
+    SN_InfoPrintf("starfishnet_config.parent_address        = 0x%04x\n", starfishnet_config.parent_address);
 
     //Do routing tree math and set up address allocation
-    if(ret == SN_OK) {
-        SN_InfoPrintf("configuring the routing tree...\n");
-        ret = SN_Tree_init();
-    }
+    SN_InfoPrintf("configuring the routing tree...\n");
+    ret = SN_Tree_init();
 
     //Tune to the right channel
     if(ret == SN_OK) {
@@ -149,6 +129,9 @@ int SN_Join(SN_Network_descriptor_t* network, bool disable_routing) {
         }
         free(parent_table_entry);
     }
+
+    //start neighbor discovery
+    SN_Discover_neighbors();
 
     //start security association with our parent (implicitly requesting an address)
     if(ret == SN_OK) {

@@ -28,7 +28,7 @@ void SN_Receive(SN_Receive_callback_t* callback);
 //primitive for performing a network scan
 typedef void (SN_Discovery_callback_t) (SN_Network_descriptor_t* network, void* extradata);
 int SN_Discover( //scan for StarfishNet networks. also serves as a nearest-neighbor scan. this call returns immediately
-    SN_Discovery_callback_t* callback, //you get one callback for each network found
+    SN_Discovery_callback_t* callback, //you get one callback for each network found, and a final one with network=NULL at the end
     uint32_t channel_mask,
     clock_time_t timeout,  //in ms
     bool show_full_networks, //0 gets you a callback only from networks with spare capacity

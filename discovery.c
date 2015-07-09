@@ -7,6 +7,7 @@
 #include "routing_tree.h"
 #include "config.h"
 #include "types.h"
+#include "node_table.h"
 
 #include "net/packetbuf.h"
 #include "net/linkaddr.h"
@@ -15,6 +16,10 @@
 #include <string.h>
 
 #define IEEE802514_BEACON_OVERHEAD 4
+
+#ifndef SN_NEIGHBOR_DISCOVERY_TIMEOUT
+#define SN_NEIGHBOR_DISCOVERY_TIMEOUT 1000
+#endif //SN_NEIGHBOR_DISCOVERY_TIMEOUT
 
 typedef struct beacon_payload {
     struct {
@@ -65,6 +70,36 @@ void SN_Beacon_update(void) {
                    &self_beacon_payload.hash);
 }
 
+//default behaviour for discovery subsystem: record a node as a neighbor
+static void neighbor_discovered(SN_Network_descriptor_t *network, void *extradata) {
+    static SN_Table_entry_t router_table_entry;
+
+    (void)extradata; //shut up GCC
+
+    if(network == NULL || network->network_config == NULL)
+        return;
+
+    SN_InfoPrintf("enter\n");
+
+    //set up our temporary data structure with the appropriate info
+    memset(&router_table_entry, 0, sizeof(router_table_entry));
+    router_table_entry.details_known = 1;
+    router_table_entry.short_address = network->network_config->router_address;
+    memcpy(&router_table_entry.public_key, &network->network_config->router_public_key, sizeof(router_table_entry.public_key));
+
+    if(SN_Table_lookup(NULL, &router_table_entry) == SN_OK) {
+        //this node is already in the neighbor table
+        router_table_entry.neighbor = 1;
+        SN_Table_update(&router_table_entry);
+    } else {
+        //node is not in the neighbor table
+        router_table_entry.neighbor = 1;
+        SN_Table_insert(&router_table_entry);
+    }
+
+    SN_InfoPrintf("exit\n");
+}
+
 static struct {
     uint32_t channel_mask;
     clock_time_t timeout;
@@ -72,7 +107,14 @@ static struct {
 
     SN_Discovery_callback_t* callback;
     void* extradata;
-} discovery_configuration;
+} discovery_configuration = {
+    .channel_mask = 0,
+    .timeout = 0,
+    .show_full_networks = 1,
+
+    .callback = neighbor_discovered,
+    .extradata = NULL,
+};
 
 static inline uint8_t ctz(uint32_t word) {
     uint8_t count = 0;
@@ -103,6 +145,18 @@ static void beacon_request_tx() {
     NETSTACK_LLSEC.send(NULL, NULL);
 }
 
+static void end_discovery(void) {
+    NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, RADIO_RX_MODE_ADDRESS_FILTER);
+    discovery_configuration.channel_mask = 0;
+    discovery_configuration.timeout = 0;
+    if(discovery_configuration.callback != NULL) {
+        discovery_configuration.callback(NULL, discovery_configuration.extradata);
+    }
+    discovery_configuration.callback = neighbor_discovered;
+    discovery_configuration.extradata = NULL;
+    discovery_configuration.show_full_networks = 1;
+}
+
 PROCESS_THREAD(starfishnet_discovery_process, ev, data)
 {
     static struct etimer timer = {
@@ -120,31 +174,35 @@ PROCESS_THREAD(starfishnet_discovery_process, ev, data)
         PROCESS_WAIT_EVENT_UNTIL(ev == discovery_event || ev == PROCESS_EVENT_TIMER);
         SN_InfoPrintf("event received\n");
 
-        /* if we have more channels to scan
-         *  1. set the channel
-         *  3. set a timer
-         */
-        if (discovery_configuration.channel_mask) {
+        if(discovery_configuration.channel_mask) {
+            /* if we have more channels to scan
+             *  1. set the radio to unfiltered mode
+             *  2. set the channel
+             *  3. set a timer
+             */
             uint8_t current_channel = 0;
             current_channel = ctz(discovery_configuration.channel_mask);
             discovery_configuration.channel_mask &= ~(1 << current_channel);
 
             SN_InfoPrintf("beginning discovery on channel %d\n", current_channel);
-            /*if(NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, 0) != RADIO_RESULT_OK) {
+            if(NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, 0) != RADIO_RESULT_OK) {
                 SN_ErrPrintf("radio returned error on RX mode set; aborting\n");
-                discovery_configuration.callback = NULL;
-            } else */
+                end_discovery();
+            } else
             if(NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, current_channel) != RADIO_RESULT_OK) {
                 SN_ErrPrintf("radio returned error on channel set; aborting\n");
-                discovery_configuration.callback = NULL;
+                end_discovery();
             } else {
                 beacon_request_tx();
-                etimer_set(&timer, discovery_configuration.timeout / 8); //8 ms per clock tick
+                etimer_set(&timer, discovery_configuration.timeout * CLOCK_CONF_SECOND / 1000); //8 ms per clock tick
             }
         } else {
+            /* if we don't have more channels to scan
+             *  1. set the radio to filtered mode
+             *  2. clear the config structure
+             */
             SN_InfoPrintf("ending discovery\n");
-            //NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, RADIO_RX_MODE_ADDRESS_FILTER);
-            discovery_configuration.callback = NULL;
+            end_discovery();
         }
     }
 
@@ -180,8 +238,8 @@ int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_
 
     SN_InfoPrintf("adjusted channel mask is 0x%08"PRIx32"\n", channel_mask);
     if(channel_mask == 0) {
-        SN_WarnPrintf("no channels to scan, aborting...\n");
-        return SN_OK;
+        SN_ErrPrintf("no channels to scan, aborting...\n");
+        return -SN_ERR_INVALID;
     }
 
     if(discovery_configuration.channel_mask != 0) {
@@ -201,6 +259,21 @@ int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_
     discovery_configuration.extradata    = extradata;
 
     process_post(&starfishnet_discovery_process, discovery_event, NULL);
+
+    return SN_OK;
+}
+
+/* trigger a neighbor discovery on our network
+ */
+int SN_Discover_neighbors(void) {
+    SN_InfoPrintf("enter\n");
+
+    if(discovery_configuration.channel_mask != 0) {
+        SN_ErrPrintf("error, scan already in progress\n");
+        return -SN_ERR_UNEXPECTED;
+    }
+
+    beacon_request_tx();
 
     return SN_OK;
 }
