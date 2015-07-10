@@ -20,7 +20,7 @@ typedef struct {
 } sha1_context_t;
 
 void sha1_starts(sha1_context_t *ctx);
-void sha1_update(sha1_context_t *ctx, const uint8_t* data, size_t len);
+void sha1_update(sha1_context_t *ctx, const uint8_t* data, uint8_t len);
 void sha1_finish(sha1_context_t *ctx, uint8_t hash[]);
 
 #define SHA1_BLOCKSIZE 64

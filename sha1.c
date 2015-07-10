@@ -14,7 +14,7 @@
 static void sha1_transform(sha1_context_t *ctx, const uint8_t data[])
 {
     uint8_t i, j;
-    uint32_t a,b,c,d,e,t;
+    static uint32_t a,b,c,d,e,t;
     static uint32_t m[80];
 
     for (i=0,j=0; i < 16; ++i, j += 4)
@@ -86,9 +86,9 @@ void sha1_starts(sha1_context_t *ctx)
     ctx->k[3] = 0xca62c1d6;
 }
 
-void sha1_update(sha1_context_t *ctx, const uint8_t* data, size_t len)
+void sha1_update(sha1_context_t *ctx, const uint8_t* data, uint8_t len)
 {
-    size_t i;
+    uint8_t i;
 
     for (i=0; i < len; ++i) {
         ctx->data[ctx->datalen] = data[i];
