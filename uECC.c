@@ -2267,10 +2267,10 @@ uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
 
     vli_modInv_n(k, k, curve_n); /* k = 1 / k */
 
-    vli_bytesToNative(tmp, private_key); /* tmp = d */
     tmp[uECC_N_WORDS - 1] = 0;
-    vli_set(s, p->x);
+    vli_bytesToNative(tmp, private_key); /* tmp = d */
     s[uECC_N_WORDS - 1] = 0;
+    vli_set(s, p->x);
     vli_modMult_n(s, tmp, s); /* s = r*d */
 
     vli_bytesToNative(tmp, message_hash);
@@ -2314,10 +2314,6 @@ uint8_t uECC_verify(const uint8_t public_key[uECC_BYTES * 2],
     bitcount_t i;
     uint8_t ret;
 
-    if (vli_isZero((uECC_word_t*)signature) || vli_isZero((uECC_word_t*)(signature + uECC_BYTES))) { /* r, s must not be 0. */
-        return 0;
-    }
-
     ALLOCATE_ARRAY(u1, uECC_N_WORDS);
     ALLOCATE_ARRAY(u2, uECC_N_WORDS);
     ALLOCATE_ARRAY(z, uECC_N_WORDS);
@@ -2333,13 +2329,18 @@ uint8_t uECC_verify(const uint8_t public_key[uECC_BYTES * 2],
     points[2] = public;
     points[3] = sum;
 
+    r[uECC_N_WORDS - 1] = 0;
+    s[uECC_N_WORDS - 1] = 0;
+
     vli_bytesToNative(public->x, public_key);
     vli_bytesToNative(public->y, public_key + uECC_BYTES);
     vli_bytesToNative(r, signature);
     vli_bytesToNative(s, signature + uECC_BYTES);
 
-    r[uECC_N_WORDS - 1] = 0;
-    s[uECC_N_WORDS - 1] = 0;
+    if (vli_isZero(r) || vli_isZero(s)) { /* r, s must not be 0. */
+        ret = 0;
+        goto exit;
+    }
 
 #if (uECC_CURVE != uECC_secp160r1)
     if (vli_cmp(curve_n, r) != 1 || vli_cmp(curve_n, s) != 1) { /* r, s must be < n. */
@@ -2350,8 +2351,8 @@ uint8_t uECC_verify(const uint8_t public_key[uECC_BYTES * 2],
 
     /* Calculate u1 and u2. */
     vli_modInv_n(z, s, curve_n); /* Z = s^-1 */
-    vli_bytesToNative(u1, hash);
     u1[uECC_N_WORDS - 1] = 0;
+    vli_bytesToNative(u1, hash);
     vli_modMult_n(u1, u1, z); /* u1 = e/s */
     vli_modMult_n(u2, r, z); /* u2 = r/s */
 
@@ -2406,6 +2407,7 @@ uint8_t uECC_verify(const uint8_t public_key[uECC_BYTES * 2],
 
     /* Accept only if v == r. */
     ret = BOOL_TO_BYTE(vli_equal(rx, r));
+    exit:
     FREE(u1);
     FREE(u2);
     FREE(z);
