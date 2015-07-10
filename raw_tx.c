@@ -10,7 +10,7 @@
 
 int8_t SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
     linkaddr_t src_address, next_hop;
-    int ret;
+    int8_t ret;
 
     if(source == FRAME802154_INVALIDADDR || destination == FRAME802154_INVALIDADDR) {
         SN_ErrPrintf("invalid route: 0x%04x -> 0x%04x\n", source, destination);
@@ -19,11 +19,6 @@ int8_t SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
 
     if(starfishnet_config.short_address == FRAME802154_INVALIDADDR) {
         SN_ErrPrintf("tried to route when addressing isn't correctly configured. aborting\n");
-        return -SN_ERR_INVALID;
-    }
-
-    if(!starfishnet_config.enable_routing) {
-        SN_ErrPrintf("tried to route when routing was switched off. aborting\n");
         return -SN_ERR_INVALID;
     }
 

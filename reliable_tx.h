@@ -13,7 +13,7 @@
  *
  * It is assumed that the packet's data is in the packetbuf.
  */
-int8_t SN_Retransmission_send(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter);
+int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry);
 
 /* Notify the retransmission system that a data packet has been acknowledged,
  * and should no longer be retransmitted.
@@ -25,7 +25,7 @@ int8_t SN_Retransmission_acknowledge_data(SN_Table_entry_t *table_entry, uint32_
  *
  * (This is primarily for association packets, which are implicitly acknowledged.)
  */
-int8_t SN_Retransmission_acknowledge_implicit(SN_Table_entry_t *table_entry, packet_t *packet);
+int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t *table_entry);
 
 //tell the retransmission subsystem that a time tick has elapsed
 void SN_Retransmission_retry(uint8_t count_towards_disconnection);

@@ -73,7 +73,8 @@ typedef struct SN_Altstream {
 /* Networking */
 
 typedef enum {
-    SN_ENDPOINT_LONG_ADDRESS = 1,
+    SN_ENDPOINT_NULL,
+    SN_ENDPOINT_LONG_ADDRESS,
     SN_ENDPOINT_SHORT_ADDRESS,
     SN_ENDPOINT_PUBLIC_KEY
 } SN_Endpoint_type_t;

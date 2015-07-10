@@ -13,8 +13,8 @@
 //StarfishNet node association states
 typedef enum SN_Association_state {
     SN_Unassociated,
-    SN_Associate_received,
     SN_Awaiting_reply,
+    SN_Associate_received,
     SN_Awaiting_finalise,
     SN_Send_finalise,
     SN_Associated

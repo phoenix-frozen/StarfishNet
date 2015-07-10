@@ -58,9 +58,8 @@ int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is 16 bytes
     bool pure_ack
 );
 
-int8_t SN_Crypto_check_certificate( //check the signature on a certificate
-    const SN_Certificate_t *certificate
-);
+
+#define SN_Crypto_check_certificate(certificate) SN_Crypto_verify(&certificate->endorser, (void*)&certificate->protected_data, sizeof(certificate->protected_data), &certificate->signature)
 
 void SN_Crypto_hash(const uint8_t *data, uint8_t data_len, SN_Hash_t *hash);
 

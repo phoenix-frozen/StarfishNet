@@ -49,8 +49,8 @@ typedef struct network_header {
     };
 } network_header_t;
 #define ATTRIBUTE(network_header, attribute) ((network_header)->attribute)
-#define DATA_ATTRIBUTE(network_header, attribute) (ATTRIBUTE(network_header, data) && (network_header)->data_attributes.attribute)
-#define CONTROL_ATTRIBUTE(network_header, attribute) (!ATTRIBUTE(network_header, data) && (network_header)->control_attributes.attribute)
+#define DATA_ATTRIBUTE(network_header, attribute) ((network_header)->data_attributes.attribute)
+#define CONTROL_ATTRIBUTE(network_header, attribute) ((network_header)->control_attributes.attribute)
 
 #pragma disable_warning 219
 typedef struct alt_stream_header {

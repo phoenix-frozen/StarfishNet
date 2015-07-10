@@ -66,39 +66,41 @@ static inline int8_t packet_detect_layout(packet_t* packet) {
         }
     }
 
-    //node_details_header_t
-    if(CONTROL_ATTRIBUTE(network_header, details)) {
-        if(PACKET_SIZE(*packet) < current_position + sizeof(node_details_header_t)) {
-            SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found node details header at %d\n", current_position);
-        packet->layout.node_details_header = current_position;
-        packet->layout.present.node_details_header = 1;
-        current_position += sizeof(node_details_header_t);
-    }
-
-    //association_header_t
-    if(CONTROL_ATTRIBUTE(network_header, associate)) {
-        if(PACKET_SIZE(*packet) < current_position + sizeof(association_header_t)) {
-            SN_ErrPrintf("packet indicates an association header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found association header at %d\n", current_position);
-        packet->layout.association_header = current_position;
-        packet->layout.present.association_header = 1;
-        current_position += sizeof(association_header_t);
-
-        //key_agreement_header_t
-        if(!PACKET_ENTRY(*packet, association_header)->dissociate) {
-            if(PACKET_SIZE(*packet) < current_position + sizeof(key_agreement_header_t)) {
-                SN_ErrPrintf("packet indicates a key agreement header, but is too small. aborting\n");
+    if(!ATTRIBUTE(network_header, data)) {
+        //node_details_header_t
+        if (CONTROL_ATTRIBUTE(network_header, details)) {
+            if (PACKET_SIZE(*packet) < current_position + sizeof(node_details_header_t)) {
+                SN_ErrPrintf("packet indicates a node details header, but is too small. aborting\n");
                 return -SN_ERR_END_OF_DATA;
             }
-            SN_InfoPrintf("found key agreement header at %d\n", current_position);
-            packet->layout.key_agreement_header = current_position;
-            packet->layout.present.key_agreement_header = 1;
-            current_position += sizeof(key_agreement_header_t);
+            SN_InfoPrintf("found node details header at %d\n", current_position);
+            packet->layout.node_details_header = current_position;
+            packet->layout.present.node_details_header = 1;
+            current_position += sizeof(node_details_header_t);
+        }
+
+        //association_header_t
+        if (CONTROL_ATTRIBUTE(network_header, associate)) {
+            if (PACKET_SIZE(*packet) < current_position + sizeof(association_header_t)) {
+                SN_ErrPrintf("packet indicates an association header, but is too small. aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            SN_InfoPrintf("found association header at %d\n", current_position);
+            packet->layout.association_header = current_position;
+            packet->layout.present.association_header = 1;
+            current_position += sizeof(association_header_t);
+
+            //key_agreement_header_t
+            if (!PACKET_ENTRY(*packet, association_header)->dissociate) {
+                if (PACKET_SIZE(*packet) < current_position + sizeof(key_agreement_header_t)) {
+                    SN_ErrPrintf("packet indicates a key agreement header, but is too small. aborting\n");
+                    return -SN_ERR_END_OF_DATA;
+                }
+                SN_InfoPrintf("found key agreement header at %d\n", current_position);
+                packet->layout.key_agreement_header = current_position;
+                packet->layout.present.key_agreement_header = 1;
+                current_position += sizeof(key_agreement_header_t);
+            }
         }
     }
 
@@ -114,22 +116,22 @@ static inline int8_t packet_detect_layout(packet_t* packet) {
         current_position += sizeof(key_confirmation_header_t);
     }
 
-    //encrypted_ack_header_t
-    if(DATA_ATTRIBUTE(network_header, ack)) {
-        if(PACKET_SIZE(*packet) < current_position + sizeof(encrypted_ack_header_t)) {
-            SN_ErrPrintf("packet indicates an acknowledgement (encrypted) header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found acknowledgement (encrypted) header at %d\n", current_position);
-        packet->layout.encrypted_ack_header         = current_position;
-        packet->layout.present.encrypted_ack_header = 1;
-        current_position += sizeof(encrypted_ack_header_t);
-    }
-
-    //encryption_header_t / signature_header_t
     if(ATTRIBUTE(network_header, data)) {
+        //encrypted_ack_header_t
+        if (DATA_ATTRIBUTE(network_header, ack)) {
+            if (PACKET_SIZE(*packet) < current_position + sizeof(encrypted_ack_header_t)) {
+                SN_ErrPrintf("packet indicates an acknowledgement (encrypted) header, but is too small. aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            SN_InfoPrintf("found acknowledgement (encrypted) header at %d\n", current_position);
+            packet->layout.encrypted_ack_header = current_position;
+            packet->layout.present.encrypted_ack_header = 1;
+            current_position += sizeof(encrypted_ack_header_t);
+        }
+
+        //encryption_header_t / signature_header_t
         //encrypted packet
-        if(PACKET_SIZE(*packet) < current_position + sizeof(encryption_header_t)) {
+        if (PACKET_SIZE(*packet) < current_position + sizeof(encryption_header_t)) {
             SN_ErrPrintf("packet indicates an encryption header, but is too small. aborting\n");
             return -SN_ERR_END_OF_DATA;
         }
@@ -137,6 +139,26 @@ static inline int8_t packet_detect_layout(packet_t* packet) {
         packet->layout.encryption_header = current_position;
         packet->layout.present.encryption_header = 1;
         current_position += sizeof(encryption_header_t);
+
+        //evidence_header
+        if(DATA_ATTRIBUTE(network_header, evidence)) {
+            if(PACKET_SIZE(*packet) < current_position + sizeof(evidence_header_t)) {
+                SN_ErrPrintf("packet indicates an evidence header, but is too small. aborting\n");
+                return -SN_ERR_END_OF_DATA;
+            }
+            SN_InfoPrintf("found evidence header at %d\n", current_position);
+            packet->layout.evidence_header = current_position;
+            packet->layout.present.evidence_header = 1;
+            current_position += sizeof(evidence_header_t);
+        }
+
+        //payload
+        packet->layout.payload_length = PACKET_SIZE(*packet) - current_position;
+        if(packet->layout.payload_length > 0) {
+            SN_InfoPrintf("found payload at %d (%d bytes)\n", current_position, packet->layout.payload_length);
+            packet->layout.payload_data = current_position;
+            packet->layout.present.payload_data = 1;
+        }
     } else {
         //signed packet
         if(PACKET_SIZE(*packet) < current_position + sizeof(signature_header_t)) {
@@ -147,26 +169,6 @@ static inline int8_t packet_detect_layout(packet_t* packet) {
         packet->layout.signature_header = current_position;
         packet->layout.present.signature_header = 1;
         current_position += sizeof(signature_header_t);
-    }
-
-    //evidence_header
-    if(DATA_ATTRIBUTE(network_header, evidence)) {
-        if(PACKET_SIZE(*packet) < current_position + sizeof(evidence_header_t)) {
-            SN_ErrPrintf("packet indicates an evidence header, but is too small. aborting\n");
-            return -SN_ERR_END_OF_DATA;
-        }
-        SN_InfoPrintf("found evidence header at %d\n", current_position);
-        packet->layout.evidence_header = current_position;
-        packet->layout.present.evidence_header = 1;
-        current_position += sizeof(evidence_header_t);
-    }
-
-    //payload
-    packet->layout.payload_length = PACKET_SIZE(*packet) - current_position;
-    if(packet->layout.payload_length > 0) {
-        SN_InfoPrintf("found payload at %d (%d bytes)\n", current_position, packet->layout.payload_length);
-        packet->layout.payload_data = current_position;
-        packet->layout.present.payload_data = 1;
     }
 
     //some logic-checking assertions
@@ -348,7 +350,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
     //network_header
     network_header = PACKET_ENTRY(*packet, network_header);
     assert(network_header != NULL);
-    if(CONTROL_ATTRIBUTE(network_header, req_details)) {
+    if(!ATTRIBUTE(network_header, data) && CONTROL_ATTRIBUTE(network_header, req_details)) {
         SN_InfoPrintf("partner has requested our details\n");
         table_entry->knows_details = 0;
     } else {
@@ -457,7 +459,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
         //advance the relationship's state
         table_entry->state = challengenumber == 2 ? SN_Associated : SN_Send_finalise;
 
-        SN_Retransmission_acknowledge_implicit(table_entry, packet);
+        SN_Retransmission_acknowledge_implicit(packet, table_entry);
     }
 
     //encrypted_ack_header
@@ -615,7 +617,7 @@ void SN_Receive_data_packet(packet_t* packet) {
             if(packet->layout.present.key_confirmation_header && !packet->layout.present.association_header) {
                 SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
                 if(table_entry.short_address != FRAME802154_INVALIDADDR) {
-                    SN_Send(&src_addr, NULL);
+                    SN_Send_acknowledgements(&src_addr);
                 }
             }
         }
@@ -639,7 +641,7 @@ void SN_Receive_data_packet(packet_t* packet) {
         }
 
         if(pure_ack) {
-            ret = packet_decrypt_verify(packet, &table_entry.local_key_agreement_keypair.public_key,
+            ret = packet_decrypt_verify(packet, &table_entry.remote_key_agreement_key,
                                         &table_entry.link_key,
                                         PACKET_ENTRY(*packet, encrypted_ack_header)->counter, 1);
         } else {
@@ -652,7 +654,7 @@ void SN_Receive_data_packet(packet_t* packet) {
             SN_WarnPrintf("crypto error could be due to dropped acknowledgement; triggering acknowledgement and packet retransmission\n");
             SN_Retransmission_retry(0);
             if(table_entry.short_address != FRAME802154_INVALIDADDR) {
-                SN_Send(&src_addr, NULL);
+                SN_Send_acknowledgements(&src_addr);
             }
             return;
         } else {

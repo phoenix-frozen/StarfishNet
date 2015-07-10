@@ -1,6 +1,5 @@
 #include "crypto.h"
 #include "status.h"
-#undef SN_DEBUG
 #include "logging.h"
 #include "sha1.h"
 #include "uECC.h"
@@ -25,6 +24,10 @@
 #if SN_Hash_size < SN_AES_key_size
 #error "Hashes need to be bigger than or equal to AES keys!"
 #endif //SN_Hash_size < SN_AES_key_size
+
+#if SN_Hash_size != SN_PK_key_size
+#error "We assume that hashes and private keys are the same size!"
+#endif //SN_Hash_size != SN_PK_key_size
 
 //some temporary buffers to store intermediate values
 static union {
@@ -144,7 +147,6 @@ int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_
     const SN_Private_key_t *private_key,
     SN_Kex_result_t *shared_secret
 ) {
-    static SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
     int ret;
 
     SN_InfoPrintf("enter\n");
@@ -161,7 +163,7 @@ int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_
     uECC_decompress(public_key->data, temp.unpacked_public_key);
 
     //do ECDH
-    ret = uECC_shared_secret(temp.unpacked_public_key, private_key->data, raw_shared_secret.data);
+    ret = uECC_shared_secret(temp.unpacked_public_key, private_key->data, shared_secret->raw.data);
     if(ret == 0) {
         SN_ErrPrintf("error performing key agreement\n");
         return -SN_ERR_KEYGEN;
@@ -169,7 +171,7 @@ int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_
 
     //hash resultant secret together with identities of parties involved
     sha1_starts(&temp.ctx);
-    sha1_update(&temp.ctx, raw_shared_secret.data, sizeof(raw_shared_secret.data));
+    sha1_update(&temp.ctx, shared_secret->raw.data, sizeof(shared_secret->raw.data));
     if(identity_A != NULL) {
         sha1_update(&temp.ctx, identity_A->data, sizeof(identity_A->data));
     }
@@ -276,21 +278,4 @@ int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is 16 bytes
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
-}
-
-
-int8_t SN_Crypto_check_certificate(const SN_Certificate_t *certificate) {
-    SN_InfoPrintf("enter\n");
-
-    if(certificate == NULL) {
-        SN_ErrPrintf("certificate must be non-NULL\n");
-        return -SN_ERR_NULL;
-    }
-
-    return SN_Crypto_verify(
-        &certificate->endorser,
-        (void*)&certificate->protected_data,
-        sizeof(certificate->protected_data),
-        &certificate->signature
-    ) != SN_OK;
 }

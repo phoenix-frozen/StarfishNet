@@ -225,8 +225,8 @@ static inline uint8_t popcount(uint32_t word) {
  *
  * You get one callback for each network discovered, with the extradata you provided.
  */
-int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_time_t timeout,
-                bool show_full_networks, void *extradata) {
+int8_t SN_Discover(SN_Discovery_callback_t *callback, uint32_t channel_mask, clock_time_t timeout,
+                   bool show_full_networks, void *extradata) {
     SN_InfoPrintf("enter\n");
     SN_InfoPrintf("performing discovery over 0x%08"PRIx32", in %d ms\n", channel_mask, timeout);
 

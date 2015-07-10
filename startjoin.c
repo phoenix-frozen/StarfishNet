@@ -10,13 +10,10 @@
 
 #include <string.h>
 #include <malloc.h>
-
-static const SN_Message_t associate_message = {
-    .type = SN_Association_request
-};
+#include <assert.h>
 
 //start a new StarfishNet network as coordinator
-int SN_Start(const SN_Network_descriptor_t* network) {
+int8_t SN_Start(const SN_Network_descriptor_t *network) {
     int ret;
 
     SN_InfoPrintf("enter\n");
@@ -67,14 +64,49 @@ int SN_Start(const SN_Network_descriptor_t* network) {
     return SN_OK;
 }
 
+static int8_t add_parent_to_node_table() {
+    int8_t ret;
+    SN_Table_entry_t* parent_table_entry = malloc(sizeof(SN_Table_entry_t));
+
+    if(parent_table_entry == NULL) {
+        SN_InfoPrintf("failed to add parent to node table due to lack of memory\n");
+        return -SN_ERR_RESOURCES;
+    }
+    memset(parent_table_entry, 0, sizeof(*parent_table_entry));
+    parent_table_entry->short_address = starfishnet_config.parent_address;
+    parent_table_entry->details_known = 1;
+    memcpy(&parent_table_entry->public_key, &starfishnet_config.parent_public_key, sizeof(parent_table_entry->public_key));
+
+    ret = SN_Table_lookup(NULL, parent_table_entry);
+    if(ret == SN_OK) {
+        parent_table_entry->short_address = starfishnet_config.parent_address;
+        parent_table_entry->details_known = 1;
+        memcpy(&parent_table_entry->public_key, &starfishnet_config.parent_public_key, sizeof(parent_table_entry->public_key));
+    }
+
+    parent_table_entry->neighbor = 1;
+
+    SN_InfoPrintf("adding parent to node table...\n");
+    SN_Table_update(parent_table_entry);
+    ret = SN_Table_insert(parent_table_entry);
+    if(-ret == SN_ERR_RESOURCES) {
+        //it's ok if the entry already exists
+        ret = SN_OK;
+    }
+
+    free(parent_table_entry);
+    return ret;
+}
+
 /* Tune the radio to a StarfishNet network.
  * Then, discover any other nearby nodes, and add them to the node table as neighbors.
  * Finally, associate with our new parent and get an address.
  *
  * Note that if routing is disabled, we don't transmit beacons.
  */
-int SN_Join(const SN_Network_descriptor_t* network, bool disable_routing) {
-    int ret;
+int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing) {
+    int8_t ret;
+    SN_Endpoint_t *parent_address;
 
     SN_InfoPrintf("enter\n");
 
@@ -88,83 +120,60 @@ int SN_Join(const SN_Network_descriptor_t* network, bool disable_routing) {
     starfishnet_config.enable_routing = (uint8_t) (disable_routing ? 0 : 1);
     starfishnet_config.leaf_blocks = network->network_config->leaf_blocks;
     starfishnet_config.parent_address = network->network_config->router_address;
-    memcpy(&starfishnet_config.parent_public_key, &network->network_config->router_public_key, sizeof(starfishnet_config.parent_public_key));
+    starfishnet_config.pan_id = network->pan_id;
+    memcpy(&starfishnet_config.parent_public_key, &network->network_config->router_public_key,
+           sizeof(starfishnet_config.parent_public_key));
 
     //Do routing tree math and set up address allocation
     SN_InfoPrintf("configuring the routing tree...\n");
     ret = SN_Tree_init();
 
+    assert(SN_OK == RADIO_RESULT_OK);
+
     //Tune to the right channel
-    if(ret == SN_OK) {
+    if (ret == SN_OK) {
         SN_InfoPrintf("setting radio channel to %d...\n", network->radio_channel);
         ret = NETSTACK_RADIO.set_value(RADIO_PARAM_CHANNEL, network->radio_channel);
-        if(ret != RADIO_RESULT_OK) {
+        if (ret != RADIO_RESULT_OK) {
             ret = -SN_ERR_RADIO;
-        } else {
-            ret = SN_OK;
         }
     }
 
     //Set our PAN ID
-    if(ret == SN_OK) {
-        SN_InfoPrintf("setting PAN ID to 0x%04x...\n", network->pan_id);
-        ret = NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, network->pan_id);
-        if(ret != RADIO_RESULT_OK) {
+    if (ret == SN_OK) {
+        SN_InfoPrintf("setting PAN ID to 0x%04x...\n", starfishnet_config.pan_id);
+        ret = NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, starfishnet_config.pan_id);
+        if (ret != RADIO_RESULT_OK) {
             ret = -SN_ERR_RADIO;
-        } else {
-            starfishnet_config.pan_id = network->pan_id;
-            ret = SN_OK;
         }
     }
 
     //add parent to node table
-    if(ret == SN_OK) {
-        SN_Table_entry_t* parent_table_entry = malloc(sizeof(SN_Table_entry_t));
-        if(parent_table_entry == NULL) {
-            SN_InfoPrintf("failed to add parent to node table due to lack of memory\n");
-            return -SN_ERR_RESOURCES;
-        }
-        memset(parent_table_entry, 0, sizeof(*parent_table_entry));
-        parent_table_entry->short_address = starfishnet_config.parent_address;
-        parent_table_entry->details_known = 1;
-        memcpy(&parent_table_entry->public_key, &starfishnet_config.parent_public_key, sizeof(parent_table_entry->public_key));
-
-        ret = SN_Table_lookup(NULL, parent_table_entry);
-        if(ret == SN_OK) {
-            parent_table_entry->short_address = starfishnet_config.parent_address;
-            parent_table_entry->details_known = 1;
-            memcpy(&parent_table_entry->public_key, &starfishnet_config.parent_public_key, sizeof(parent_table_entry->public_key));
-        }
-
-        parent_table_entry->neighbor = 1;
-
-        SN_InfoPrintf("adding parent to node table...\n");
-        SN_Table_update(parent_table_entry);
-        ret = SN_Table_insert(parent_table_entry);
-        if(-ret == SN_ERR_RESOURCES) {
-            //it's ok if the entry already exists
-            ret = SN_OK;
-        }
-        free(parent_table_entry);
+    if (ret == SN_OK) {
+        ret = add_parent_to_node_table();
     }
 
     //start neighbor discovery
-    SN_Discover_neighbors();
+    if (ret == SN_OK) {
+        ret = SN_Discover_neighbors();
+    }
+
+    if (ret != SN_OK) {
+        return ret;
+    }
 
     //start security association with our parent (implicitly requesting an address)
-    if(ret == SN_OK) {
-        SN_Endpoint_t* parent_address = malloc(sizeof(SN_Endpoint_t));
-        if(parent_address == NULL) {
-            SN_InfoPrintf("failed to send association message due to lack of memory\n");
-            return -SN_ERR_RESOURCES;
-        }
-        memset(parent_address, 0, sizeof(*parent_address));
-        parent_address->type = SN_ENDPOINT_SHORT_ADDRESS;
-        parent_address->short_address = starfishnet_config.parent_address;
-        SN_InfoPrintf("sending association message...\n");
-        ret = SN_Send(parent_address, &associate_message);
-        free(parent_address);
+    parent_address = malloc(sizeof(SN_Endpoint_t));
+    if (parent_address == NULL) {
+        SN_InfoPrintf("failed to send association message due to lack of memory\n");
+        return -SN_ERR_RESOURCES;
     }
+    memset(parent_address, 0, sizeof(*parent_address));
+    parent_address->type = SN_ENDPOINT_SHORT_ADDRESS;
+    parent_address->short_address = starfishnet_config.parent_address;
+    SN_InfoPrintf("sending association message...\n");
+    ret = SN_Associate(parent_address);
+    free(parent_address);
 
     //And we're done
     SN_InfoPrintf("exit\n");

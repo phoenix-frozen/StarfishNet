@@ -8,6 +8,7 @@
 #include "net/netstack.h"
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
+#include "packet.h"
 
 #include <string.h>
 #include <assert.h>
@@ -58,7 +59,7 @@ int allocate_slot() {
     return slot;
 }
 
-static int setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
+static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     linkaddr_t dst_addr;
     linkaddr_t src_address;
 
@@ -124,9 +125,9 @@ static void retransmission_mac_callback(void *ptr, int status, int transmissions
     }
 }
 
-int8_t SN_Retransmission_send(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter) {
+int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
     transmission_slot_t* slot_data;
-    int ret;
+    int8_t ret;
 
     if(table_entry == NULL || packet == NULL) {
         SN_ErrPrintf("table_entry and packet must be valid\n");
@@ -138,13 +139,8 @@ int8_t SN_Retransmission_send(SN_Table_entry_t *table_entry, packet_t *packet, u
     }
 
     //1. If appropriate, allocate a slot and fill it.
-    if(!packet->layout.present.key_confirmation_header && packet->layout.present.encrypted_ack_header && !packet->layout.present.payload_data) {
-        //this is a pure acknowledgement packet
-        SN_InfoPrintf("just sent pure acknowledgement packet; not performing retransmissions\n");
-        slot_data = NULL;
-    } else
-    if(!packet->layout.present.encryption_header && !packet->layout.present.association_header) {
-        //this is a signed non-association packet; probably optimistic certificate transport
+    if(!packet->layout.present.encryption_header && !(packet->layout.present.association_header && !PACKET_ENTRY(*packet, association_header)->dissociate)) {
+        //this is a signed non-association packet; probably optimistic certificate transport, or a dissociation
         SN_InfoPrintf("just sent unencrypted non-association packet (probably optimistic certificate transport; not performing retransmissions\n");
         slot_data = NULL;
     } else {
@@ -163,7 +159,7 @@ int8_t SN_Retransmission_send(SN_Table_entry_t *table_entry, packet_t *packet, u
 
         //fill slot with packet data
 
-        slot_data->counter = counter;
+        slot_data->counter = table_entry->packet_tx_counter - 1;
         slot_data->retries = 0;
         slot_data->transmit_status = MAC_TX_DEFERRED;
         if(table_entry->short_address == FRAME802154_INVALIDADDR) {
@@ -250,7 +246,7 @@ int8_t SN_Retransmission_acknowledge_data(SN_Table_entry_t *table_entry, uint32_
     return rv;
 }
 
-int8_t SN_Retransmission_acknowledge_implicit(SN_Table_entry_t *table_entry, packet_t *packet) {
+int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t *table_entry) {
     SN_InfoPrintf("enter\n");
 
     if(table_entry == NULL || packet == NULL) {
