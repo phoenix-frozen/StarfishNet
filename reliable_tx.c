@@ -12,6 +12,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <malloc.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT QUEUEBUF_NUM
@@ -94,7 +95,7 @@ static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
         packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
     } else if(table_entry->child || table_entry->short_address == FRAME802154_INVALIDADDR) {
         //it's to a long address, so no routing to do. just send direct
-        if(memcmp(table_entry->long_address, null_address, 8) == 0) {
+        if(table_entry->long_address == NULL || memcmp(table_entry->long_address, null_address, 8) == 0) {
             SN_ErrPrintf("trying to send to a node without an address...\n");
             return -SN_ERR_INVALID;
         }
@@ -133,7 +134,7 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
         SN_ErrPrintf("table_entry and packet must be valid\n");
         return -SN_ERR_NULL;
     }
-    if(table_entry->short_address == FRAME802154_INVALIDADDR && memcmp(table_entry->long_address, null_address, 8) == 0) {
+    if(table_entry->short_address == FRAME802154_INVALIDADDR && (table_entry->long_address == NULL || memcmp(table_entry->long_address, null_address, 8) == 0)) {
         SN_ErrPrintf("trying to send to node with unknown address\n");
         return -SN_ERR_INVALID;
     }
@@ -163,6 +164,9 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
         slot_data->retries = 0;
         slot_data->transmit_status = MAC_TX_DEFERRED;
         if(table_entry->short_address == FRAME802154_INVALIDADDR) {
+            if(table_entry->long_address == NULL) {
+                return -SN_ERR_INVALID;
+            }
             slot_data->dst_address.type = SN_ENDPOINT_LONG_ADDRESS;
             memcpy(slot_data->dst_address.long_address, table_entry->long_address, 8);
         } else {

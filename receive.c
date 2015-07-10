@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <string.h>
 #include <net/linkaddr.h>
+#include <malloc.h>
 
 //outputs crypto margin, and pointers to the key agreement header and payload data
 //also detects basic protocol failures
@@ -361,7 +362,8 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
     if(network_header->src_addr != FRAME802154_INVALIDADDR) {
         //if the remote node has a short address, we can erase its MAC address from memory
         SN_InfoPrintf("short address is known; erasing long address\n");
-        memset(table_entry->long_address, 0, 8);
+        free(table_entry->long_address);
+        table_entry->long_address = NULL;
     }
 
 
@@ -624,6 +626,7 @@ void SN_Receive_data_packet() {
                 break;
 
             case SN_ENDPOINT_LONG_ADDRESS:
+                table_entry.long_address = malloc(8);
                 memcpy(table_entry.long_address, src_addr.long_address, 8);
                 break;
         }

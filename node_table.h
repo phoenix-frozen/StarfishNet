@@ -22,14 +22,14 @@ typedef enum SN_Association_state {
 
 typedef struct SN_Table_entry {
     //addressing information
-    uint8_t         long_address[8];
     uint16_t        short_address;
     SN_Public_key_t public_key;
+    uint8_t*        long_address;
 
     struct {
         uint8_t stream_idx_length;
         uint8_t stream_idx[SN_MAX_ALT_STREAM_IDX_SIZE];
-    }               altstream;
+    } altstream;
 
     //relationship metadata
     struct {

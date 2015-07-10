@@ -26,8 +26,8 @@ static int lookup_by_long_address(const uint8_t* address, uint8_t stream_idx_len
     }
 
     for(i = 0; i < SN_TABLE_SIZE; i++)
-        if((entry_bitmap & BIT(i)) &&
-           !memcmp(address, &table[i].long_address, sizeof(table[i].long_address)) &&
+        if((entry_bitmap & BIT(i)) && table[i].long_address != NULL &&
+           !memcmp(address, &table[i].long_address, 8) &&
            table[i].altstream.stream_idx_length == stream_idx_len &&
             (stream_idx_len > 0 ? !memcmp(table[i].altstream.stream_idx, stream_idx, stream_idx_len) : 1)) {
             return i;
@@ -164,7 +164,7 @@ int8_t SN_Table_insert(SN_Table_entry_t *entry) {
     }
 
     //consistency checks to make sure we don't pollute the table with BS entries
-    if((!memcmp(entry->long_address, null_address, sizeof(null_address)))
+    if(entry->long_address != NULL && (!memcmp(entry->long_address, null_address, sizeof(null_address)))
        && (entry->short_address == FRAME802154_INVALIDADDR)
        && (!memcmp(&entry->public_key, &null_key, sizeof(null_key)))) {
         return -SN_ERR_INVALID;
