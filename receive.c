@@ -260,19 +260,14 @@ static int8_t packet_security_checks(packet_t* packet, SN_Table_entry_t* table_e
 }
 
 static int8_t packet_public_key_operations(packet_t* packet, SN_Table_entry_t* table_entry) {
-    int8_t ret;
     SN_Public_key_t* remote_public_key = NULL;
+    int8_t ret;
 
     /* at this point, security checks have passed, but no integrity-checking has happened.
      * if this packet is signed, we check the signature, and thus integrity-checking is done.
      * if not, it must be encrypted. we must therefore finish key-agreement so that we can
      * do integrity-checking at decrypt time.
      */
-
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
-        return -SN_ERR_NULL;
-    }
 
     //get the signing key from node_details_header, if we need it
     if(table_entry->details_known) {
@@ -315,7 +310,6 @@ static int8_t packet_public_key_operations(packet_t* packet, SN_Table_entry_t* t
     if(packet->layout.present.association_header &&
        !PACKET_ENTRY(*packet, association_header)->dissociate &&
        packet->layout.present.key_confirmation_header) {
-        SN_Kex_result_t kex_result;
 
         //associate_reply
         assert(table_entry->state == SN_Awaiting_reply);
@@ -327,13 +321,12 @@ static int8_t packet_public_key_operations(packet_t* packet, SN_Table_entry_t* t
             &table_entry->public_key,
             &PACKET_ENTRY(*packet, key_agreement_header)->key_agreement_key,
             &table_entry->local_key_agreement_keypair.private_key,
-            &kex_result
+            &table_entry->link_key
         );
         if(ret != SN_OK) {
             SN_ErrPrintf("key agreement failed with %d.\n", -ret);
             return ret;
         }
-        memcpy(&table_entry->link_key, &kex_result.key, sizeof(kex_result.key));
         table_entry->packet_rx_counter = table_entry->packet_tx_counter = 0;
     }
 
@@ -526,13 +519,13 @@ void SN_Receive(SN_Receive_callback_t* callback) {
 }
 
 void SN_Receive_data_packet() {
-    int ret;
     static packet_t packet;
     static SN_Altstream_t altstream;
     static SN_Endpoint_t src_addr = {.altstream = &altstream};
-    SN_Message_t message;
-    network_header_t* network_header;
+    static SN_Message_t message;
     static SN_Table_entry_t table_entry;
+    network_header_t* network_header;
+    int8_t ret;
 
     SN_InfoPrintf("enter\n");
 
@@ -611,12 +604,13 @@ void SN_Receive_data_packet() {
     if(packet.layout.present.alt_stream_header) {
         altstream.stream_idx_length = PACKET_ENTRY(packet, alt_stream_header)->length;
         altstream.stream_idx = PACKET_ENTRY(packet, alt_stream_header)->stream_idx;
+    } else {
+        altstream.stream_idx_length = 0;
     }
 
     ret = SN_Table_lookup(&src_addr, &table_entry);
     if (ret != SN_OK) {
         memset(&table_entry, 0, sizeof(table_entry));
-        table_entry.short_address = FRAME802154_INVALIDADDR;
 
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
@@ -628,11 +622,15 @@ void SN_Receive_data_packet() {
             case SN_ENDPOINT_LONG_ADDRESS:
                 table_entry.long_address = malloc(8);
                 memcpy(table_entry.long_address, src_addr.long_address, 8);
+                table_entry.short_address = FRAME802154_INVALIDADDR;
                 break;
         }
         ret = SN_Table_insert(&table_entry);
         if (ret != SN_OK) {
             SN_ErrPrintf("cannot allocate entry in node table, aborting.\n");
+            if(table_entry.long_address != NULL) {
+                free(table_entry.long_address);
+            }
             return;
         }
     }

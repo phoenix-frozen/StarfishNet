@@ -435,6 +435,11 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
         return ret;
     }
 
+    if(!packet.layout.present.encrypted_ack_header || table_entry.packet_rx_counter == 0) {
+        SN_WarnPrintf("acknowledgements aren't required\n");
+        return -SN_ERR_UNEXPECTED;
+    }
+
     SN_InfoPrintf("beginning packet crypto...\n");
 
     assert(packet.layout.present.encryption_header);
@@ -443,11 +448,6 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
     assert(!packet.layout.present.key_confirmation_header);
     assert(PACKET_ENTRY(packet, encrypted_ack_header)->counter + 1 == table_entry.packet_rx_counter);
     assert(packet.layout.encryption_header + (uint8_t)sizeof(encryption_header_t) == packet.length);
-
-    if(!packet.layout.present.encrypted_ack_header || table_entry.packet_rx_counter == 0) {
-        SN_WarnPrintf("acknowledgements aren't required\n");
-        return -SN_ERR_UNEXPECTED;
-    }
 
     //this is a pure-acknowledgement packet; don't change the counter
     ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.local_key_agreement_keypair.public_key,

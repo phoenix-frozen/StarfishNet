@@ -25,6 +25,7 @@ int8_t SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
     src_address.u16 = starfishnet_config.short_address;
     ret = SN_Tree_route(source, destination, &next_hop.u16);
     if(ret != SN_OK) {
+        SN_ErrPrintf("error trying to route packet: %d", -ret);
         return ret;
     }
 
