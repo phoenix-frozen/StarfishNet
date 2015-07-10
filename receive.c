@@ -449,7 +449,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
         assert(table_entry->state == SN_Awaiting_reply);
 
         //do the challenge1 check (double-hash)
-        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &hashbuf);
+        SN_Crypto_hash(table_entry->link_key.key.data, sizeof(table_entry->link_key.key.data), &hashbuf);
         if(challengenumber == 2) {
             SN_Crypto_hash(hashbuf.data, SN_Hash_size, &hashbuf);
         }
@@ -675,10 +675,10 @@ void SN_Receive_data_packet() {
 
         if(pure_ack) {
             ret = packet_decrypt_verify(&packet, &table_entry.remote_key_agreement_key,
-                                        &table_entry.link_key,
+                                        &table_entry.link_key.key,
                                         PACKET_ENTRY(packet, encrypted_ack_header)->counter, 1);
         } else {
-            ret = packet_decrypt_verify(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
+            ret = packet_decrypt_verify(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key.key,
                                         table_entry.packet_rx_counter++, 0);
         }
         if(ret != SN_OK) {

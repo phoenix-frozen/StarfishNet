@@ -229,7 +229,7 @@ static int8_t generate_subheaders(packet_t *packet, SN_Table_entry_t *table_entr
         packet->layout.present.key_confirmation_header = 1;
         PACKET_SIZE(*packet) += sizeof(key_confirmation_header_t);
 
-        SN_Crypto_hash(table_entry->link_key.data, sizeof(table_entry->link_key.data), &PACKET_ENTRY(*packet, key_confirmation_header)->challenge);
+        SN_Crypto_hash(table_entry->link_key.key.data, sizeof(table_entry->link_key.key.data), &PACKET_ENTRY(*packet, key_confirmation_header)->challenge);
         if(CONTROL_ATTRIBUTE(NETWORK_HEADER, associate)) {
             //this is a reply; do challenge1 (double-hash)
             SN_Crypto_hash(PACKET_ENTRY(*packet, key_confirmation_header)->challenge.data, SN_Hash_size, &PACKET_ENTRY(*packet, key_confirmation_header)->challenge);
@@ -449,7 +449,7 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
     }
 
     //this is a pure-acknowledgement packet; don't change the counter
-    ret = SN_Crypto_encrypt(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key,
+    ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.local_key_agreement_keypair.public_key,
                             table_entry.packet_rx_counter - 1,
                             packet.data, packet.layout.encryption_header,
                             NULL, 0,
@@ -524,7 +524,7 @@ int8_t SN_Send(const SN_Endpoint_t *dst_addr, const SN_Message_t *message) {
 
     assert(packet.layout.present.encryption_header);
     assert(!packet.layout.present.signature_header);
-    ret = SN_Crypto_encrypt(&table_entry.link_key, &table_entry.local_key_agreement_keypair.public_key,
+    ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.local_key_agreement_keypair.public_key,
                             table_entry.packet_tx_counter++,
                             packet.data, packet.layout.encryption_header,
                             packet.data + (packet.layout.encryption_header + (uint8_t) sizeof(encryption_header_t)),
@@ -618,7 +618,7 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
             &starfishnet_config.device_root_key.public_key,
             &table_entry.remote_key_agreement_key,
             &table_entry.local_key_agreement_keypair.private_key,
-            &table_entry.link_key_kex
+            &table_entry.link_key
         );
         if (ret != SN_OK) {
             SN_ErrPrintf("error during key agreement, aborting send\n");

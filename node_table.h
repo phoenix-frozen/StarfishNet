@@ -47,10 +47,7 @@ typedef struct SN_Table_entry {
     SN_Keypair_t    local_key_agreement_keypair; //our ephemeral keypair
     SN_Public_key_t remote_key_agreement_key;    //remote party's ephemeral public key
 
-    union {
-    SN_AES_key_t    link_key;                    //shared secret for packet encryption
-    SN_Kex_result_t link_key_kex;
-    };
+    SN_Kex_result_t link_key;                    //shared secret for packet encryption
 
     uint32_t        packet_tx_counter;           //packet transmit count
     uint32_t        packet_rx_counter;           //packet receive count
