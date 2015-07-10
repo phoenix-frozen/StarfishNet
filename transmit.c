@@ -568,6 +568,9 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
     SN_InfoPrintf("consulting neighbor table...\n");
     ret = SN_Table_lookup(dst_addr, &table_entry);
     if (ret != SN_OK) {
+        memset(&table_entry, 0, sizeof(table_entry));
+        table_entry.short_address = FRAME802154_INVALIDADDR;
+
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
 
         switch (dst_addr->type) {
@@ -580,6 +583,7 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
                 break;
 
             case SN_ENDPOINT_PUBLIC_KEY:
+                table_entry.details_known = 1;
                 memcpy(&table_entry.public_key, &dst_addr->public_key, sizeof(dst_addr->public_key));
                 break;
         }

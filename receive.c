@@ -10,9 +10,11 @@
 #include "constants.h"
 
 #include "net/mac/frame802154.h"
+#include "net/packetbuf.h"
 
 #include <assert.h>
 #include <string.h>
+#include <net/linkaddr.h>
 
 //outputs crypto margin, and pointers to the key agreement header and payload data
 //also detects basic protocol failures
@@ -521,35 +523,35 @@ void SN_Receive(SN_Receive_callback_t* callback) {
     receive_callback = callback;
 }
 
-void SN_Receive_data_packet(packet_t* packet) {
+void SN_Receive_data_packet() {
     int ret;
-    SN_Altstream_t altstream;
-    SN_Endpoint_t src_addr = {.altstream = &altstream};
+    static packet_t packet;
+    static SN_Altstream_t altstream;
+    static SN_Endpoint_t src_addr = {.altstream = &altstream};
     SN_Message_t message;
     network_header_t* network_header;
     static SN_Table_entry_t table_entry;
 
     SN_InfoPrintf("enter\n");
 
-    if(packet == NULL) {
-        SN_ErrPrintf("called with null packet, aborting...\n");
-        return;
-    }
+    memset(&packet, 0, sizeof(packet));
+    packet.data = packetbuf_dataptr();
+    packet.length = (uint8_t)packetbuf_datalen();
 
     SN_InfoPrintf("detecting packet layout...\n");
-    ret = packet_detect_layout(packet);
+    ret = packet_detect_layout(&packet);
     if(ret != SN_OK) {
         SN_ErrPrintf("invalid packet received (packet_detect_layout returned %d)\n", -ret);
         return;
     }
 
-    network_header = PACKET_ENTRY(*packet, network_header);
+    network_header = PACKET_ENTRY(packet, network_header);
     assert(network_header != NULL);
 
     SN_DebugPrintf("network layer says packet is to 0x%04x\n", network_header->dst_addr);
     SN_DebugPrintf("network layer says packet is from 0x%04x\n", network_header->src_addr);
 
-    if(network_header->src_addr == FRAME802154_INVALIDADDR || network_header->dst_addr == FRAME802154_INVALIDADDR) {
+    if(network_header->dst_addr == FRAME802154_INVALIDADDR) {
         SN_ErrPrintf("invalid addressing information: 0x%04x -> 0x%04x. dropping\n", network_header->src_addr, network_header->dst_addr);
         return;
     }
@@ -580,32 +582,63 @@ void SN_Receive_data_packet(packet_t* packet) {
         }
     }
 
-    SN_InfoPrintf("setting source address to 0x%04x\n", network_header->src_addr);
-    src_addr.type          = SN_ENDPOINT_SHORT_ADDRESS;
-    src_addr.short_address = network_header->src_addr;
+    if(network_header->src_addr == FRAME802154_INVALIDADDR) {
+        switch(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE)) {
+            case 8:
+                src_addr.type = SN_ENDPOINT_LONG_ADDRESS;
+                memcpy(src_addr.long_address, packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8, 8);
+                break;
+
+            case 2:
+                src_addr.type = SN_ENDPOINT_SHORT_ADDRESS;
+                src_addr.short_address = packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16;
+                break;
+
+            default:
+                SN_ErrPrintf("packet has weird address size; dropping\n");
+                return;
+        }
+    } else {
+        SN_InfoPrintf("setting source address to 0x%04x\n", network_header->src_addr);
+        src_addr.type = SN_ENDPOINT_SHORT_ADDRESS;
+        src_addr.short_address = network_header->src_addr;
+    }
 
     SN_InfoPrintf("consulting neighbor table...\n");
 
-    if(packet->layout.present.alt_stream_header) {
-        altstream.stream_idx_length = PACKET_ENTRY(*packet, alt_stream_header)->length;
-        altstream.stream_idx = PACKET_ENTRY(*packet, alt_stream_header)->stream_idx;
+    if(packet.layout.present.alt_stream_header) {
+        altstream.stream_idx_length = PACKET_ENTRY(packet, alt_stream_header)->length;
+        altstream.stream_idx = PACKET_ENTRY(packet, alt_stream_header)->stream_idx;
     }
 
     ret = SN_Table_lookup(&src_addr, &table_entry);
-    if(ret != SN_OK) { //node isn't in node table, so insert it
+    if (ret != SN_OK) {
+        memset(&table_entry, 0, sizeof(table_entry));
+        table_entry.short_address = FRAME802154_INVALIDADDR;
+
         SN_InfoPrintf("node isn't in neighbor table, inserting...\n");
+
+        switch (src_addr.type) {
+            case SN_ENDPOINT_SHORT_ADDRESS:
+                table_entry.short_address = src_addr.short_address;
+                break;
+
+            case SN_ENDPOINT_LONG_ADDRESS:
+                memcpy(table_entry.long_address, src_addr.long_address, 8);
+                break;
+        }
         ret = SN_Table_insert(&table_entry);
-        if(ret != SN_OK && ret != -SN_ERR_UNEXPECTED) {
-            SN_ErrPrintf("cannot allocate entry in node table (error %d), aborting.\n", -ret);
+        if (ret != SN_OK) {
+            SN_ErrPrintf("cannot allocate entry in node table, aborting.\n");
             return;
         }
     }
 
     //extract data
-    SN_InfoPrintf("packet contains payload of length %d\n", packet->layout.payload_length);
+    SN_InfoPrintf("packet contains payload of length %d\n", packet.layout.payload_length);
 
     SN_InfoPrintf("doing packet security checks...\n");
-    ret = packet_security_checks(packet, &table_entry);
+    ret = packet_security_checks(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in packet security checks. aborting\n", -ret);
         //certain security check failures could come from a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
@@ -614,7 +647,7 @@ void SN_Receive_data_packet(packet_t* packet) {
             SN_Retransmission_retry(0);
 
             //special case: if the security check failure is because this is a finalise, and we've already received one, it's probably an acknowledgement drop. send acknowledgements
-            if(packet->layout.present.key_confirmation_header && !packet->layout.present.association_header) {
+            if(packet.layout.present.key_confirmation_header && !packet.layout.present.association_header) {
                 SN_WarnPrintf("possible dropped acknowledgement; triggering acknowledgement transmission\n");
                 if(table_entry.short_address != FRAME802154_INVALIDADDR) {
                     SN_Send_acknowledgements(&src_addr);
@@ -625,27 +658,27 @@ void SN_Receive_data_packet(packet_t* packet) {
     }
 
     SN_InfoPrintf("doing public-key operations...\n");
-    ret = packet_public_key_operations(packet, &table_entry);
+    ret = packet_public_key_operations(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in public-key operations. aborting\n", -ret);
         return;
     }
 
-    if(packet->layout.present.encryption_header) {
+    if(packet.layout.present.encryption_header) {
         bool pure_ack = 0;
         SN_InfoPrintf("doing decryption and integrity checking...\n");
 
-        if(!packet->layout.present.key_confirmation_header && packet->layout.present.encrypted_ack_header && !packet->layout.present.payload_data) {
+        if(!packet.layout.present.key_confirmation_header && packet.layout.present.encrypted_ack_header && !packet.layout.present.payload_data) {
             //this is a pure-acknowledgement packet; don't change the counter
             pure_ack = 1;
         }
 
         if(pure_ack) {
-            ret = packet_decrypt_verify(packet, &table_entry.remote_key_agreement_key,
+            ret = packet_decrypt_verify(&packet, &table_entry.remote_key_agreement_key,
                                         &table_entry.link_key,
-                                        PACKET_ENTRY(*packet, encrypted_ack_header)->counter, 1);
+                                        PACKET_ENTRY(packet, encrypted_ack_header)->counter, 1);
         } else {
-            ret = packet_decrypt_verify(packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
+            ret = packet_decrypt_verify(&packet, &table_entry.remote_key_agreement_key, &table_entry.link_key,
                                         table_entry.packet_rx_counter++, 0);
         }
         if(ret != SN_OK) {
@@ -664,7 +697,7 @@ void SN_Receive_data_packet(packet_t* packet) {
     }
 
     SN_InfoPrintf("processing packet headers...\n");
-    ret = packet_process_headers(packet, &table_entry);
+    ret = packet_process_headers(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d processing packet headers. aborting\n", -ret);
         return;
@@ -672,11 +705,11 @@ void SN_Receive_data_packet(packet_t* packet) {
 
     table_entry.unavailable = 0;
 
-    SN_InfoPrintf("processing packet->..\n");
-    if(packet->layout.present.association_header &&
+    SN_InfoPrintf("processing packet...\n");
+    if(packet.layout.present.association_header &&
        //we have an association header, and...
-       !(PACKET_ENTRY(*packet, association_header)->dissociate &&
-         (PACKET_ENTRY(*packet, association_header)->child)
+       !(PACKET_ENTRY(packet, association_header)->dissociate &&
+         (PACKET_ENTRY(packet, association_header)->child)
        )
         //...it's not a rights revocation
         ) {
@@ -684,17 +717,17 @@ void SN_Receive_data_packet(packet_t* packet) {
         SN_InfoPrintf("received association/dissociation request; synthesising appropriate message...\n");
 
         //fill in the association message contents
-        message.type = PACKET_ENTRY(*packet, association_header)->dissociate ? SN_Dissociation_request : SN_Association_request;
-    } else if(packet->layout.payload_length != 0) {
-        uint8_t* payload_data = PACKET_ENTRY(*packet, payload_data);
+        message.type = PACKET_ENTRY(packet, association_header)->dissociate ? SN_Dissociation_request : SN_Association_request;
+    } else if(packet.layout.payload_length != 0) {
+        uint8_t* payload_data = PACKET_ENTRY(packet, payload_data);
         assert(payload_data != NULL);
 
-        if(packet->layout.present.evidence_header && PACKET_ENTRY(*packet, evidence_header)->certificate) {
+        if(packet.layout.present.evidence_header && PACKET_ENTRY(packet, evidence_header)->certificate) {
             SN_Certificate_t* evidence;
 
             //evidence packet
-            if(packet->layout.payload_length != sizeof(SN_Certificate_t)) {
-                SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %zu)\n", packet->layout.payload_length, sizeof(SN_Certificate_t));
+            if(packet.layout.payload_length != sizeof(SN_Certificate_t)) {
+                SN_ErrPrintf("received evidence packet with payload of invalid length %d (should be %zu)\n", packet.layout.payload_length, sizeof(SN_Certificate_t));
                 return;
             }
 
@@ -709,18 +742,18 @@ void SN_Receive_data_packet(packet_t* packet) {
             message.type                               = SN_Explicit_Evidence_message;
             message.explicit_evidence_message.evidence = evidence;
         } else {
-            if(packet->layout.present.evidence_header) {
+            if(packet.layout.present.evidence_header) {
                 SN_WarnPrintf("don't yet know how to handle implicit evidence packets");
                 //TODO: implicit evidence packets
             }
 
             //data packet
-            if(!packet->layout.present.encryption_header) {
-                //stapled plain data on unencrypted packet-> warn and ignore
-                SN_WarnPrintf("received plain data in unencrypted packet-> ignoring.\n");
+            if(!packet.layout.present.encryption_header) {
+                //stapled plain data on unencrypted packet. warn and ignore
+                SN_WarnPrintf("received plain data in unencrypted packet. ignoring.\n");
             } else {
                 message.type                        = SN_Data_message;
-                message.data_message.payload_length = packet->layout.payload_length;
+                message.data_message.payload_length = packet.layout.payload_length;
                 message.data_message.payload        = payload_data;
             }
         }

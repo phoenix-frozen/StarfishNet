@@ -38,8 +38,6 @@ static void init() {
 }
 
 static void input() {
-    static packet_t packet;
-
     SN_InfoPrintf("enter\n");
 
     //print some debugging information
@@ -83,9 +81,7 @@ static void input() {
                     break;
                 }
             }
-            packet.length = (uint8_t)packetbuf_datalen(); //cast is safe because datalen <= 128
-            packet.data = packetbuf_dataptr();
-            SN_Receive_data_packet(&packet);
+            SN_Receive_data_packet();
             break;
 
         case FRAME802154_CMDFRAME:
