@@ -2,7 +2,6 @@
 /* Modified by: Justin King-Lacroix <justin.king-lacroix@cs.ox.ac.uk> (modifications for 8051-based systems, which have a tiny stack) */
 
 #include "uECC.h"
-#include "sha1.h"
 
 #include <string.h>
 #include <malloc.h>
@@ -320,7 +319,6 @@ typedef int cmpresult_t;
 
 #define uECC_WORDS ((wordcount_t)uECC_CONCAT(uECC_WORDS_, uECC_CURVE))
 #define uECC_N_WORDS ((wordcount_t)uECC_CONCAT(uECC_N_WORDS_, uECC_CURVE))
-#define uECC_N_BYTES ((wordcount_t)(uECC_N_WORDS * sizeof(uECC_word_t)))
 
 typedef struct EccPoint {
     uECC_word_t x[uECC_WORDS];
@@ -2220,7 +2218,7 @@ static void vli_modMult_n(uECC_word_t *result, const uECC_word_t *left, const uE
 }
 #endif /* (uECC_CURVE != uECC_secp160r1) */
 
-static inline int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
+uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
                             const uint8_t message_hash[uECC_BYTES],
                             uECC_word_t k[uECC_N_WORDS],
                             uint8_t signature[uECC_BYTES*2]) {
@@ -2292,120 +2290,6 @@ static inline int uECC_sign_with_k(const uint8_t private_key[uECC_BYTES],
     FREE(tmp);
     FREE(s);
     FREE(p);
-    return ret;
-}
-
-static sha1_context_t ctx;
-static uint8_t pad[SHA1_BLOCKSIZE];
-static uint8_t K[SHA1_HASHSIZE];
-static uint8_t V[SHA1_HASHSIZE + 1];
-
-/* Compute an HMAC using K as a key (as in RFC 6979). Note that K is always
-   the same size as the hash result size. */
-static void HMAC_starts() {
-    unsigned i;
-    for (i = 0; i < SHA1_HASHSIZE; ++i)
-        pad[i] = K[i] ^ (uECC_word_t)0x36;
-    for (; i < SHA1_BLOCKSIZE; ++i)
-        pad[i] = 0x36;
-
-    sha1_starts(&ctx);
-    sha1_update(&ctx, pad, SHA1_BLOCKSIZE);
-}
-
-#define HMAC_update(message, message_size) sha1_update(&ctx, message, message_size)
-
-static void HMAC_finish(uint8_t *result) {
-    unsigned i;
-    for (i = 0; i < SHA1_HASHSIZE; ++i)
-        pad[i] = K[i] ^ (uECC_word_t)0x5c;
-    for (; i < SHA1_BLOCKSIZE; ++i)
-        pad[i] = 0x5c;
-
-    sha1_finish(&ctx, result);
-
-    sha1_starts(&ctx);
-    sha1_update(&ctx, pad, SHA1_BLOCKSIZE);
-    sha1_update(&ctx, result, SHA1_HASHSIZE);
-    sha1_finish(&ctx, result);
-}
-
-/* V = HMAC_K(V) */
-static void update_V() {
-    HMAC_starts();
-    HMAC_update(V, SHA1_HASHSIZE);
-    HMAC_finish(V);
-}
-
-/* Deterministic signing, similar to RFC 6979. Differences are:
-    * We just use (truncated) H(m) directly rather than bits2octets(H(m))
-      (it is not reduced modulo curve_n).
-    * We generate a value for k (aka T) directly rather than converting endianness.
-
-   Layout of hash_context->tmp: <K> | <V> | (1 byte overlapped 0x00 or 0x01) / <HMAC pad> */
-uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
-                  const uint8_t message_hash[uECC_BYTES],
-                  uint8_t signature[uECC_BYTES * 2]) {
-    static uECC_word_t* T;
-    uECC_word_t tries;
-    int ret = 0;
-
-    memset(K, 0, SHA1_HASHSIZE);
-    memset(V, 1, SHA1_HASHSIZE);
-    V[SHA1_HASHSIZE] = 0;
-
-    // K = HMAC_K(V || 0x00 || int2octets(x) || h(m))
-    HMAC_starts();
-    HMAC_update(V, SHA1_HASHSIZE + 1);
-    HMAC_update(private_key, uECC_BYTES);
-    HMAC_update(message_hash, uECC_BYTES);
-    HMAC_finish(K);
-
-    update_V();
-
-    // K = HMAC_K(V || 0x01 || int2octets(x) || h(m))
-    HMAC_starts();
-    V[SHA1_HASHSIZE] = 0x01;
-    HMAC_update(V, SHA1_HASHSIZE + 1);
-    HMAC_update(private_key, uECC_BYTES);
-    HMAC_update(message_hash, uECC_BYTES);
-    HMAC_finish(K);
-
-    update_V();
-
-    ALLOCATE_ARRAY(T, uECC_N_BYTES);
-
-    for (tries = 0; tries < MAX_TRIES; ++tries) {
-        uint8_t T_bytes = 0;
-        while (T_bytes <= uECC_N_BYTES - SHA1_HASHSIZE) {
-            update_V();
-            memcpy(((uint8_t *)T) + T_bytes, V, SHA1_HASHSIZE);
-            T_bytes += SHA1_HASHSIZE;
-        }
-        if(uECC_N_BYTES - T_bytes > 0) {
-            update_V();
-            memcpy(((uint8_t *)T) + T_bytes, V, uECC_N_BYTES - T_bytes);
-        }
-    #if (uECC_CURVE == uECC_secp160r1)
-        T[uECC_WORDS] &= 0x01;
-    #endif
-
-        if (uECC_sign_with_k(private_key, message_hash, T, signature)) {
-            ret = 1;
-            break;
-        }
-
-        // K = HMAC_K(V || 0x00)
-        HMAC_starts();
-        V[SHA1_HASHSIZE] = 0;
-        HMAC_update(V, SHA1_HASHSIZE + 1);
-        HMAC_finish(K);
-
-        update_V();
-    }
-
-    FREE(T);
-
     return ret;
 }
 

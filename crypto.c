@@ -7,7 +7,6 @@
 #include "lib/random.h"
 #include "lib/aes-128.h"
 #include "lib/ccm-star.h"
-#include "contiki.h"
 
 #if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"
@@ -82,6 +81,7 @@ int8_t SN_Crypto_sign( //sign data into sigbuf
     SN_Signature_t *signature
 ) {
     static SN_Hash_t hashbuf;
+    static uint8_t k[uECC_BYTES + uECC_FUDGE_FACTOR];
 
     SN_InfoPrintf("enter\n");
 
@@ -92,14 +92,17 @@ int8_t SN_Crypto_sign( //sign data into sigbuf
     //hash data
     SN_Crypto_hash(data, data_len, &hashbuf);
 
-    //generate signature
-    //XXX: this works because the hash and keys are the same length
-    //XXX: reusing data_len to avoid allocating another stack member
-    data_len = uECC_sign(private_key->data, hashbuf.data, signature->data);
-    if(data_len == 0) {
-        SN_ErrPrintf("error generating digital signature\n");
-        return -SN_ERR_SIGNATURE;
-    }
+    do {
+        //generate k
+        generate_random_number(k, uECC_BYTES + uECC_FUDGE_FACTOR);
+#if (uECC_CURVE == uECC_secp160r1)
+        k[uECC_BYTES] &= 0x01;
+#endif
+
+        //generate signature
+        //XXX: this works because the hash and keys are the same length
+        SN_InfoPrintf("attempting signature...\n");
+    } while (uECC_sign(private_key->data, hashbuf.data, k, signature->data) != 1);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;

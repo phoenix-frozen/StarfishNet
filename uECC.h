@@ -58,7 +58,14 @@ faster by about 8% but increases the code size. */
 #define uECC_size_4 32 /* secp256k1 */
 #define uECC_size_5 28 /* secp224r1 */
 
+#define uECC_FUDGE_FACTOR_1 1 /* secp160r1 */
+#define uECC_FUDGE_FACTOR_2 0 /* secp192r1 */
+#define uECC_FUDGE_FACTOR_3 0 /* secp256r1 */
+#define uECC_FUDGE_FACTOR_4 0 /* secp256k1 */
+#define uECC_FUDGE_FACTOR_5 0 /* secp224r1 */
+
 #define uECC_BYTES uECC_CONCAT(uECC_size_, uECC_CURVE)
+#define uECC_FUDGE_FACTOR uECC_CONCAT(uECC_FUDGE_FACTOR_, uECC_CURVE)
 
 #ifdef __cplusplus
 extern "C"
@@ -109,11 +116,12 @@ Outputs:
 
 Returns 1 if the signature generated successfully, 0 if an error occurred.
 
-EDIT: this generates a deterministic signature using a SHA1 hash
+EDIT: this takes a K in, in order to eliminate the RNG and HMAC code
 */
 uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
                   const uint8_t message_hash[uECC_BYTES],
-                  uint8_t signature[uECC_BYTES * 2]);
+                  uint8_t k[uECC_BYTES + uECC_FUDGE_FACTOR],
+                  uint8_t signature[uECC_BYTES*2]);
 
 /* uECC_verify() function.
 Verify an ECDSA signature.
