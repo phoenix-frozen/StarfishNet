@@ -39,7 +39,7 @@ typedef struct beacon_payload {
 
 static beacon_payload_t self_beacon_payload;
 
-void SN_Beacon_update(void) {
+void SN_Beacon_update() {
     uint16_t leaf_capacity;
     uint16_t router_capacity;
 
@@ -146,7 +146,7 @@ static void beacon_request_tx() {
     NETSTACK_LLSEC.send(NULL, NULL);
 }
 
-static void end_discovery(void) {
+static void end_discovery() {
     NETSTACK_RADIO.set_value(RADIO_PARAM_RX_MODE, RADIO_RX_MODE_ADDRESS_FILTER);
     discovery_configuration.channel_mask = 0;
     discovery_configuration.timeout = 0;
@@ -266,7 +266,7 @@ int SN_Discover(SN_Discovery_callback_t* callback, uint32_t channel_mask, clock_
 
 /* trigger a neighbor discovery on our network
  */
-int SN_Discover_neighbors(void) {
+int8_t SN_Discover_neighbors() {
     SN_InfoPrintf("enter\n");
 
     if(discovery_configuration.channel_mask != 0) {
@@ -279,7 +279,7 @@ int SN_Discover_neighbors(void) {
     return SN_OK;
 }
 
-void SN_Beacon_input(void) {
+void SN_Beacon_input() {
     static SN_Network_descriptor_t ndesc;
     static SN_Hash_t protohash;
     beacon_payload_t* beacon_payload;
@@ -347,7 +347,7 @@ void SN_Beacon_input(void) {
     SN_InfoPrintf("exit\n");
 }
 
-void SN_Beacon_TX(void) {
+void SN_Beacon_TX() {
     linkaddr_t src_address;
     uint8_t* packetbuf_ptr;
 

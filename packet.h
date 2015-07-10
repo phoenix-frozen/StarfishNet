@@ -179,20 +179,7 @@ typedef struct packet {
  *  "request", if this is an outgoing packet
  *  "indication", if this is an incoming packet
  */
-#define PACKET_ENTRY(packet, entry, req_type) ((entry##_t*)((packet).layout.present.entry ? (packet).data + (packet).layout.entry : NULL))
-#define PACKET_SIZE(packet, req_type) ((packet).length)
-
-/* transmit side */
-int packet_encrypt_authenticate(packet_t* packet, const SN_Public_key_t* key_agreement_key, const SN_AES_key_t* link_key, uint32_t encryption_counter, bool pure_ack);
-int packet_generate_headers(packet_t* packet, SN_Table_entry_t* table_entry, const SN_Message_t* message);
-int packet_generate_payload(packet_t* packet, const SN_Message_t* message);
-
-/* receive side */
-int packet_detect_layout(packet_t* packet);
-int packet_security_checks(packet_t* packet, SN_Table_entry_t* table_entry);
-int packet_public_key_operations(packet_t* packet, SN_Table_entry_t* table_entry);
-int packet_process_headers(packet_t* packet, SN_Table_entry_t* table_entry);
-int packet_decrypt_verify(packet_t* packet, const SN_Public_key_t* key_agreement_key, const SN_AES_key_t* link_key, uint32_t encryption_counter, bool pure_ack);
-
+#define PACKET_ENTRY(packet, entry) ((entry##_t*)((packet).layout.present.entry ? (packet).data + (packet).layout.entry : NULL))
+#define PACKET_SIZE(packet) ((packet).length)
 
 #endif /* __SN_PACKET_H__ */

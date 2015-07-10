@@ -1,5 +1,6 @@
 #include "crypto.h"
 #include "status.h"
+#undef SN_DEBUG
 #include "logging.h"
 #include "sha1.h"
 #include "uECC.h"
@@ -7,6 +8,7 @@
 #include "lib/random.h"
 #include "lib/aes-128.h"
 #include "lib/ccm-star.h"
+#include "contiki.h"
 
 #if SN_PK_key_size != uECC_BYTES
 #error "uECC and StarfishNet disagree on ECC key size!"
@@ -46,7 +48,7 @@ static int generate_random_number(uint8_t *dest, unsigned size) {
     return 1;
 }
 
-int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
+int8_t SN_Crypto_generate_keypair(SN_Keypair_t *keypair) {
     SN_InfoPrintf("enter\n");
 
     if(keypair == NULL) {
@@ -70,11 +72,11 @@ int SN_Crypto_generate_keypair(SN_Keypair_t* keypair) {
 }
 
 
-int SN_Crypto_sign ( //sign data into sigbuf
-    const SN_Private_key_t* private_key,
-    const uint8_t*          data,
-    size_t            data_len,
-    SN_Signature_t*   signature
+int8_t SN_Crypto_sign( //sign data into sigbuf
+    const SN_Private_key_t *private_key,
+    const uint8_t *data,
+    uint8_t data_len,
+    SN_Signature_t *signature
 ) {
     static SN_Hash_t hashbuf;
 
@@ -84,7 +86,6 @@ int SN_Crypto_sign ( //sign data into sigbuf
         SN_ErrPrintf("private_key, data, and signature must all be non-NULL\n");
         return -SN_ERR_NULL;
     }
-
     //hash data
     SN_Crypto_hash(data, data_len, &hashbuf);
 
@@ -101,11 +102,11 @@ int SN_Crypto_sign ( //sign data into sigbuf
     return SN_OK;
 }
 
-int SN_Crypto_verify ( //verify signature of data in sigbuf
-    const SN_Public_key_t*  public_key,
-    const uint8_t*          data,
-    size_t            data_len,
-    const SN_Signature_t*   signature
+int8_t SN_Crypto_verify( //verify signature of data in sigbuf
+    const SN_Public_key_t *public_key,
+    const uint8_t *data,
+    uint8_t data_len,
+    const SN_Signature_t *signature
 ) {
     static SN_Hash_t hashbuf;
     int ret;
@@ -136,12 +137,12 @@ int SN_Crypto_verify ( //verify signature of data in sigbuf
 }
 
 
-int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_secret
-    const SN_Public_key_t* identity_A,
-    const SN_Public_key_t* identity_B,
-    const SN_Public_key_t*  public_key,
-    const SN_Private_key_t* private_key,
-    SN_Kex_result_t*  shared_secret
+int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_secret
+    const SN_Public_key_t *identity_A,
+    const SN_Public_key_t *identity_B,
+    const SN_Public_key_t *public_key,
+    const SN_Private_key_t *private_key,
+    SN_Kex_result_t *shared_secret
 ) {
     static SN_Private_key_t raw_shared_secret; //use the private key type because that's the size of the ECDH result
     int ret;
@@ -183,7 +184,7 @@ int SN_Crypto_key_agreement ( //do an authenticated key agreement into shared_se
     return SN_OK;
 }
 
-void SN_Crypto_hash(const uint8_t* data, size_t data_len, SN_Hash_t* hash) {
+void SN_Crypto_hash(const uint8_t *data, uint8_t data_len, SN_Hash_t *hash) {
     SN_InfoPrintf("enter\n");
 
     sha1_starts(&temp.ctx);
@@ -193,16 +194,16 @@ void SN_Crypto_hash(const uint8_t* data, size_t data_len, SN_Hash_t* hash) {
     SN_InfoPrintf("exit\n");
 }
 
-int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
-    const SN_AES_key_t*    key,
-    const SN_Public_key_t* key_agreement_key,
-    uint32_t         counter,
-    const uint8_t*   ad,
-    size_t           ad_len,
-    uint8_t*         data,
-    size_t           data_len,
-    uint8_t*         tag,
-    bool             pure_ack
+int8_t SN_Crypto_encrypt( //AEAD-encrypt a data block. tag is 16 bytes
+    const SN_AES_key_t *key,
+    const SN_Public_key_t *key_agreement_key,
+    uint32_t counter,
+    const uint8_t *ad,
+    uint8_t ad_len,
+    uint8_t *data,
+    uint8_t data_len,
+    uint8_t *tag,
+    bool pure_ack
 ) {
     SN_Hash_t iv;
 
@@ -231,16 +232,16 @@ int SN_Crypto_encrypt ( //AEAD-encrypt a data block. tag is 16 bytes
     return SN_OK;
 }
 
-int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
-    const SN_AES_key_t*    key,
-    const SN_Public_key_t* key_agreement_key,
-    uint32_t         counter,
-    const uint8_t*   ad,
-    size_t           ad_len,
-    uint8_t*         data,
-    size_t           data_len,
-    const uint8_t*   tag,
-    bool             pure_ack
+int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is 16 bytes
+    const SN_AES_key_t *key,
+    const SN_Public_key_t *key_agreement_key,
+    uint32_t counter,
+    const uint8_t *ad,
+    uint8_t ad_len,
+    uint8_t *data,
+    uint8_t data_len,
+    const uint8_t *tag,
+    bool pure_ack
 ) {
     SN_Hash_t iv;
     uint8_t prototag[SN_Tag_size];
@@ -278,7 +279,7 @@ int SN_Crypto_decrypt ( //AEAD-decrypt a data block. tag is 16 bytes
 }
 
 
-int SN_Crypto_check_certificate(const SN_Certificate_t* certificate) {
+int8_t SN_Crypto_check_certificate(const SN_Certificate_t *certificate) {
     SN_InfoPrintf("enter\n");
 
     if(certificate == NULL) {

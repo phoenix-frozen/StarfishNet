@@ -6,10 +6,10 @@
 
 PROCESS_NAME(starfishnet_discovery_process);
 
-void SN_Beacon_input(void);
-void SN_Beacon_update(void);
-void SN_Beacon_TX(void);
+void SN_Beacon_input();
+void SN_Beacon_update();
+void SN_Beacon_TX();
 
-int SN_Discover_neighbors(void);
+int8_t SN_Discover_neighbors();
 
 #endif //STARFISHNET_DISCOVERY_H

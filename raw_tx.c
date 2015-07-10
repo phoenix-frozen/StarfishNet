@@ -8,7 +8,7 @@
 #include "net/packetbuf.h"
 #include "net/netstack.h"
 
-int SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
+int8_t SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
     linkaddr_t src_address, next_hop;
     int ret;
 

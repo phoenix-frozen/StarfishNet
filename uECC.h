@@ -74,7 +74,7 @@ Outputs:
 
 Returns 1 if the key pair was generated successfully, 0 if an error occurred.
 */
-int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uECC_BYTES]);
+uint8_t uECC_make_key(uint8_t public_key[uECC_BYTES * 2], const uint8_t private_key[uECC_BYTES]);
 
 /* uECC_shared_secret() function.
 Compute a shared secret given your secret key and someone else's public key.
@@ -90,9 +90,9 @@ Outputs:
 
 Returns 1 if the shared secret was generated successfully, 0 if an error occurred.
 */
-int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
-                       const uint8_t private_key[uECC_BYTES],
-                       uint8_t secret[uECC_BYTES]);
+uint8_t uECC_shared_secret(const uint8_t public_key[uECC_BYTES * 2],
+                           const uint8_t private_key[uECC_BYTES],
+                           uint8_t secret[uECC_BYTES]);
 
 /* uECC_sign() function.
 Generate an ECDSA signature for a given hash value.
@@ -111,9 +111,9 @@ Returns 1 if the signature generated successfully, 0 if an error occurred.
 
 EDIT: this generates a deterministic signature using a SHA1 hash
 */
-int uECC_sign(const uint8_t private_key[uECC_BYTES],
-              const uint8_t message_hash[uECC_BYTES],
-              uint8_t signature[uECC_BYTES*2]);
+uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
+                  const uint8_t message_hash[uECC_BYTES],
+                  uint8_t signature[uECC_BYTES * 2]);
 
 /* uECC_verify() function.
 Verify an ECDSA signature.
@@ -128,9 +128,9 @@ Inputs:
 
 Returns 1 if the signature is valid, 0 if it is invalid.
 */
-int uECC_verify(const uint8_t private_key[uECC_BYTES*2],
-                const uint8_t hash[uECC_BYTES],
-                const uint8_t signature[uECC_BYTES*2]);
+uint8_t uECC_verify(const uint8_t private_key[uECC_BYTES * 2],
+                    const uint8_t hash[uECC_BYTES],
+                    const uint8_t signature[uECC_BYTES * 2]);
 
 /* uECC_compress() function.
 Compress a public key.

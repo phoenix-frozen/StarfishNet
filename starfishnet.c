@@ -12,7 +12,7 @@
 
 #include <string.h>
 
-static void init(void) {
+static void init() {
     SN_InfoPrintf("enter\n");
     queuebuf_init();
     packetbuf_clear();
@@ -37,7 +37,7 @@ static void init(void) {
     SN_InfoPrintf("exit\n");
 }
 
-static void input(void) {
+static void input() {
     static packet_t packet;
 
     SN_InfoPrintf("enter\n");

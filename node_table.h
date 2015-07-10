@@ -58,11 +58,11 @@ typedef struct SN_Table_entry {
 //TODO: we can't put stuff in ROM, sadly. introduce another table, with dynamically allocated entries?
 
 //insert an entry into the table. entire data structure must be valid
-int SN_Table_insert(SN_Table_entry_t* entry);
+int8_t SN_Table_insert(SN_Table_entry_t *entry);
 //update an existing entry. entire data structure must be valid
-int SN_Table_update(SN_Table_entry_t* entry);
+int8_t SN_Table_update(SN_Table_entry_t *entry);
 //delete an entry. any one of: long address, short address, key, must be valid.
-int SN_Table_delete(SN_Table_entry_t* entry);
+int8_t SN_Table_delete(SN_Table_entry_t *entry);
 //delete all entries related to a session
 void SN_Table_clear();
 
@@ -71,7 +71,7 @@ void SN_Table_clear();
  * which will then be filled with information from the table.
  * entry->session and entry->stream_idx[_length] must be valid
  */
-int SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry);
+int8_t SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry);
 
 //indicate that no entries belonging to this session should be considered neighbors anymore
 void SN_Table_clear_all_neighbors();

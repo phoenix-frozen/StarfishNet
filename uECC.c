@@ -1774,7 +1774,7 @@ static void vli_bytesToNative(uint64_t *native, const uint8_t *bytes) {
 
 #endif /* uECC_WORD_SIZE */
 
-int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uECC_BYTES]) {
+uint8_t uECC_make_key(uint8_t public_key[uECC_BYTES * 2], const uint8_t private_key[uECC_BYTES]) {
     static uECC_word_t* private;
     static EccPoint* public;
 #if (uECC_CURVE != uECC_secp160r1)
@@ -1830,9 +1830,9 @@ int uECC_make_key(uint8_t public_key[uECC_BYTES*2], const uint8_t private_key[uE
     return ret;
 }
 
-int uECC_shared_secret(const uint8_t public_key[uECC_BYTES*2],
-                       const uint8_t private_key[uECC_BYTES],
-                       uint8_t secret[uECC_BYTES]) {
+uint8_t uECC_shared_secret(const uint8_t public_key[uECC_BYTES * 2],
+                           const uint8_t private_key[uECC_BYTES],
+                           uint8_t secret[uECC_BYTES]) {
     static EccPoint* public;
     static EccPoint* product;
     static uECC_word_t* private;
@@ -2343,9 +2343,9 @@ static void update_V() {
     * We generate a value for k (aka T) directly rather than converting endianness.
 
    Layout of hash_context->tmp: <K> | <V> | (1 byte overlapped 0x00 or 0x01) / <HMAC pad> */
-int uECC_sign(const uint8_t private_key[uECC_BYTES],
-                            const uint8_t message_hash[uECC_BYTES],
-                            uint8_t signature[uECC_BYTES*2]) {
+uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
+                  const uint8_t message_hash[uECC_BYTES],
+                  uint8_t signature[uECC_BYTES * 2]) {
     static uECC_word_t* T;
     uECC_word_t tries;
     int ret = 0;
@@ -2409,9 +2409,9 @@ int uECC_sign(const uint8_t private_key[uECC_BYTES],
     return ret;
 }
 
-int uECC_verify(const uint8_t public_key[uECC_BYTES*2],
-                const uint8_t hash[uECC_BYTES],
-                const uint8_t signature[uECC_BYTES*2]) {
+uint8_t uECC_verify(const uint8_t public_key[uECC_BYTES * 2],
+                    const uint8_t hash[uECC_BYTES],
+                    const uint8_t signature[uECC_BYTES * 2]) {
     static uECC_word_t* u1;
     static uECC_word_t* u2;
     static uECC_word_t* z;

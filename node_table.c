@@ -149,7 +149,7 @@ static int alloc_entry() {
 }
 
 //insert an entry into the table. entire data structure must be valid
-int SN_Table_insert(SN_Table_entry_t* entry) {
+int8_t SN_Table_insert(SN_Table_entry_t *entry) {
     int ret;
 
     if(entry == NULL) {
@@ -184,7 +184,7 @@ int SN_Table_insert(SN_Table_entry_t* entry) {
 }
 
 //update an existing entry. entire data structure must be valid
-int SN_Table_update(SN_Table_entry_t* entry) {
+int8_t SN_Table_update(SN_Table_entry_t *entry) {
     int ret;
 
     if(entry == NULL) {
@@ -210,7 +210,7 @@ int SN_Table_update(SN_Table_entry_t* entry) {
 
 //delete an entry. at least one of: long address, short address, public_key, must be valid.
 // note: you're responsible for any certificate storage you've assigned to this entry. look it up and delete it.
-int SN_Table_delete(SN_Table_entry_t* entry) {
+int8_t SN_Table_delete(SN_Table_entry_t *entry) {
     int ret;
 
     if(entry == NULL) {
@@ -230,7 +230,7 @@ int SN_Table_delete(SN_Table_entry_t* entry) {
     return SN_OK;
 }
 
-int SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
+int8_t SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
     int ret = -1;
 
     if (entry == NULL) {

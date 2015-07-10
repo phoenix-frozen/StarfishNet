@@ -5,7 +5,7 @@
 
 #include <assert.h>
 
-int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
+int8_t SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
     uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
     uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor);
     uint8_t  block_exponent       =            space_exponent - starfishnet_config.tree_branching_factor;
@@ -48,13 +48,13 @@ int SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
     return SN_OK;
 }
 
-int SN_Tree_free_address(uint16_t address) {
+int8_t SN_Tree_free_address(uint16_t address) {
     //not implemented yet
     (void)address; //shut up GCC
     return -SN_ERR_UNIMPLEMENTED;
 }
 
-int SN_Tree_determine_capacity(uint16_t* leaf, uint16_t* block) {
+int8_t SN_Tree_determine_capacity(uint16_t *leaf, uint16_t *block) {
     uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
     uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor);
     uint8_t  block_exponent       =            space_exponent - starfishnet_config.tree_branching_factor;
@@ -74,7 +74,7 @@ int SN_Tree_determine_capacity(uint16_t* leaf, uint16_t* block) {
 }
 
 
-int SN_Tree_init() {
+int8_t SN_Tree_init() {
     uint16_t total_blocks      = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
     int address_block_exponent = 16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor;
 
@@ -97,7 +97,7 @@ int SN_Tree_init() {
 }
 
 
-int SN_Tree_check_join(uint8_t tree_position, uint8_t tree_branching_factor) {
+int8_t SN_Tree_check_join(uint8_t tree_position, uint8_t tree_branching_factor) {
     int address_block_exponent = 16 - tree_position * tree_branching_factor;
 
     if(address_block_exponent < -tree_branching_factor) {
@@ -131,7 +131,7 @@ int SN_Tree_check_join(uint8_t tree_position, uint8_t tree_branching_factor) {
  *   (0 for the coordinator, >0 for everyone else.)
  */
 
-int SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
+int8_t SN_Tree_route(uint16_t src_addr, uint16_t dst_addr, uint16_t *next_hop) {
     uint8_t  space_exponent       = (uint8_t )(16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor);
     uint8_t  block_exponent       =            space_exponent - starfishnet_config.tree_branching_factor;
 

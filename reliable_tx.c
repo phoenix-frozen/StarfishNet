@@ -4,12 +4,10 @@
 #include "logging.h"
 #include "config.h"
 #include "util.h"
-#include "packet.h"
 
 #include "net/netstack.h"
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
-#include "net/linkaddr.h"
 
 #include <string.h>
 #include <assert.h>
@@ -126,7 +124,7 @@ static void retransmission_mac_callback(void *ptr, int status, int transmissions
     }
 }
 
-int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint32_t counter) {
+int8_t SN_Retransmission_send(SN_Table_entry_t *table_entry, packet_t *packet, uint32_t counter) {
     transmission_slot_t* slot_data;
     int ret;
 
@@ -140,12 +138,12 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
     }
 
     //1. If appropriate, allocate a slot and fill it.
-    if(PACKET_ENTRY(*packet, key_confirmation_header, request) == NULL && PACKET_ENTRY(*packet, encrypted_ack_header, request) != NULL && PACKET_ENTRY(*packet, payload_data, request) == NULL) {
+    if(!packet->layout.present.key_confirmation_header && packet->layout.present.encrypted_ack_header && !packet->layout.present.payload_data) {
         //this is a pure acknowledgement packet
         SN_InfoPrintf("just sent pure acknowledgement packet; not performing retransmissions\n");
         slot_data = NULL;
     } else
-    if(PACKET_ENTRY(*packet, encryption_header, request) == NULL && PACKET_ENTRY(*packet, association_header, request) == NULL) {
+    if(!packet->layout.present.encryption_header && !packet->layout.present.association_header) {
         //this is a signed non-association packet; probably optimistic certificate transport
         SN_InfoPrintf("just sent unencrypted non-association packet (probably optimistic certificate transport; not performing retransmissions\n");
         slot_data = NULL;
@@ -180,7 +178,7 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
 
     //2. Address calculations, finish filling in the packetbuf, and allocate the queuebuf
     ret = setup_packetbuf_for_transmission(table_entry);
-    packetbuf_set_datalen(PACKET_SIZE(*packet, indication));
+    packetbuf_set_datalen(PACKET_SIZE(*packet));
     if(ret < 0) {
         return ret;
     }
@@ -207,12 +205,11 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
  *  int                  slot_idx: the current slot's index
  * @param x A statement to execute on each slot.
  */
-#define FOR_EACH_ACTIVE_SLOT(x)\
-    /* for each transmission slot... */{int slot_idx;\
-    for(slot_idx = 0; slot_idx < SN_TRANSMISSION_SLOT_COUNT; slot_idx++) {\
-        transmission_slot_t* slot = &transmission_queue[slot_idx];\
+#define FOR_EACH_ACTIVE_SLOT(var, x)\
+    /* for each transmission slot... */{transmission_slot_t* var;\
+    for(var = transmission_queue; (var - transmission_queue) < SN_TRANSMISSION_SLOT_COUNT; var++) {\
         /* ... if the slot is allocated and valid ... */\
-        if(slot->allocated && slot->valid) {\
+        if(var->allocated && var->valid) {\
             /* ... do work x. */\
             x;\
         }\
@@ -224,7 +221,7 @@ int SN_Retransmission_send(SN_Table_entry_t* table_entry, packet_t* packet, uint
      ||\
      ((proto_address).type == SN_ENDPOINT_LONG_ADDRESS && memcmp((proto_address).long_address, (table_entry).long_address, 8) == 0))
 
-int SN_Retransmission_acknowledge_data(SN_Table_entry_t* table_entry, uint32_t counter) {
+int8_t SN_Retransmission_acknowledge_data(SN_Table_entry_t *table_entry, uint32_t counter) {
     int rv = -SN_ERR_UNKNOWN;
 
     SN_InfoPrintf("enter\n");
@@ -235,11 +232,11 @@ int SN_Retransmission_acknowledge_data(SN_Table_entry_t* table_entry, uint32_t c
     }
 
     //for each active slot...
-    FOR_EACH_ACTIVE_SLOT({
+    FOR_EACH_ACTIVE_SLOT(slot, {
         //... if it's in my session and its packet's destination is the one I'm talking about...
         if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
             //... and it's encrypted with the right counter...
-            if(PACKET_ENTRY(slot->packet, encryption_header, request) != NULL && slot->counter <= counter) {
+            if(slot->packet.layout.present.encryption_header && slot->counter <= counter) {
                 //... acknowledge it.
                 slot->allocated = 0;
                 queuebuf_free(slot->queuebuf);
@@ -253,7 +250,7 @@ int SN_Retransmission_acknowledge_data(SN_Table_entry_t* table_entry, uint32_t c
     return rv;
 }
 
-int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet_t* packet) {
+int8_t SN_Retransmission_acknowledge_implicit(SN_Table_entry_t *table_entry, packet_t *packet) {
     SN_InfoPrintf("enter\n");
 
     if(table_entry == NULL || packet == NULL) {
@@ -261,19 +258,18 @@ int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet
         return -SN_ERR_NULL;
     }
 
-    if(PACKET_ENTRY(*packet, key_confirmation_header, indication) != NULL) {
+    if(packet->layout.present.key_confirmation_header) {
         //this is either an association reply or an association finalise
 
-        if(PACKET_ENTRY(*packet, association_header, indication) != NULL) {
+        if(packet->layout.present.association_header) {
             //this is an association reply; it acknowledges an association_request
 
             //for each active slot...
-            FOR_EACH_ACTIVE_SLOT({
+            FOR_EACH_ACTIVE_SLOT(slot, {
                 //... if it's in my session and its packet's destination is the one I'm talking about...
                 if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
                     //... and it's an association request...
-                    if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
-                       PACKET_ENTRY(slot->packet, key_confirmation_header, request) == NULL) {
+                    if(slot->packet.layout.present.association_header && !slot->packet.layout.present.key_confirmation_header) {
 
                         //... acknowledge it.
                         slot->allocated = 0;
@@ -288,12 +284,11 @@ int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet
             //this is an association finalise; it acknowledges an association_reply
 
             //for each active slot...
-            FOR_EACH_ACTIVE_SLOT({
+            FOR_EACH_ACTIVE_SLOT(slot, {
                 //... if it's in my session and its packet's destination is the one I'm talking about...
                 if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
                     //... and it's an association reply...
-                    if(PACKET_ENTRY(slot->packet, association_header, request) != NULL &&
-                       PACKET_ENTRY(slot->packet, key_confirmation_header, request) != NULL) {
+                    if(slot->packet.layout.present.association_header && slot->packet.layout.present.key_confirmation_header) {
 
                         //... acknowledge it.
                         slot->allocated = 0;
@@ -311,13 +306,13 @@ int SN_Retransmission_acknowledge_implicit(SN_Table_entry_t* table_entry, packet
     return -SN_ERR_UNKNOWN;
 }
 
-void SN_Retransmission_retry(bool count_towards_disconnection) {
+void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
     static SN_Table_entry_t table_entry;
 
     SN_InfoPrintf("enter\n");
 
-    FOR_EACH_ACTIVE_SLOT({
-        SN_InfoPrintf("doing retransmission processing for slot %d\n", slot_idx);
+    FOR_EACH_ACTIVE_SLOT(slot, {
+        SN_InfoPrintf("doing retransmission processing for slot %d\n", (uint8_t)(slot - transmission_queue));
 
         //look up the destination's entry in the node table
         if(SN_Table_lookup(&slot->dst_address, &table_entry) != SN_OK) {
@@ -342,7 +337,7 @@ void SN_Retransmission_retry(bool count_towards_disconnection) {
         if(count_towards_disconnection) {
             slot->retries++;
             if(slot->retries >= starfishnet_config.tx_retry_limit) {
-                SN_ErrPrintf("slot %d has reached its retry limit\n", slot_idx);
+                SN_ErrPrintf("slot %d has reached its retry limit\n", (uint8_t)(slot - transmission_queue));
 
                 table_entry.unavailable = 1;
             }
@@ -352,16 +347,15 @@ void SN_Retransmission_retry(bool count_towards_disconnection) {
 
         SN_Table_update(&table_entry);
 
-        SN_InfoPrintf("retransmission processing for slot %d done\n", slot_idx);
+        SN_InfoPrintf("retransmission processing for slot %d done\n", (uint8_t)(slot - transmission_queue));
     });
 
     SN_InfoPrintf("exit\n");
 }
 
 void SN_Retransmission_clear() {
-    int i;
-    for(i = 0; i < SN_TRANSMISSION_SLOT_COUNT; i++) {
-        transmission_slot_t* slot = &transmission_queue[i];
+    transmission_slot_t* slot;
+    for(slot = transmission_queue; slot - transmission_queue < SN_TRANSMISSION_SLOT_COUNT; slot++) {
         if(slot->allocated) {
             queuebuf_free(slot->queuebuf);
             slot->allocated = 0;
