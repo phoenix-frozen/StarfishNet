@@ -1524,7 +1524,9 @@ static void EccPoint_mult(EccPoint *result, const EccPoint *point, const uECC_wo
     vli_clear(z);
     z[0] = 1;
 
+    apply_z(Rx[1], Ry[1], z);
     EccPoint_double_jacobian(Rx[1], Ry[1], z);
+    apply_z(Rx[0], Ry[0], z);
 
     for (i = numBits - (bitcount_t)2; i > 0; --i) {
         nb = BOOL_TO_BYTE(!vli_testBit(scalar, i));
