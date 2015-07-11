@@ -1,4 +1,5 @@
 /* Copyright 2014, Kenneth MacKay. Licensed under the BSD 2-clause license. */
+/* Modified by: Justin King-Lacroix <justin.king-lacroix@cs.ox.ac.uk> (modifications for 8051-based systems, which have a tiny stack) */
 
 #ifndef _MICRO_ECC_H_
 #define _MICRO_ECC_H_
