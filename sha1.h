@@ -14,6 +14,8 @@ typedef struct {
     uint8_t data[64]; //current block
     uint8_t datalen;  //number of bytes in block
 
+    uint8_t blocks; //number of blocks in message;
+
     uint32_t bitlen[2];
     uint32_t state[5];
     uint32_t k[4];
