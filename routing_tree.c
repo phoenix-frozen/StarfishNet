@@ -76,7 +76,7 @@ int8_t SN_Tree_determine_capacity(uint16_t *leaf, uint16_t *block) {
 
 int8_t SN_Tree_init() {
     uint16_t total_blocks      = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
-    int address_block_exponent = 16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor;
+    int8_t address_block_exponent = (int8_t)16 - starfishnet_config.tree_position * starfishnet_config.tree_branching_factor;
 
     if(address_block_exponent < -starfishnet_config.tree_branching_factor) {
         //we're trying to join a tree below the bottom. error
@@ -85,7 +85,7 @@ int8_t SN_Tree_init() {
         //we're at the bottom of the tree. no children
         starfishnet_config.enable_routing = 0;
         starfishnet_config.leaf_blocks = (uint16_t)(total_blocks - 1);
-    } else if(address_block_exponent < starfishnet_config.tree_branching_factor) {
+    } else if((uint8_t)address_block_exponent < starfishnet_config.tree_branching_factor) {
         //we're near the bottom of the tree. our children cannot route
         starfishnet_config.leaf_blocks = (uint16_t)(total_blocks - 1);
     }
