@@ -436,7 +436,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
     //key_confirmation_header
     if(packet->layout.present.key_confirmation_header) {
         SN_Hash_t hashbuf;
-        int challengenumber = !packet->layout.present.association_header ? 2 : 1;
+        int8_t challengenumber = !packet->layout.present.association_header ? 2 : 1;
 
         SN_InfoPrintf("processing key confirmation header...\n");
 
@@ -546,7 +546,7 @@ void SN_Receive_data_packet() {
     SN_DebugPrintf("network layer says packet is to 0x%04x\n", network_header->dst_addr);
     SN_DebugPrintf("network layer says packet is from 0x%04x\n", network_header->src_addr);
 
-    if(network_header->dst_addr == FRAME802154_INVALIDADDR) {
+    if(network_header->dst_addr == FRAME802154_INVALIDADDR && starfishnet_config.short_address != FRAME802154_INVALIDADDR) {
         SN_ErrPrintf("invalid addressing information: 0x%04x -> 0x%04x. dropping\n", network_header->src_addr, network_header->dst_addr);
         return;
     }
@@ -571,9 +571,6 @@ void SN_Receive_data_packet() {
                 SN_WarnPrintf("received packet to route when routing was turned off. dropping\n");
                 return;
             }
-        } else if(starfishnet_config.short_address == FRAME802154_INVALIDADDR &&
-                  network_header->src_addr == starfishnet_config.parent_address) {
-            //potential address assignment from our parent. process normally
         }
     }
 
@@ -582,11 +579,15 @@ void SN_Receive_data_packet() {
             case 8:
                 src_addr.type = SN_ENDPOINT_LONG_ADDRESS;
                 memcpy(src_addr.long_address, packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8, 8);
+                SN_InfoPrintf("setting source address to 0x%08x%08x\n",
+                    *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8,
+                    *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8) + 1));
                 break;
 
             case 2:
                 src_addr.type = SN_ENDPOINT_SHORT_ADDRESS;
                 src_addr.short_address = packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16;
+                SN_InfoPrintf("setting source address to 0x%04x\n", src_addr.short_address);
                 break;
 
             default:

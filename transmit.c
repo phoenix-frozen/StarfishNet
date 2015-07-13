@@ -413,25 +413,26 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
     SN_InfoPrintf("consulting neighbor table...\n");
     ret = SN_Table_lookup(dst_addr, &table_entry);
     if (ret != SN_OK || table_entry.state < SN_Send_finalise) { //node isn't in node table, abort
-        SN_ErrPrintf("no relationship with remote node. aborting\n");
+        SN_ErrPrintf("no relationship with remote node\n");
         return -SN_ERR_SECURITY;
     }
 
+    SN_InfoPrintf("sending to 0x%04x (state %d)\n", table_entry.short_address, table_entry.state);
+
     if (table_entry.unavailable) {
-        SN_ErrPrintf("contact with remote node has been lost. aborting\n");
+        SN_ErrPrintf("contact with remote node has been lost\n");
         return -SN_ERR_DISCONNECTED;
     }
 
     if (table_entry.short_address == FRAME802154_INVALIDADDR) {
-        SN_ErrPrintf("remote node doesn't have a short address. aborting\n");
+        SN_ErrPrintf("remote node doesn't have a short address\n");
         return -SN_ERR_DISCONNECTED;
     }
 
-    SN_InfoPrintf("generating packet headers...\n");
     generate_network_header(&packet, &table_entry, NULL);
     ret = generate_subheaders(&packet, &table_entry, NULL);
     if (ret != SN_OK) {
-        SN_ErrPrintf("header generation failed with %d\n", -ret);
+        SN_ErrPrintf("header generation error: %d\n", -ret);
         return ret;
     }
 
@@ -439,8 +440,6 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
         SN_WarnPrintf("acknowledgements aren't required\n");
         return -SN_ERR_UNEXPECTED;
     }
-
-    SN_InfoPrintf("beginning packet crypto...\n");
 
     assert(packet.layout.present.encryption_header);
     assert(!packet.layout.present.signature_header);
@@ -457,17 +456,16 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
                             PACKET_ENTRY(packet, encryption_header)->tag, 1);
 
     if (ret != SN_OK) {
-        SN_ErrPrintf("packet crypto failed with %d\n", -ret);
+        SN_ErrPrintf("crypto error: %d\n", -ret);
         return ret;
     }
 
-    SN_InfoPrintf("beginning packet transmission...\n");
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_DATAFRAME);
     packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.pan_id);
     packetbuf_set_datalen(PACKET_SIZE(packet));
     ret = SN_Forward_Packetbuf(starfishnet_config.short_address, table_entry.short_address);
     if (ret != SN_OK) {
-        SN_ErrPrintf("transmission failed with %d\n", -ret);
+        SN_ErrPrintf("transmission error: %d\n", -ret);
         return ret;
     }
 
@@ -496,32 +494,29 @@ int8_t SN_Send(const SN_Endpoint_t *dst_addr, const SN_Message_t *message) {
     SN_InfoPrintf("consulting neighbor table...\n");
     ret = SN_Table_lookup(dst_addr, &table_entry);
     if (ret != SN_OK || table_entry.state < SN_Send_finalise) { //node isn't in node table, abort
-        SN_ErrPrintf("no relationship with remote node. aborting\n");
+        SN_ErrPrintf("no relationship with remote node\n");
         return -SN_ERR_SECURITY;
     }
 
+    SN_InfoPrintf("sending to 0x%04x (state %d)\n", table_entry.short_address, table_entry.state);
+
     if (table_entry.unavailable) {
-        SN_ErrPrintf("contact with remote node has been lost. aborting\n");
+        SN_ErrPrintf("contact with remote node has been lost\n");
         return -SN_ERR_DISCONNECTED;
     }
 
-    SN_InfoPrintf("generating packet headers...\n");
     generate_network_header(&packet, &table_entry, message);
     ret = generate_subheaders(&packet, &table_entry, message);
     if (ret != SN_OK) {
-        SN_ErrPrintf("header generation failed with %d\n", -ret);
+        SN_ErrPrintf("header generation error: %d\n", -ret);
         return ret;
     }
 
-    SN_InfoPrintf("generating payload...\n");
     ret = packet_generate_payload(&packet, message);
     if (!(ret == SN_OK || ret == -SN_ERR_NULL || ret == -SN_ERR_INVALID)) {
-        SN_ErrPrintf("payload generation failed with %d\n", -ret);
+        SN_ErrPrintf("payload generation error: %d\n", -ret);
         return ret;
     }
-    SN_InfoPrintf("packet data generation complete\n");
-
-    SN_InfoPrintf("beginning packet crypto...\n");
 
     assert(packet.layout.present.encryption_header);
     assert(!packet.layout.present.signature_header);
@@ -533,14 +528,13 @@ int8_t SN_Send(const SN_Endpoint_t *dst_addr, const SN_Message_t *message) {
                             (packet.layout.encryption_header + (uint8_t) sizeof(encryption_header_t)),
                             PACKET_ENTRY(packet, encryption_header)->tag, 0);
     if (ret != SN_OK) {
-        SN_ErrPrintf("packet crypto failed with %d\n", -ret);
+        SN_ErrPrintf("crypto error: %d\n", -ret);
         return ret;
     }
 
-    SN_InfoPrintf("beginning packet transmission...\n");
     ret = SN_Retransmission_send(&packet, &table_entry);
     if (ret != SN_OK) {
-        SN_ErrPrintf("transmission failed with %d\n", -ret);
+        SN_ErrPrintf("transmission error: %d\n", -ret);
         return ret;
     }
 
@@ -576,25 +570,43 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
 
         switch (dst_addr->type) {
             case SN_ENDPOINT_SHORT_ADDRESS:
+                if(dst_addr->short_address == FRAME802154_INVALIDADDR) {
+                    SN_ErrPrintf("attempting to transmit to invalid%s\n", "short address");
+                    return -SN_ERR_INVALID;
+                }
                 table_entry.short_address = dst_addr->short_address;
                 break;
 
             case SN_ENDPOINT_LONG_ADDRESS:
+                if(!memcmp(dst_addr->long_address, null_address, 8)) {
+                    SN_ErrPrintf("attempting to transmit to invalid%s\n", "long address");
+                    return -SN_ERR_INVALID;
+                }
                 table_entry.long_address = malloc(8);
                 memcpy(table_entry.long_address, dst_addr->long_address, 8);
                 break;
 
             case SN_ENDPOINT_PUBLIC_KEY:
+                if(!memcmp(&dst_addr->public_key, &null_key, sizeof(null_key))) {
+                    SN_ErrPrintf("attempting to transmit to invalid%s\n", "key");
+                    return -SN_ERR_INVALID;
+                }
                 table_entry.details_known = 1;
                 memcpy(&table_entry.public_key, &dst_addr->public_key, sizeof(dst_addr->public_key));
                 break;
+
+            default:
+                SN_ErrPrintf("invalid address type: %d\n", dst_addr->type);
+                return -SN_ERR_INVALID;
         }
         ret = SN_Table_insert(&table_entry);
         if (ret != SN_OK) {
-            SN_ErrPrintf("cannot allocate entry in node table, aborting.\n");
+            SN_ErrPrintf("node table is full\n");
             return -SN_ERR_RESOURCES;
         }
     }
+
+    SN_InfoPrintf("sending to 0x%04x (state %d)\n", table_entry.short_address, table_entry.state);
 
     //check the association state, and do appropriate crypto work
     if (table_entry.state == SN_Unassociated || table_entry.state == SN_Associate_received) {
@@ -603,16 +615,16 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
         //generate ephemeral keypair
         ret = SN_Crypto_generate_keypair(&table_entry.local_key_agreement_keypair);
         if (ret != SN_OK) {
-            SN_ErrPrintf("error during key generation, aborting send\n");
+            SN_ErrPrintf("key generation error: %d\n", -ret);
             return -SN_ERR_KEYGEN;
         }
     } else {
-        SN_ErrPrintf("can only associate in SN_Unassociated or SN_Association_received. we are in %d\n", table_entry.state);
+        SN_ErrPrintf("can't associate in state %d\n", table_entry.state);
         return -SN_ERR_UNEXPECTED;
     }
 
     if (table_entry.state == SN_Associate_received) {
-        SN_InfoPrintf("received association request, finishing ECDH\n");
+        SN_InfoPrintf("doing ECDH\n");
 
         //do ECDH math
         ret = SN_Crypto_key_agreement(
@@ -623,25 +635,22 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
             &table_entry.link_key
         );
         if (ret != SN_OK) {
-            SN_ErrPrintf("error during key agreement, aborting send\n");
-            return -SN_ERR_KEYGEN;
+            SN_ErrPrintf("ECDH error: %d\n", -ret);
+            return ret;
         }
         table_entry.packet_rx_counter = table_entry.packet_tx_counter = 0;
 
     }
 
-    //advance state
-    table_entry.state++;
-
-    SN_InfoPrintf("generating packet headers...\n");
     generate_network_header(&packet, &table_entry, &associate_message);
     ret = generate_subheaders(&packet, &table_entry, &associate_message);
     if (ret != SN_OK) {
-        SN_ErrPrintf("header generation failed with %d\n", -ret);
+        SN_ErrPrintf("header generation error: %d\n", -ret);
         return ret;
     }
 
-    SN_InfoPrintf("beginning packet crypto...\n");
+    //advance state
+    table_entry.state++;
 
     assert(packet.layout.present.signature_header);
     assert(!packet.layout.present.encryption_header);
@@ -653,14 +662,13 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
         &PACKET_ENTRY(packet, signature_header)->signature);
 
     if (ret != SN_OK) {
-        SN_ErrPrintf("packet crypto failed with %d\n", -ret);
+        SN_ErrPrintf("crypto error: %d\n", -ret);
         return ret;
     }
 
-    SN_InfoPrintf("beginning packet transmission...\n");
     ret = SN_Retransmission_send(&packet, &table_entry);
     if (ret != SN_OK) {
-        SN_ErrPrintf("transmission failed with %d\n", -ret);
+        SN_ErrPrintf("transmission error: %d\n", -ret);
         return ret;
     }
 
