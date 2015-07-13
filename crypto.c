@@ -34,7 +34,7 @@ static union {
     sha1_context_t ctx;
 } temp;
 
-static int generate_random_number(uint8_t *dest, unsigned size) {
+static int8_t generate_random_number(uint8_t *dest, unsigned size) {
     uint16_t rand;
 
     for(; size > 1; size -= 2, dest += 2) {
@@ -115,7 +115,7 @@ int8_t SN_Crypto_verify( //verify signature of data in sigbuf
     const SN_Signature_t *signature
 ) {
     static SN_Hash_t hashbuf;
-    int ret;
+    int8_t ret;
 
     SN_InfoPrintf("enter\n");
 
@@ -150,7 +150,7 @@ int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_
     const SN_Private_key_t *private_key,
     SN_Kex_result_t *shared_secret
 ) {
-    int ret;
+    int8_t ret;
 
     SN_InfoPrintf("enter\n");
 
@@ -252,7 +252,7 @@ int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is 16 bytes
 ) {
     SN_Hash_t iv;
     uint8_t prototag[SN_Tag_size];
-    int ret;
+    int8_t ret;
 
     SN_InfoPrintf("enter\n");
 
