@@ -11,15 +11,15 @@
 #define SN_TABLE_SIZE 8
 #endif //SN_TABLE_SIZE
 
-#define BIT(x) (1UL << (x))
+#define BIT(x) (((uint32_t)1) << (x))
 
 typedef uint32_t table_bitmap_t;
 
 static SN_Table_entry_t table[SN_TABLE_SIZE];
 static table_bitmap_t entry_bitmap = 0;
 
-static int lookup_by_long_address(const uint8_t* address, uint8_t stream_idx_len, uint8_t* stream_idx) {
-    table_bitmap_t i;
+static int8_t lookup_by_long_address(const uint8_t* address, uint8_t stream_idx_len, uint8_t* stream_idx) {
+    int8_t i;
 
     if(address == NULL) {
         return -1;
@@ -27,7 +27,7 @@ static int lookup_by_long_address(const uint8_t* address, uint8_t stream_idx_len
 
     for(i = 0; i < SN_TABLE_SIZE; i++)
         if((entry_bitmap & BIT(i)) && table[i].long_address != NULL &&
-           !memcmp(address, &table[i].long_address, 8) &&
+           !memcmp(address, table[i].long_address, 8) &&
            table[i].altstream.stream_idx_length == stream_idx_len &&
             (stream_idx_len > 0 ? !memcmp(table[i].altstream.stream_idx, stream_idx, stream_idx_len) : 1)) {
             return i;
@@ -36,8 +36,8 @@ static int lookup_by_long_address(const uint8_t* address, uint8_t stream_idx_len
     return -1;
 }
 
-static int lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, uint8_t* stream_idx) {
-    table_bitmap_t i;
+static int8_t lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, uint8_t* stream_idx) {
+    int8_t i;
 
     if(address == FRAME802154_INVALIDADDR) {
         return -1;
@@ -54,8 +54,8 @@ static int lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, uin
     return -1;
 }
 
-static int lookup_by_public_key(const SN_Public_key_t* public_key) {
-    table_bitmap_t i;
+static int8_t lookup_by_public_key(const SN_Public_key_t* public_key) {
+    int8_t i;
 
     if(public_key == NULL) {
         return -1;
@@ -75,8 +75,8 @@ static int lookup_by_public_key(const SN_Public_key_t* public_key) {
     return -1;
 }
 
-static int lookup_by_public_key_and_stream(const SN_Public_key_t* public_key, uint8_t stream_idx_len, uint8_t* stream_idx) {
-    table_bitmap_t i;
+static int8_t lookup_by_public_key_and_stream(const SN_Public_key_t* public_key, uint8_t stream_idx_len, uint8_t* stream_idx) {
+    int8_t i;
 
     if(public_key == NULL) {
         return -1;
@@ -98,8 +98,8 @@ static int lookup_by_public_key_and_stream(const SN_Public_key_t* public_key, ui
     return -1;
 }
 
-static int find_entry(SN_Table_entry_t* entry) {
-    int ret;
+static int8_t find_entry(SN_Table_entry_t* entry) {
+    int8_t ret;
 
     if(entry == NULL) {
         return -1;
@@ -128,8 +128,8 @@ static int find_entry(SN_Table_entry_t* entry) {
     return -1;
 }
 
-static int alloc_entry() {
-    table_bitmap_t i;
+static int8_t alloc_entry() {
+    int8_t i;
 
     for(i = 0; i < SN_TABLE_SIZE; i++) {
         if(!(entry_bitmap & BIT(i))) {
@@ -150,7 +150,7 @@ static int alloc_entry() {
 
 //insert an entry into the table. entire data structure must be valid
 int8_t SN_Table_insert(SN_Table_entry_t *entry) {
-    int ret;
+    int8_t ret;
 
     if(entry == NULL) {
         return -SN_ERR_NULL;
@@ -177,15 +177,21 @@ int8_t SN_Table_insert(SN_Table_entry_t *entry) {
         return -SN_ERR_RESOURCES;
     }
 
-    //fill new entry with data, and mark in this sessions 'in-use' word
-    memcpy(&(table[ret]), entry, sizeof(*entry));
+    //fill new entry with data
+    memcpy(table + ret, entry, sizeof(SN_Table_entry_t));
+
+    if(table[ret].long_address != NULL) {
+        SN_InfoPrintf("allocated entry with long address 0x%08"PRIx32"%08"PRIx32"\n",
+                      *(uint32_t*)table[ret].long_address,
+                      *(((uint32_t*)table[ret].long_address) + 1));
+    }
 
     return SN_OK;
 }
 
 //update an existing entry. entire data structure must be valid
 int8_t SN_Table_update(SN_Table_entry_t *entry) {
-    int ret;
+    int8_t ret;
 
     if(entry == NULL) {
         return -SN_ERR_NULL;
@@ -203,15 +209,14 @@ int8_t SN_Table_update(SN_Table_entry_t *entry) {
      * There are no consistency checks here because the
      * expected usage pattern is insert(); lookup(); update();
      */
-    memcpy(&(table[ret]), entry, sizeof(*entry));
-
+    memcpy(table + ret, entry, sizeof(*entry));
     return SN_OK;
 }
 
 //delete an entry. at least one of: long address, short address, public_key, must be valid.
 // note: you're responsible for any certificate storage you've assigned to this entry. look it up and delete it.
 int8_t SN_Table_delete(SN_Table_entry_t *entry) {
-    int ret;
+    int8_t ret;
 
     if(entry == NULL) {
         return -SN_ERR_NULL;
@@ -231,7 +236,7 @@ int8_t SN_Table_delete(SN_Table_entry_t *entry) {
 }
 
 int8_t SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
-    int ret = -1;
+    int8_t ret = -1;
 
     if (entry == NULL) {
         return -SN_ERR_NULL;
