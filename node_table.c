@@ -180,12 +180,6 @@ int8_t SN_Table_insert(SN_Table_entry_t *entry) {
     //fill new entry with data
     memcpy(table + ret, entry, sizeof(SN_Table_entry_t));
 
-    if(table[ret].long_address != NULL) {
-        SN_InfoPrintf("allocated entry with long address 0x%08"PRIx32"%08"PRIx32"\n",
-                      *(uint32_t*)table[ret].long_address,
-                      *(((uint32_t*)table[ret].long_address) + 1));
-    }
-
     return SN_OK;
 }
 

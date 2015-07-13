@@ -68,9 +68,12 @@ static int8_t add_parent_to_node_table() {
     int8_t ret;
     SN_Table_entry_t* parent_table_entry = malloc(sizeof(SN_Table_entry_t));
 
+    SN_InfoPrintf("adding parent (0x%04x) to node table\n", starfishnet_config.parent_address);
+
     if(parent_table_entry == NULL) {
         SN_InfoPrintf("failed to add parent to node table due to lack of memory\n");
-        return -SN_ERR_RESOURCES;
+        ret = -SN_ERR_RESOURCES;
+        goto exit;
     }
     memset(parent_table_entry, 0, sizeof(*parent_table_entry));
     parent_table_entry->short_address = starfishnet_config.parent_address;
@@ -86,14 +89,15 @@ static int8_t add_parent_to_node_table() {
 
     parent_table_entry->neighbor = 1;
 
-    SN_InfoPrintf("adding parent to node table...\n");
+    SN_InfoPrintf("performing table insertion\n");
     SN_Table_update(parent_table_entry);
     ret = SN_Table_insert(parent_table_entry);
-    if(-ret == SN_ERR_RESOURCES) {
+    if(ret == -SN_ERR_UNEXPECTED) {
         //it's ok if the entry already exists
         ret = SN_OK;
     }
 
+    exit:
     free(parent_table_entry);
     return ret;
 }
@@ -165,13 +169,13 @@ int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing) {
     //start security association with our parent (implicitly requesting an address)
     parent_address = malloc(sizeof(SN_Endpoint_t));
     if (parent_address == NULL) {
-        SN_InfoPrintf("failed to send association message due to lack of memory\n");
+        SN_InfoPrintf("cannot send association message due to lack of memory\n");
         return -SN_ERR_RESOURCES;
     }
     memset(parent_address, 0, sizeof(*parent_address));
     parent_address->type = SN_ENDPOINT_SHORT_ADDRESS;
     parent_address->short_address = starfishnet_config.parent_address;
-    SN_InfoPrintf("sending association message...\n");
+    SN_InfoPrintf("sending associate request to 0x%04x\n", parent_address->short_address);
     ret = SN_Associate(parent_address);
     free(parent_address);
 
