@@ -259,7 +259,7 @@ static int8_t packet_security_checks(packet_t* packet, SN_Table_entry_t* table_e
     return SN_OK;
 }
 
-static int8_t packet_public_key_operations(packet_t* packet, SN_Table_entry_t* table_entry) {
+static int8_t packet_signature_check(packet_t *packet, SN_Table_entry_t *table_entry) {
     SN_Public_key_t* remote_public_key = NULL;
     int8_t ret;
 
@@ -304,30 +304,6 @@ static int8_t packet_public_key_operations(packet_t* packet, SN_Table_entry_t* t
         /* if the packet isn't signed, it's encrypted, which means integrity-checking
          * during decrypt_and_verify will catch any problems
          */
-    }
-
-    //if this is an associate_reply, finish the key agreement, so we can use the link key in decrypt_and_verify
-    if(packet->layout.present.association_header &&
-       !PACKET_ENTRY(*packet, association_header)->dissociate &&
-       packet->layout.present.key_confirmation_header) {
-
-        //associate_reply
-        assert(table_entry->state == SN_Awaiting_reply);
-        assert(packet->layout.present.key_agreement_header);
-
-        //finish the key agreement
-        ret = SN_Crypto_key_agreement(
-            &starfishnet_config.device_root_key.public_key,
-            &table_entry->public_key,
-            &PACKET_ENTRY(*packet, key_agreement_header)->key_agreement_key,
-            &table_entry->local_key_agreement_keypair.private_key,
-            &table_entry->link_key
-        );
-        if(ret != SN_OK) {
-            SN_ErrPrintf("key agreement failed with %d.\n", -ret);
-            return ret;
-        }
-        table_entry->packet_rx_counter = table_entry->packet_tx_counter = 0;
     }
 
     return SN_OK;
@@ -376,8 +352,8 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
 
         SN_InfoPrintf("processing association header...\n");
 
-        //relationship state is checked in packet_public_key_operations
-        //signature is checked in packet_public_key_operations
+        //relationship state is checked in packet_signature_check
+        //signature is checked in packet_signature_check
         if(!association_header->dissociate) {
             //association processing
             assert(packet->layout.present.key_agreement_header);
@@ -397,7 +373,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
             } else {
                 //associate_reply
                 assert(table_entry->state == SN_Awaiting_reply);
-                //key agreement processing in packet_public_key_operations
+                //key agreement processing in packet_signature_check
 
                 //parent/child handling
                 if(association_header->child) {
@@ -436,7 +412,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
     //key_confirmation_header
     if(packet->layout.present.key_confirmation_header) {
         SN_Hash_t hashbuf;
-        int8_t challengenumber = !packet->layout.present.association_header ? 2 : 1;
+        int8_t challengenumber = !packet->layout.present.association_header ? (int8_t)2 : (int8_t)1;
 
         SN_InfoPrintf("processing key confirmation header...\n");
 
@@ -660,10 +636,34 @@ void SN_Receive_data_packet() {
     }
 
     SN_InfoPrintf("doing public-key operations...\n");
-    ret = packet_public_key_operations(&packet, &table_entry);
+    ret = packet_signature_check(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in public-key operations. aborting\n", -ret);
         return;
+    }
+
+    //if this is an associate_reply, finish the key agreement, so we can use the link key in decrypt_and_verify
+    if(packet.layout.present.association_header &&
+       !PACKET_ENTRY(packet, association_header)->dissociate &&
+       packet.layout.present.key_confirmation_header) {
+
+        //associate_reply
+        assert(table_entry.state == SN_Awaiting_reply);
+        assert(packet.layout.present.key_agreement_header);
+
+        //finish the key agreement
+        ret = SN_Crypto_key_agreement(
+            &starfishnet_config.device_root_key.public_key,
+            &table_entry.public_key,
+            &PACKET_ENTRY(packet, key_agreement_header)->key_agreement_key,
+            &table_entry.local_key_agreement_keypair.private_key,
+            &table_entry.link_key
+        );
+        if(ret != SN_OK) {
+            SN_ErrPrintf("key agreement failed with %d.\n", -ret);
+            return;
+        }
+        table_entry.packet_rx_counter = table_entry.packet_tx_counter = 0;
     }
 
     if(packet.layout.present.encryption_header) {

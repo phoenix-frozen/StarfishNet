@@ -172,6 +172,8 @@ int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_
         return -SN_ERR_KEYGEN;
     }
 
+    SN_InfoPrintf("ECDH complete\n");
+
     //hash resultant secret together with identities of parties involved
     sha1_starts(&temp.ctx);
     sha1_update(&temp.ctx, shared_secret->raw.data, sizeof(shared_secret->raw.data));
