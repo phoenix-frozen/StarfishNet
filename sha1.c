@@ -60,7 +60,7 @@ static void sha1_transform(sha1_context_t *ctx)
         LEFT_RIGHT_SHUFFLE(a, b, c, d, e, t, m[i], ctx->k[2] + ((b & c) ^ (b & d) ^ (c & d)));
     }
     for ( ; i < 80; ++i) {
-        LEFT_RIGHT_SHUFFLE(a, b, c, d, e, t, m[i], ctx->k[2] + (b ^ c ^ d));
+        LEFT_RIGHT_SHUFFLE(a, b, c, d, e, t, m[i], ctx->k[3] + (b ^ c ^ d));
     }
 
     ctx->state[0] += a;
