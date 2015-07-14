@@ -90,6 +90,8 @@ typedef struct SN_Endpoint {
 } SN_Endpoint_t;
 
 #define SN_COORDINATOR_ADDRESS 0x0000
+#define SHORT_ADDRESS(addr_byte_array) (uint16_t)(addr_byte_array)[1] | ((uint16_t)(addr_byte_array)[0] << 8)
+#define STORE_SHORT_ADDRESS(addr_byte_array, short_address) do { addr_byte_array[1] = short_address & 0xFF; addr_byte_array[0] = (short_address >> 8) & 0xFF; } while(0)
 
 typedef struct SN_Network_config {
     //routing tree configuration

@@ -2,13 +2,12 @@
 #include "config.h"
 #include "crypto.h"
 #include "logging.h"
-#include "packet.h"
 #include "receive.h"
 #include "discovery.h"
+#include "reliable_tx.h"
 
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
-#include "net/netstack.h"
 
 #include <string.h>
 
@@ -17,6 +16,7 @@ static void init() {
     queuebuf_init();
     packetbuf_clear();
     process_start(&starfishnet_discovery_process, NULL);
+    process_start(&starfishnet_retransmission_process, NULL);
 
     //populate configuration structure
     //designed so that we can store a root key in future...
@@ -47,7 +47,7 @@ static void input() {
                       *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8,
                       *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8) + 1));
     } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {
-        SN_DebugPrintf("received frame to 0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16);
+        SN_DebugPrintf("received frame to 0x%04x\n", SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8));
     } else {
         SN_DebugPrintf("received with blank destination address\n");
     }
@@ -57,7 +57,7 @@ static void input() {
                        *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8,
                        *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8) + 1));
     } else if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) == 2) {
-        SN_DebugPrintf("received frame from 0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
+        SN_DebugPrintf("received frame from 0x%04x\n", SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
     } else {
         SN_DebugPrintf("received with blank source address\n");
     }
@@ -70,13 +70,11 @@ static void input() {
 
         case FRAME802154_DATAFRAME:
             if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 8) {
-                const linkaddr_t* dst_addr = packetbuf_addr(PACKETBUF_ADDR_RECEIVER);
-
-                if(memcmp(dst_addr->u8, linkaddr_node_addr.u8, 8) != 0) {
+                if(memcmp(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8, linkaddr_node_addr.u8, 8) != 0) {
                     break;
                 }
             } else if(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE) == 2) {
-                const uint16_t dst_addr = packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u16;
+                const uint16_t dst_addr = SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8);
                 if(dst_addr != starfishnet_config.short_address && dst_addr != FRAME802154_BROADCASTADDR) {
                     break;
                 }

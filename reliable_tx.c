@@ -4,11 +4,13 @@
 #include "logging.h"
 #include "config.h"
 #include "util.h"
+#include "packet.h"
 
 #include "net/netstack.h"
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
-#include "packet.h"
+#include "net/linkaddr.h"
+#include "sys/etimer.h"
 
 #include <string.h>
 #include <assert.h>
@@ -33,15 +35,15 @@ typedef struct transmission_slot {
     struct queuebuf* queuebuf;
 
     uint8_t retries;
-    int transmit_status;
+    int8_t  transmit_status;
 } transmission_slot_t;
 
 static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
 
-int allocate_slot() {
-    static int next_free_slot = 0;
-    int i;
-    int slot = -1;
+int8_t allocate_slot() {
+    static int8_t next_free_slot = 0;
+    int8_t i;
+    int8_t slot = -1;
 
     for(i = 0; i < SN_TRANSMISSION_SLOT_COUNT && slot < 0; i++) {
         if(next_free_slot >= SN_TRANSMISSION_SLOT_COUNT) {
@@ -62,7 +64,7 @@ int allocate_slot() {
 
 static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     linkaddr_t dst_addr;
-    linkaddr_t src_address;
+    linkaddr_t src_addr;
 
     if(table_entry == NULL) {
         return -SN_ERR_NULL;
@@ -72,12 +74,12 @@ static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     if(starfishnet_config.short_address != FRAME802154_INVALIDADDR) {;
         SN_InfoPrintf("sending from our short address, 0x%04x\n", starfishnet_config.short_address);
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
-        src_address.u16 = starfishnet_config.short_address;
+        STORE_SHORT_ADDRESS(src_addr.u8, starfishnet_config.short_address);
     } else {
         //XXX: this is the most disgusting way to print a MAC address ever invented by man
         SN_InfoPrintf("sending from our long address, 0x%08"PRIx32"%08"PRIx32"\n", *(uint32_t*)linkaddr_node_addr.u8, *(((uint32_t*)linkaddr_node_addr.u8) + 1));
         packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 8);
-        memcpy(src_address.u8, linkaddr_node_addr.u8, 8);
+        memcpy(src_addr.u8, linkaddr_node_addr.u8, 8);
     }
 
     //perform routing calculations to determine destination address
@@ -88,10 +90,12 @@ static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
         !(table_entry->state < SN_Associated && table_entry->child) //not an associate_reply with an address
         ) {
         //normal circumstances
-        int ret = SN_Tree_route(starfishnet_config.short_address, table_entry->short_address, &dst_addr.u16);
+        uint16_t dst_addr_short;
+        int8_t ret = SN_Tree_route(starfishnet_config.short_address, table_entry->short_address, &dst_addr_short);
         if(ret < 0) {
             return ret;
         }
+        STORE_SHORT_ADDRESS(dst_addr.u8, dst_addr_short);
         packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
     } else if(table_entry->child || table_entry->short_address == FRAME802154_INVALIDADDR) {
         //it's to a long address, so no routing to do. just send direct
@@ -104,10 +108,10 @@ static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     } else {
         //it's to a short address, but we can't route. just send direct
         packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
-        dst_addr.u16 = table_entry->short_address;
+        STORE_SHORT_ADDRESS(dst_addr.u8, table_entry->short_address);
     }
 
-    packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
+    packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_addr);
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &dst_addr);
 
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_DATAFRAME);
@@ -145,7 +149,7 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
         SN_InfoPrintf("just sent unencrypted non-association packet (probably optimistic certificate transport; not performing retransmissions\n");
         slot_data = NULL;
     } else {
-        int slot;
+        int8_t slot;
         //allocate and fill a slot
         SN_InfoPrintf("normal packet. allocating a transmission slot\n");
         slot = allocate_slot();
@@ -202,7 +206,7 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
 
 /* convenience macro to iterate over allocated, valid, non-routing slots. provides:
  *  transmission_slot_t* slot    : a pointer to the current slot
- *  int                  slot_idx: the current slot's index
+ *  int8_t               slot_idx: the current slot's index
  * @param x A statement to execute on each slot.
  */
 #define FOR_EACH_ACTIVE_SLOT(var, x)\
@@ -222,7 +226,7 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
      ((proto_address).type == SN_ENDPOINT_LONG_ADDRESS && memcmp((proto_address).long_address, (table_entry).long_address, 8) == 0))
 
 int8_t SN_Retransmission_acknowledge_data(SN_Table_entry_t *table_entry, uint32_t counter) {
-    int rv = -SN_ERR_UNKNOWN;
+    int8_t rv = -SN_ERR_UNKNOWN;
 
     SN_InfoPrintf("enter\n");
 
@@ -362,3 +366,27 @@ void SN_Retransmission_clear() {
         }
     }
 }
+
+PROCESS(starfishnet_retransmission_process, "StarfishNet retransmission process");
+PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
+{
+    static struct etimer timer = {
+        .p = &starfishnet_retransmission_process,
+        .next = NULL,
+    };
+
+    PROCESS_BEGIN();
+
+    (void)data; //shut up GCC
+
+    while(1) {
+        etimer_set(&timer, starfishnet_config.tx_retry_timeout / 1000 * CLOCK_CONF_SECOND );
+
+        PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
+
+        SN_Retransmission_retry(1);
+    }
+
+    PROCESS_END();
+}
+

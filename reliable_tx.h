@@ -4,6 +4,8 @@
 #include "node_table.h"
 #include "packet.h"
 
+#include "sys/process.h"
+
 #include <stdbool.h>
 
 /* Engage the transmission subsystem on a packet.
@@ -32,5 +34,7 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection);
 
 //inform the retransmission subsystem that a session is being cleared
 void SN_Retransmission_clear();
+
+PROCESS_NAME(starfishnet_retransmission_process);
 
 #endif /*  __SN_DELAYED_TX_H__ */

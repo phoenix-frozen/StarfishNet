@@ -331,8 +331,10 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
     if(network_header->src_addr != FRAME802154_INVALIDADDR) {
         //if the remote node has a short address, we can erase its MAC address from memory
         SN_InfoPrintf("short address is known; erasing long address\n");
-        free(table_entry->long_address);
-        table_entry->long_address = NULL;
+        if(table_entry->long_address != NULL) {
+            free(table_entry->long_address);
+            table_entry->long_address = NULL;
+        }
     }
 
 
@@ -393,7 +395,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
 
                     //set our short address to the one we were just given
                     SN_InfoPrintf("setting our short address to 0x%04x...\n", network_header->dst_addr);
-                    if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, starfishnet_config.short_address) != RADIO_RESULT_OK) {
+                    if(NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, network_header->dst_addr) != RADIO_RESULT_OK) {
                         SN_ErrPrintf("couldn't set the radio's short address...\n");
                         return -SN_ERR_RADIO;
                     }
@@ -411,26 +413,26 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
 
     //key_confirmation_header
     if(packet->layout.present.key_confirmation_header) {
-        SN_Hash_t hashbuf;
-        int8_t challengenumber = !packet->layout.present.association_header ? (int8_t)2 : (int8_t)1;
+        static SN_Hash_t hashbuf;
+        bool challenge1 = packet->layout.present.association_header ? true : false;
 
         SN_InfoPrintf("processing key confirmation header...\n");
 
         //associate_reply
-        assert(table_entry->state == SN_Awaiting_reply);
+        assert(table_entry->state == SN_Awaiting_reply || table_entry->state == SN_Awaiting_finalise);
 
         //do the challenge1 check (double-hash)
         SN_Crypto_hash(table_entry->link_key.key.data, sizeof(table_entry->link_key.key.data), &hashbuf);
-        if(challengenumber == 2) {
+        if(challenge1) {
             SN_Crypto_hash(hashbuf.data, SN_Hash_size, &hashbuf);
         }
         if(memcmp(hashbuf.data, PACKET_ENTRY(*packet, key_confirmation_header)->challenge.data, sizeof(hashbuf.data)) != 0) {
-            SN_ErrPrintf("key confirmation (challenge%d) failed.\n", challengenumber);
+            SN_ErrPrintf("key confirmation (challenge%d) failed.\n", challenge1 ? 1 : 2);
             return -SN_ERR_KEYGEN;
         }
 
         //advance the relationship's state
-        table_entry->state = challengenumber == 2 ? SN_Associated : SN_Send_finalise;
+        table_entry->state = (table_entry->state == SN_Awaiting_reply) ? SN_Send_finalise : SN_Associated;
 
         SN_Retransmission_acknowledge_implicit(packet, table_entry);
     }
@@ -550,6 +552,37 @@ void SN_Receive_data_packet() {
         }
     }
 
+    switch(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE)) {
+        case 8:
+            SN_InfoPrintf("link-layer source address is 0x%08x%08x\n",
+                          *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8,
+                          *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8) + 1));
+            break;
+
+        case 2:
+            SN_InfoPrintf("link-layer source address is 0x%04x\n", SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
+            break;
+
+        default:
+            SN_ErrPrintf("link-layer source address is weird size\n");
+            return;
+    }
+    switch(packetbuf_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE)) {
+        case 8:
+            SN_InfoPrintf("link-layer destination address is 0x%08x%08x\n",
+                          *(uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8,
+                          *(((uint32_t*)packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8) + 1));
+            break;
+
+        case 2:
+            SN_InfoPrintf("link-layer destination address is 0x%04x\n", SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_RECEIVER)->u8));
+            break;
+
+        default:
+            SN_ErrPrintf("link-layer destination address is weird size\n");
+            return;
+    }
+
     if(network_header->src_addr == FRAME802154_INVALIDADDR) {
         switch(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE)) {
             case 8:
@@ -562,7 +595,7 @@ void SN_Receive_data_packet() {
 
             case 2:
                 src_addr.type = SN_ENDPOINT_SHORT_ADDRESS;
-                src_addr.short_address = packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16;
+                src_addr.short_address = SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8);
                 SN_InfoPrintf("setting source address to 0x%04x\n", src_addr.short_address);
                 break;
 
@@ -611,6 +644,8 @@ void SN_Receive_data_packet() {
             return;
         }
     }
+
+    SN_InfoPrintf("state is %d\n", table_entry.state);
 
     //extract data
     SN_InfoPrintf("packet contains payload of length %d\n", packet.layout.payload_length);

@@ -74,7 +74,7 @@ int8_t SN_Crypto_generate_keypair(SN_Keypair_t *keypair) {
 }
 
 
-int8_t SN_Crypto_sign( //sign data into sigbuf
+int8_t SN_Crypto_sign(
     const SN_Private_key_t *private_key,
     const uint8_t *data,
     uint8_t data_len,
@@ -85,8 +85,8 @@ int8_t SN_Crypto_sign( //sign data into sigbuf
 
     SN_InfoPrintf("enter\n");
 
-    if(private_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
-        SN_ErrPrintf("private_key, data, and signature must all be non-NULL\n");
+    if(private_key == NULL || data == NULL || data_len == 0 || signature == NULL) {
+        SN_ErrPrintf("key, data, and signature must all be valid\n");
         return -SN_ERR_NULL;
     }
     //hash data
@@ -100,7 +100,6 @@ int8_t SN_Crypto_sign( //sign data into sigbuf
 #endif
 
         //generate signature
-        //XXX: this works because the hash and keys are the same length
         SN_InfoPrintf("attempting signature...\n");
     } while (uECC_sign(private_key->data, hashbuf.data, k, signature->data) != 1);
 
@@ -108,7 +107,7 @@ int8_t SN_Crypto_sign( //sign data into sigbuf
     return SN_OK;
 }
 
-int8_t SN_Crypto_verify( //verify signature of data in sigbuf
+int8_t SN_Crypto_verify(
     const SN_Public_key_t *public_key,
     const uint8_t *data,
     uint8_t data_len,
@@ -119,8 +118,8 @@ int8_t SN_Crypto_verify( //verify signature of data in sigbuf
 
     SN_InfoPrintf("enter\n");
 
-    if(public_key == NULL || (data == NULL && data_len > 0) || signature == NULL) {
-        SN_ErrPrintf("public_key, data, and signature must all be non-NULL\n");
+    if(public_key == NULL || data == NULL || data_len == 0 || signature == NULL) {
+        SN_ErrPrintf("key, data, and signature must all be valid\n");
         return -SN_ERR_NULL;
     }
 
@@ -212,7 +211,7 @@ int8_t SN_Crypto_encrypt( //AEAD-encrypt a data block. tag is 16 bytes
     uint8_t *tag,
     bool pure_ack
 ) {
-    SN_Hash_t iv;
+    static SN_Hash_t iv;
 
     SN_InfoPrintf("enter\n");
 
@@ -250,8 +249,8 @@ int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is 16 bytes
     const uint8_t *tag,
     bool pure_ack
 ) {
-    SN_Hash_t iv;
-    uint8_t prototag[SN_Tag_size];
+    static SN_Hash_t iv;
+    static uint8_t prototag[SN_Tag_size];
     int8_t ret;
 
     SN_InfoPrintf("enter\n");

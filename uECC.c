@@ -2247,7 +2247,7 @@ uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
     vli_add_n(s, tmp, curve_n);
 
     /* p = k * G */
-    EccPoint_mult(p, &curve_G, carry == 1 ? tmp : s, (uECC_BYTES * 8) + 2);
+    EccPoint_mult(p, &curve_G, carry ? tmp : s, (uECC_BYTES * 8) + 2);
 #else
     /* Make sure that we don't leak timing information about k.
        See http://eprint.iacr.org/2011/232.pdf */
@@ -2255,7 +2255,7 @@ uint8_t uECC_sign(const uint8_t private_key[uECC_BYTES],
     vli_add(s, tmp, curve_n);
 
     /* p = k * G */
-    EccPoint_mult(p, &curve_G, carry == 1 ? tmp : s, (uECC_BYTES * 8) + 1);
+    EccPoint_mult(p, &curve_G, carry ? tmp : s, (uECC_BYTES * 8) + 1);
 
     /* r = x1 (mod n) */
     if (vli_cmp(curve_n, p->x) != 1) {

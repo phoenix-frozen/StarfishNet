@@ -195,7 +195,7 @@ PROCESS_THREAD(starfishnet_discovery_process, ev, data)
                 end_discovery();
             } else {
                 beacon_request_tx();
-                etimer_set(&timer, discovery_configuration.timeout * CLOCK_CONF_SECOND / 1000); //8 ms per clock tick
+                etimer_set(&timer, discovery_configuration.timeout * CLOCK_CONF_SECOND / 1000);
             }
         } else {
             /* if we don't have more channels to scan
@@ -304,8 +304,8 @@ void SN_Beacon_input() {
         return;
     }
 
-    SN_InfoPrintf("    CoordAddress=0x%04x\n", packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16);
-    if(beacon_payload->beacon_data.network_config.router_address != packetbuf_addr(PACKETBUF_ADDR_SENDER)->u16) {
+    SN_InfoPrintf("    CoordAddress=0x%04x\n", SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
+    if(beacon_payload->beacon_data.network_config.router_address != SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8)) {
         SN_WarnPrintf("    Address mismatch! Using 0x%04x\n", beacon_payload->beacon_data.network_config.router_address);
     }
 
@@ -358,7 +358,7 @@ void SN_Beacon_TX() {
     packetbuf_set_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE, 2);
     packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 0);
 
-    src_address.u16 = starfishnet_config.short_address;
+    STORE_SHORT_ADDRESS(src_address.u8, starfishnet_config.short_address);
     packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &src_address);
 
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_BEACONFRAME);

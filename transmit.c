@@ -119,6 +119,8 @@ static void generate_network_header(packet_t* packet, SN_Table_entry_t* table_en
         if(NETWORK_HEADER->control_attributes.associate && table_entry->state == SN_Associate_received) {
             NETWORK_HEADER->control_attributes.key_confirm = 1;
             table_entry->state = SN_Awaiting_finalise;
+        } else if(NETWORK_HEADER->control_attributes.associate) {
+            table_entry->state = SN_Awaiting_reply;
         }
 
         if(NETWORK_HEADER->control_attributes.details) {
@@ -487,7 +489,7 @@ int8_t SN_Send(const SN_Endpoint_t *dst_addr, const SN_Message_t *message) {
         return ret;
     }
 
-    if(message == NULL || message->type != SN_Data_message || message->type != SN_Explicit_Evidence_message) {
+    if(message == NULL || (message->type != SN_Data_message && message->type != SN_Explicit_Evidence_message)) {
         return -SN_ERR_INVALID;
     }
 
@@ -648,9 +650,6 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
         SN_ErrPrintf("header generation error: %d\n", -ret);
         return ret;
     }
-
-    //advance state
-    table_entry.state++;
 
     assert(packet.layout.present.signature_header);
     assert(!packet.layout.present.encryption_header);
