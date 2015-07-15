@@ -11,6 +11,7 @@
 
 #include "net/mac/frame802154.h"
 #include "net/packetbuf.h"
+#include "packet.h"
 
 #include <assert.h>
 #include <string.h>
@@ -183,77 +184,53 @@ static inline int8_t packet_detect_layout(packet_t* packet) {
 }
 
 static int8_t packet_security_checks(packet_t* packet, SN_Table_entry_t* table_entry) {
-    if(table_entry == NULL || packet == NULL) {
-        SN_ErrPrintf("table_entry and packet must be valid\n");
-        return -SN_ERR_NULL;
-    }
+    assert(table_entry != NULL && packet != NULL);
 
     //alt-stream check: alt streams are only allowed for nodes using their short address
     if(PACKET_ENTRY(*packet, network_header)->src_addr == FRAME802154_INVALIDADDR &&
        packet->layout.present.alt_stream_header &&
        PACKET_ENTRY(*packet, alt_stream_header)->length > 0) {
-        SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
+        SN_ErrPrintf("received alternate stream header from long-address node. this is an error\n");
         return -SN_ERR_UNEXPECTED;
     }
 
-    //relationship-state check: make sure the headers we see match the state the relationship is in
+    //relationship-state checks: make sure the packet type we see match the state the relationship is in
     if(packet->layout.present.association_header &&
-       (table_entry->state == SN_Associate_received || table_entry->state >= SN_Awaiting_finalise) &&
-       !PACKET_ENTRY(*packet, association_header)->dissociate) {
-        SN_ErrPrintf("received association header when we're not waiting for one. this is an error\n");
+       !PACKET_ENTRY(*packet, association_header)->dissociate &&
+       !packet->layout.present.key_confirmation_header &&
+       table_entry->state != SN_Unassociated) {
+        SN_ErrPrintf("received associate-%s in state %d\n", "request", table_entry->state);
         return -SN_ERR_UNEXPECTED;
     }
-    if(packet->layout.present.key_confirmation_header && table_entry->state != SN_Awaiting_reply &&
+    if(packet->layout.present.association_header &&
+       !PACKET_ENTRY(*packet, association_header)->dissociate &&
+       packet->layout.present.key_confirmation_header &&
+       table_entry->state != SN_Awaiting_reply) {
+        SN_ErrPrintf("received associate-%s in state %d\n", "reply", table_entry->state);
+        return -SN_ERR_UNEXPECTED;
+    }
+    if(!packet->layout.present.association_header &&
+       packet->layout.present.key_confirmation_header &&
        table_entry->state != SN_Awaiting_finalise) {
-        SN_ErrPrintf("received key confirmation header when we're not waiting for one. this is an error\n");
+        SN_ErrPrintf("received associate-%s in state %d\n", "finalise", table_entry->state);
         return -SN_ERR_UNEXPECTED;
-    }
-
-    //assertions to double-check my logic.
-    if(packet->layout.present.association_header && !PACKET_ENTRY(*packet, association_header)->dissociate) {
-        if(!packet->layout.present.key_confirmation_header) {
-            assert(table_entry->state == SN_Unassociated);
-        }
-        if(packet->layout.present.key_confirmation_header) {
-            assert(table_entry->state == SN_Awaiting_reply);
-        }
-    }
-    if(!packet->layout.present.association_header && packet->layout.present.key_confirmation_header) {
-        assert(table_entry->state == SN_Awaiting_finalise);
     }
 
     //packet security checks:
     // 1. packets with plain data payloads must be encrypted
     // 2. unencrypted packets must be signed
-    // 3. association (but not dissociation) packets must be signed
-    // 4. dissociation packets must be signed or encrypted
     if(!packet->layout.present.encryption_header) {
         //1.
-        if(packet->layout.present.payload_data && packet->layout.present.evidence_header) {
-            SN_ErrPrintf("received unencrypted packet with plain data payload. this is an error.\n");
+        if(packet->layout.present.payload_data || packet->layout.present.evidence_header) {
+            SN_ErrPrintf("received unencrypted packet with payload\n");
             return -SN_ERR_SECURITY;
         }
 
         //2.
         if(!packet->layout.present.signature_header) {
-            SN_ErrPrintf("received unencrypted, unsigned packet. this is an error.\n");
+            SN_ErrPrintf("received unencrypted, unsigned packet\n");
             return -SN_ERR_SECURITY;
         }
-    }
-    //3.
-    if(!packet->layout.present.signature_header &&
-       packet->layout.present.association_header &&
-       !PACKET_ENTRY(*packet, association_header)->dissociate) {
-        SN_ErrPrintf("received unsigned association packet. this is an error.\n");
-        return -SN_ERR_SECURITY;
-    }
-    //4.
-    if(packet->layout.present.association_header &&
-       PACKET_ENTRY(*packet, association_header)->dissociate &&
-       !packet->layout.encryption_header &&
-        !packet->layout.signature_header) {
-        SN_ErrPrintf("received non-integrity-checked dissociation packet. this is an error.\n");
-        return -SN_ERR_SECURITY;
     }
 
     return SN_OK;
@@ -507,6 +484,7 @@ void SN_Receive_data_packet() {
 
     SN_InfoPrintf("enter\n");
 
+    memset(&message, 0, sizeof(message));
     memset(&packet, 0, sizeof(packet));
     packet.data = packetbuf_dataptr();
     packet.length = (uint8_t)packetbuf_datalen();

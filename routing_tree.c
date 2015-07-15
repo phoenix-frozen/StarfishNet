@@ -4,6 +4,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <stddef.h>
 
 int8_t SN_Tree_allocate_address(uint16_t *address, uint8_t *block) {
     uint16_t total_blocks         = (uint16_t)(1 << starfishnet_config.tree_branching_factor);
