@@ -120,7 +120,7 @@ int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing) {
     //Fill NIB
     SN_InfoPrintf("filling NIB...\n");
     starfishnet_config.tree_branching_factor = network->network_config->routing_tree_branching_factor;
-    starfishnet_config.tree_position = network->network_config->routing_tree_position;
+    starfishnet_config.tree_position = network->network_config->routing_tree_position + starfishnet_config.tree_branching_factor;
     starfishnet_config.enable_routing = (uint8_t) (disable_routing ? 0 : 1);
     starfishnet_config.leaf_blocks = network->network_config->leaf_blocks;
     starfishnet_config.parent_address = network->network_config->router_address;
