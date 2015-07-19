@@ -104,10 +104,9 @@ void sha1_finish(sha1_context_t *ctx, uint8_t hash[])
     }
 
     // Append to the padding the total message's length in bits and transform.
-    memset(ctx->data + 56, 0, 5);
-    ctx->data[63] = ctx->datalen << 3;
-    ctx->data[62] = ctx->datalen >> 5 | ctx->blocks << 3;
-    ctx->data[61] = ctx->blocks  >> 5;
+    memset(ctx->data + 56, 0, 6);
+    ctx->data[63] = ctx->datalen << 3; //convert to bits <-> multiply by 8 <-> lshift by 3
+    ctx->data[62] = ctx->blocks; //datalen is a 5-bit quantity (2^^6 = 64), so it's entirely expressed in the LSB
     sha1_transform(ctx);
 
     // Since this implementation uses little endian byte ordering and MD uses big endian,
