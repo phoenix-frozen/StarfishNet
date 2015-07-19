@@ -584,7 +584,10 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
                     SN_ErrPrintf("attempting to transmit to invalid%s\n", "long address");
                     return -SN_ERR_INVALID;
                 }
-                ALLOCATE_ARRAY(table_entry.long_address, 8);
+                ALLOCATE_ARRAY_COND(table_entry.long_address, 8, {
+                    SN_InfoPrintf("failed to allocate space long address storage\n");
+                    return -SN_ERR_RESOURCES;
+                });
                 memcpy(table_entry.long_address, dst_addr->long_address, 8);
                 break;
 
@@ -604,6 +607,9 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
         ret = SN_Table_insert(&table_entry);
         if (ret != SN_OK) {
             SN_ErrPrintf("node table is full\n");
+            if(table_entry.long_address != NULL) {
+                FREE(table_entry.long_address);
+            }
             return -SN_ERR_RESOURCES;
         }
     }

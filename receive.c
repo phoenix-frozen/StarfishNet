@@ -556,7 +556,10 @@ void SN_Receive_data_packet() {
                 break;
 
             case SN_ENDPOINT_LONG_ADDRESS:
-                ALLOCATE_ARRAY(table_entry.long_address, 8);
+                ALLOCATE_ARRAY_COND(table_entry.long_address, 8, {
+                    SN_InfoPrintf("failed to allocate space long address storage\n");
+                    return;
+                });
                 memcpy(table_entry.long_address, src_addr.long_address, 8);
                 table_entry.short_address = FRAME802154_INVALIDADDR;
                 break;

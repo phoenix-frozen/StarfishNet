@@ -65,14 +65,12 @@ static int8_t add_parent_to_node_table() {
     int8_t ret;
     SN_Table_entry_t* parent_table_entry;
 
-    ALLOCATE(parent_table_entry);
-
     SN_InfoPrintf("adding parent (0x%04x) to node table\n", starfishnet_config.parent_address);
 
-    if(parent_table_entry == NULL) {
+    ALLOCATE_COND(parent_table_entry, {
         SN_InfoPrintf("failed to add parent to node table due to lack of memory\n");
         return -SN_ERR_RESOURCES;
-    }
+    });
     memset(parent_table_entry, 0, sizeof(*parent_table_entry));
     parent_table_entry->short_address = starfishnet_config.parent_address;
     parent_table_entry->details_known = 1;
@@ -155,20 +153,19 @@ int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing) {
     }
 
     //start neighbor discovery
-    if (ret == SN_OK) {
+    /*if (ret == SN_OK) {
         ret = SN_Discover_neighbors();
-    }
+    }*/
 
     if (ret != SN_OK) {
         return ret;
     }
 
     //start security association with our parent (implicitly requesting an address)
-    ALLOCATE(parent_address);
-    if (parent_address == NULL) {
+    ALLOCATE_COND(parent_address, {
         SN_InfoPrintf("cannot send association message due to lack of memory\n");
         return -SN_ERR_RESOURCES;
-    }
+    });
     memset(parent_address, 0, sizeof(*parent_address));
     parent_address->type = SN_ENDPOINT_SHORT_ADDRESS;
     parent_address->short_address = starfishnet_config.parent_address;

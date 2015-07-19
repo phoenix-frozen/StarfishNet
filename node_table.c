@@ -54,27 +54,6 @@ static int8_t lookup_by_short_address(uint16_t address, uint8_t stream_idx_len, 
     return -1;
 }
 
-static int8_t lookup_by_public_key(const SN_Public_key_t* public_key) {
-    int8_t i;
-
-    if(public_key == NULL) {
-        return -1;
-    }
-
-    if(!memcmp(&null_key, public_key, sizeof(null_key))) {
-        return -1;
-    }
-
-    for(i = 0; i < SN_TABLE_SIZE; i++) {
-        if((entry_bitmap & BIT(i)) && table[i].details_known &&
-           !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data))) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
 static int8_t lookup_by_public_key_and_stream(const SN_Public_key_t* public_key, uint8_t stream_idx_len, uint8_t* stream_idx) {
     int8_t i;
 
@@ -91,6 +70,31 @@ static int8_t lookup_by_public_key_and_stream(const SN_Public_key_t* public_key,
            !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data)) &&
             table[i].altstream.stream_idx_length == stream_idx_len &&
             (stream_idx_len > 0 ? !memcmp(table[i].altstream.stream_idx, stream_idx, stream_idx_len) : 1)) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static int8_t lookup_by_public_key(const SN_Public_key_t* public_key) {
+    int8_t i;
+
+    if(public_key == NULL) {
+        return -1;
+    }
+
+    if(!memcmp(&null_key, public_key, sizeof(null_key))) {
+        return -1;
+    }
+
+    i = lookup_by_public_key_and_stream(public_key, 0, NULL);
+    if(i >= 0)
+        return i;
+
+    for(i = 0; i < SN_TABLE_SIZE; i++) {
+        if((entry_bitmap & BIT(i)) && table[i].details_known &&
+           !memcmp(public_key->data, table[i].public_key.data, sizeof(public_key->data))) {
             return i;
         }
     }
@@ -255,6 +259,7 @@ int8_t SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
                 } else {
                     ret = lookup_by_public_key_and_stream(&endpoint->public_key, endpoint->altstream->stream_idx_length, endpoint->altstream->stream_idx);
                 }
+                break;
         }
     }
 
