@@ -1,20 +1,17 @@
 #include "starfishnet.h"
 #include "node_table.h"
 #include "logging.h"
-#include "status.h"
 #include "routing_tree.h"
 #include "discovery.h"
 #include "config.h"
-
-#include "net/mac/frame802154.h"
+#include "dmem.h"
 
 #include <string.h>
-#include <malloc.h>
 #include <assert.h>
 
 //start a new StarfishNet network as coordinator
 int8_t SN_Start(const SN_Network_descriptor_t *network) {
-    int ret;
+    int8_t ret;
 
     SN_InfoPrintf("enter\n");
 
@@ -66,14 +63,15 @@ int8_t SN_Start(const SN_Network_descriptor_t *network) {
 
 static int8_t add_parent_to_node_table() {
     int8_t ret;
-    SN_Table_entry_t* parent_table_entry = malloc(sizeof(SN_Table_entry_t));
+    SN_Table_entry_t* parent_table_entry;
+
+    ALLOCATE(parent_table_entry);
 
     SN_InfoPrintf("adding parent (0x%04x) to node table\n", starfishnet_config.parent_address);
 
     if(parent_table_entry == NULL) {
         SN_InfoPrintf("failed to add parent to node table due to lack of memory\n");
-        ret = -SN_ERR_RESOURCES;
-        goto exit;
+        return -SN_ERR_RESOURCES;
     }
     memset(parent_table_entry, 0, sizeof(*parent_table_entry));
     parent_table_entry->short_address = starfishnet_config.parent_address;
@@ -97,8 +95,7 @@ static int8_t add_parent_to_node_table() {
         ret = SN_OK;
     }
 
-    exit:
-    free(parent_table_entry);
+    FREE(parent_table_entry);
     return ret;
 }
 
@@ -167,7 +164,7 @@ int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing) {
     }
 
     //start security association with our parent (implicitly requesting an address)
-    parent_address = malloc(sizeof(SN_Endpoint_t));
+    ALLOCATE(parent_address);
     if (parent_address == NULL) {
         SN_InfoPrintf("cannot send association message due to lack of memory\n");
         return -SN_ERR_RESOURCES;
@@ -177,7 +174,7 @@ int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing) {
     parent_address->short_address = starfishnet_config.parent_address;
     SN_InfoPrintf("sending associate request to 0x%04x\n", parent_address->short_address);
     ret = SN_Associate(parent_address);
-    free(parent_address);
+    FREE(parent_address);
 
     //And we're done
     SN_InfoPrintf("exit\n");

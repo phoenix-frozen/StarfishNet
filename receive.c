@@ -8,15 +8,14 @@
 #include "receive.h"
 #include "discovery.h"
 #include "constants.h"
+#include "dmem.h"
+#include "packet.h"
 
 #include "net/mac/frame802154.h"
 #include "net/packetbuf.h"
-#include "packet.h"
 
 #include <assert.h>
 #include <string.h>
-#include <net/linkaddr.h>
-#include <malloc.h>
 
 //outputs crypto margin, and pointers to the key agreement header and payload data
 //also detects basic protocol failures
@@ -259,8 +258,7 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
         //if the remote node has a short address, we can erase its MAC address from memory
         SN_InfoPrintf("short address is known; erasing long address\n");
         if(table_entry->long_address != NULL) {
-            free(table_entry->long_address);
-            table_entry->long_address = NULL;
+            FREE(table_entry->long_address);
         }
     }
 
@@ -558,7 +556,7 @@ void SN_Receive_data_packet() {
                 break;
 
             case SN_ENDPOINT_LONG_ADDRESS:
-                table_entry.long_address = malloc(8);
+                ALLOCATE_ARRAY(table_entry.long_address, 8);
                 memcpy(table_entry.long_address, src_addr.long_address, 8);
                 table_entry.short_address = FRAME802154_INVALIDADDR;
                 break;
@@ -567,7 +565,7 @@ void SN_Receive_data_packet() {
         if (ret != SN_OK) {
             SN_ErrPrintf("cannot allocate entry in node table, aborting.\n");
             if(table_entry.long_address != NULL) {
-                free(table_entry.long_address);
+                FREE(table_entry.long_address);
             }
             return;
         }

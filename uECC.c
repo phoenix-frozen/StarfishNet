@@ -2,9 +2,9 @@
 /* Modified by: Justin King-Lacroix <justin.king-lacroix@cs.ox.ac.uk> (modifications for 8051-based systems, which have a tiny stack) */
 
 #include "uECC.h"
+#include "dmem.h"
 
 #include <string.h>
-#include <malloc.h>
 #include <assert.h>
 
 #ifndef uECC_WORD_SIZE
@@ -312,10 +312,6 @@ typedef int cmpresult_t;
                    0xFFFFFFFFFFFFFFFFull, 0x00000000FFFFFFFFull}
 
 #endif /* (uECC_WORD_SIZE == 8) */
-
-#define ALLOCATE(var) var = malloc(sizeof(*var)); assert(var != NULL)
-#define ALLOCATE_ARRAY(var, num) var = malloc((num) * sizeof(*var)); assert(var != NULL)
-#define FREE(var) free(var); var = NULL
 
 #define uECC_WORDS ((wordcount_t)uECC_CONCAT(uECC_WORDS_, uECC_CURVE))
 #define uECC_N_WORDS ((wordcount_t)uECC_CONCAT(uECC_N_WORDS_, uECC_CURVE))

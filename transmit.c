@@ -56,13 +56,13 @@
 #include "discovery.h"
 #include "routing_tree.h"
 #include "constants.h"
+#include "dmem.h"
 
 #include "net/packetbuf.h"
 #include "raw_tx.h"
 
 #include <string.h>
 #include <assert.h>
-#include <malloc.h>
 
 static void allocate_address(packet_t* packet, SN_Table_entry_t* table_entry) {
     uint8_t block = PACKET_ENTRY(*packet, association_header)->router;
@@ -584,7 +584,7 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
                     SN_ErrPrintf("attempting to transmit to invalid%s\n", "long address");
                     return -SN_ERR_INVALID;
                 }
-                table_entry.long_address = malloc(8);
+                ALLOCATE_ARRAY(table_entry.long_address, 8);
                 memcpy(table_entry.long_address, dst_addr->long_address, 8);
                 break;
 

@@ -14,7 +14,6 @@
 
 #include <string.h>
 #include <assert.h>
-#include <malloc.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
 #define SN_TRANSMISSION_SLOT_COUNT QUEUEBUF_NUM
