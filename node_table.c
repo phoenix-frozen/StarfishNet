@@ -274,6 +274,31 @@ int8_t SN_Table_lookup(const SN_Endpoint_t *endpoint, SN_Table_entry_t *entry) {
     return SN_OK;
 }
 
+int8_t SN_Table_find_unacknowledged(SN_Table_entry_t *entry) {
+    int8_t i;
+
+    if(entry == NULL) {
+        return -SN_ERR_NULL;
+    }
+
+    if(entry->ack) {
+        i = find_entry(entry);
+        if(i < 0) {
+            i = 0;
+        }
+    } else {
+        i = 0;
+    }
+    for(; i < SN_TABLE_SIZE; i++) {
+        if((entry_bitmap & BIT(i)) && table[i].ack) {
+            memcpy(entry, &table[i], sizeof(*entry));
+            return SN_OK;
+        }
+    }
+
+    return -SN_ERR_UNEXPECTED;
+}
+
 //delete all entries related to a session
 void SN_Table_clear() {
     entry_bitmap = 0;

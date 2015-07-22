@@ -5,6 +5,7 @@
 SN_Config_t starfishnet_config = {
     .tx_retry_limit = STARFISHNET_TX_RETRY_LIMIT,
     .tx_retry_timeout = STARFISHNET_TX_RETRY_TIMEOUT,
+    .tx_ack_timeout = STARFISHNET_TX_ACK_TIMEOUT,
 
     .parent_address = FRAME802154_INVALIDADDR,
     .short_address = FRAME802154_INVALIDADDR,

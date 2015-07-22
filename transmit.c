@@ -361,36 +361,34 @@ static SN_Table_entry_t table_entry;
 static packet_t packet;
 
 static int8_t transmission_preamble(const SN_Endpoint_t *dst_addr) {
-    if(dst_addr == NULL) {
-        return -SN_ERR_NULL;
-    }
+    if (dst_addr != NULL) {
+        //basic address validity checking
+        switch (dst_addr->type) {
+            case SN_ENDPOINT_SHORT_ADDRESS:
+                if (dst_addr->short_address == FRAME802154_INVALIDADDR) {
+                    SN_ErrPrintf("attempting to send to null short address. aborting\n");
+                    return -SN_ERR_INVALID;
+                }
+                break;
 
-    //basic address validity checking
-    switch (dst_addr->type) {
-        case SN_ENDPOINT_SHORT_ADDRESS:
-            if (dst_addr->short_address == FRAME802154_INVALIDADDR) {
-                SN_ErrPrintf("attempting to send to null short address. aborting\n");
+            case SN_ENDPOINT_LONG_ADDRESS:
+                if ((uint8_t) memcmp(dst_addr->long_address, null_address, sizeof(null_address)) == 0) {
+                    SN_ErrPrintf("attempting to send to null long address. aborting\n");
+                    return -SN_ERR_INVALID;
+                }
+                break;
+
+            case SN_ENDPOINT_PUBLIC_KEY:
+                if ((uint8_t) memcmp(dst_addr->public_key.data, null_key.data, sizeof(null_key.data)) == 0) {
+                    SN_ErrPrintf("attempting to send to null public key. aborting\n");
+                    return -SN_ERR_INVALID;
+                }
+                break;
+
+            default:
+                SN_ErrPrintf("invalid address type. aborting\n");
                 return -SN_ERR_INVALID;
-            }
-            break;
-
-        case SN_ENDPOINT_LONG_ADDRESS:
-            if ((uint8_t)memcmp(dst_addr->long_address, null_address, sizeof(null_address)) == 0) {
-                SN_ErrPrintf("attempting to send to null long address. aborting\n");
-                return -SN_ERR_INVALID;
-            }
-            break;
-
-        case SN_ENDPOINT_PUBLIC_KEY:
-            if ((uint8_t)memcmp(dst_addr->public_key.data, null_key.data, sizeof(null_key.data)) == 0) {
-                SN_ErrPrintf("attempting to send to null public key. aborting\n");
-                return -SN_ERR_INVALID;
-            }
-            break;
-
-        default:
-            SN_ErrPrintf("invalid address type. aborting\n");
-            return -SN_ERR_INVALID;
+        }
     }
 
     //initialise common data structures: packet structure buffer and packetbuf
@@ -401,44 +399,30 @@ static int8_t transmission_preamble(const SN_Endpoint_t *dst_addr) {
     return SN_OK;
 }
 
-int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
+int8_t SN_Send_acknowledgements(SN_Table_entry_t* table_entry) {
     int8_t ret;
 
     SN_InfoPrintf("enter\n");
 
     //initial NULL-checks
-    ret = transmission_preamble(dst_addr);
+    ret = transmission_preamble(NULL);
     if(ret != SN_OK) {
         return ret;
     }
 
-    SN_InfoPrintf("consulting neighbor table...\n");
-    ret = SN_Table_lookup(dst_addr, &table_entry);
-    if (ret != SN_OK || table_entry.state < SN_Send_finalise) { //node isn't in node table, abort
-        SN_ErrPrintf("no relationship with remote node\n");
-        return -SN_ERR_SECURITY;
-    }
-
-    SN_InfoPrintf("sending to 0x%04x (state %d)\n", table_entry.short_address, table_entry.state);
-
-    if (table_entry.unavailable) {
-        SN_ErrPrintf("contact with remote node has been lost\n");
-        return -SN_ERR_DISCONNECTED;
-    }
-
-    if (table_entry.short_address == FRAME802154_INVALIDADDR) {
+    if (table_entry->short_address == FRAME802154_INVALIDADDR) {
         SN_ErrPrintf("remote node doesn't have a short address\n");
         return -SN_ERR_DISCONNECTED;
     }
 
-    generate_network_header(&packet, &table_entry, NULL);
-    ret = generate_subheaders(&packet, &table_entry, NULL);
+    generate_network_header(&packet, table_entry, NULL);
+    ret = generate_subheaders(&packet, table_entry, NULL);
     if (ret != SN_OK) {
         SN_ErrPrintf("header generation error: %d\n", -ret);
         return ret;
     }
 
-    if(!packet.layout.present.encrypted_ack_header || table_entry.packet_rx_counter == 0) {
+    if(!packet.layout.present.encrypted_ack_header || table_entry->packet_rx_counter == 0) {
         SN_WarnPrintf("acknowledgements aren't required\n");
         return -SN_ERR_UNEXPECTED;
     }
@@ -447,12 +431,12 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
     assert(!packet.layout.present.signature_header);
     assert(!packet.layout.present.association_header);
     assert(!packet.layout.present.key_confirmation_header);
-    assert(PACKET_ENTRY(packet, encrypted_ack_header)->counter + 1 == table_entry.packet_rx_counter);
+    assert(PACKET_ENTRY(packet, encrypted_ack_header)->counter + 1 == table_entry->packet_rx_counter);
     assert(packet.layout.encryption_header + (uint8_t)sizeof(encryption_header_t) == packet.length);
 
     //this is a pure-acknowledgement packet; don't change the counter
-    ret = SN_Crypto_encrypt(&table_entry.link_key.key, &table_entry.local_key_agreement_keypair.public_key,
-                            table_entry.packet_rx_counter - 1,
+    ret = SN_Crypto_encrypt(&table_entry->link_key.key, &table_entry->local_key_agreement_keypair.public_key,
+                            table_entry->packet_rx_counter - 1,
                             packet.data, packet.layout.encryption_header,
                             NULL, 0,
                             PACKET_ENTRY(packet, encryption_header)->tag, 1);
@@ -465,14 +449,14 @@ int8_t SN_Send_acknowledgements(const SN_Endpoint_t *dst_addr) {
     packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_DATAFRAME);
     packetbuf_set_attr(PACKETBUF_ATTR_NETWORK_ID, starfishnet_config.pan_id);
     packetbuf_set_datalen(PACKET_SIZE(packet));
-    ret = SN_Forward_Packetbuf(starfishnet_config.short_address, table_entry.short_address);
+    ret = SN_Forward_Packetbuf(starfishnet_config.short_address, table_entry->short_address);
     if (ret != SN_OK) {
         SN_ErrPrintf("transmission error: %d\n", -ret);
         return ret;
     }
 
     //we've changed the table entry. update it
-    SN_Table_update(&table_entry);
+    SN_Table_update(table_entry);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
@@ -484,7 +468,11 @@ int8_t SN_Send(const SN_Endpoint_t *dst_addr, const SN_Message_t *message) {
     SN_InfoPrintf("enter\n");
 
     //initial NULL-checks
-    ret = transmission_preamble(dst_addr);
+    if(dst_addr == NULL) {
+        return -SN_ERR_NULL;
+    }
+
+    ret = transmission_preamble(NULL);
     if(ret != SN_OK) {
         return ret;
     }
@@ -557,6 +545,10 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
     SN_InfoPrintf("enter\n");
 
     //initial NULL-checks
+    if(dst_addr == NULL) {
+        return -SN_ERR_NULL;
+    }
+
     ret = transmission_preamble(dst_addr);
     if (ret != SN_OK) {
         return ret;

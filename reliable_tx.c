@@ -5,6 +5,7 @@
 #include "config.h"
 #include "util.h"
 #include "packet.h"
+#include "raw_tx.h"
 
 #include "net/netstack.h"
 #include "net/packetbuf.h"
@@ -59,6 +60,11 @@ int8_t allocate_slot() {
     }
 
     return slot;
+}
+
+void free_slot(uint8_t slot) {
+    transmission_queue[slot].allocated = 0;
+    queuebuf_free(transmission_queue[slot].queuebuf);
 }
 
 static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
@@ -241,8 +247,7 @@ int8_t SN_Retransmission_acknowledge_data(SN_Table_entry_t *table_entry, uint32_
             //... and it's encrypted with the right counter...
             if(slot->packet.layout.present.encryption_header && slot->counter <= counter) {
                 //... acknowledge it.
-                slot->allocated = 0;
-                queuebuf_free(slot->queuebuf);
+                free_slot((uint8_t)(slot - transmission_queue));
 
                 rv = SN_OK;
             }
@@ -275,8 +280,7 @@ int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t
                     if(slot->packet.layout.present.association_header && !slot->packet.layout.present.key_confirmation_header) {
 
                         //... acknowledge it.
-                        slot->allocated = 0;
-                        queuebuf_free(slot->queuebuf);
+                        free_slot((uint8_t)(slot - transmission_queue));
 
                         SN_InfoPrintf("exit\n");
                         return SN_OK;
@@ -294,8 +298,7 @@ int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t
                     if(slot->packet.layout.present.association_header && slot->packet.layout.present.key_confirmation_header) {
 
                         //... acknowledge it.
-                        slot->allocated = 0;
-                        queuebuf_free(slot->queuebuf);
+                        free_slot((uint8_t)(slot - transmission_queue));
 
                         SN_InfoPrintf("exit\n");
                         return SN_OK;
@@ -309,8 +312,8 @@ int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t
     return -SN_ERR_UNKNOWN;
 }
 
+static SN_Table_entry_t retx_temp_table_entry;
 void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
-    static SN_Table_entry_t table_entry;
 
     SN_InfoPrintf("enter\n");
 
@@ -318,18 +321,24 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
         SN_InfoPrintf("doing retransmission processing for slot %d\n", (uint8_t)(slot - transmission_queue));
 
         //look up the destination's entry in the node table
-        if(SN_Table_lookup(&slot->dst_address, &table_entry) != SN_OK) {
+        if(slot->dst_address.type == SN_ENDPOINT_SHORT_ADDRESS) {
+            SN_DebugPrintf("slot %d is for short address 0x%04x\n", (uint8_t)(slot - transmission_queue), slot->dst_address.short_address);
+        } else if (slot->dst_address.type == SN_ENDPOINT_LONG_ADDRESS) {
+            SN_DebugPrintf("slot %d is for long address 0x%08llx%08llx\n", (uint8_t)(slot - transmission_queue), *(uint32_t*)slot->dst_address.long_address, *(uint32_t*)(slot->dst_address.long_address + 4));
+        } else {
+            SN_DebugPrintf("slot %d has weird address type %d\n", (uint8_t)(slot - transmission_queue), slot->dst_address.type);
+        }
+        if(SN_Table_lookup(&slot->dst_address, &retx_temp_table_entry) != SN_OK) {
             SN_WarnPrintf("trying to retransmit to an unknown partner. dropping\n");
-            slot->allocated = 0;
-            queuebuf_free(slot->queuebuf);
+            free_slot((uint8_t)(slot - transmission_queue));
             continue;
         }
 
         //if we're not ignoring the disconnection counter, and we still have retries left, tx the packet
         if(count_towards_disconnection ? slot->retries < starfishnet_config.tx_retry_limit : 1) {
             queuebuf_to_packetbuf(slot->queuebuf);
-            if(setup_packetbuf_for_transmission(&table_entry) != SN_OK) {
-                table_entry.unavailable = 1;
+            if(setup_packetbuf_for_transmission(&retx_temp_table_entry) != SN_OK) {
+                retx_temp_table_entry.unavailable = 1;
             } else {
                 NETSTACK_LLSEC.send(retransmission_mac_callback, slot);
                 //TODO: BUG!!! I can't get the tx status from here, because there's no obvious way to wait for transmission
@@ -342,13 +351,13 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
             if(slot->retries >= starfishnet_config.tx_retry_limit) {
                 SN_ErrPrintf("slot %d has reached its retry limit\n", (uint8_t)(slot - transmission_queue));
 
-                table_entry.unavailable = 1;
+                retx_temp_table_entry.unavailable = 1;
             }
         } else {
             slot->retries = 1;
         }
 
-        SN_Table_update(&table_entry);
+        SN_Table_update(&retx_temp_table_entry);
 
         SN_InfoPrintf("retransmission processing for slot %d done\n", (uint8_t)(slot - transmission_queue));
     });
@@ -360,8 +369,7 @@ void SN_Retransmission_clear() {
     transmission_slot_t* slot;
     for(slot = transmission_queue; slot - transmission_queue < SN_TRANSMISSION_SLOT_COUNT; slot++) {
         if(slot->allocated) {
-            queuebuf_free(slot->queuebuf);
-            slot->allocated = 0;
+            free_slot((uint8_t)(slot - transmission_queue));
         }
     }
 }
@@ -373,6 +381,7 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
         .p = &starfishnet_retransmission_process,
         .next = NULL,
     };
+    static uint8_t timeouts = 0;
 
     PROCESS_BEGIN();
 
@@ -383,7 +392,19 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
 
         PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
 
+        timeouts++;
+
         SN_Retransmission_retry(1);
+
+        if(timeouts == starfishnet_config.tx_ack_timeout) {
+            SN_InfoPrintf("starting acknowledgement transmission...\n");
+            timeouts = 0;
+            memset(&retx_temp_table_entry, 0, sizeof(retx_temp_table_entry));
+            while(SN_Table_find_unacknowledged(&retx_temp_table_entry) == SN_OK) {
+                SN_InfoPrintf("sending acknowledgements to 0x%04x\n", retx_temp_table_entry.short_address);
+                SN_Send_acknowledgements(&retx_temp_table_entry);
+            }
+        }
     }
 
     PROCESS_END();

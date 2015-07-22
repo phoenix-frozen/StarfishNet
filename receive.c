@@ -254,12 +254,10 @@ static int8_t packet_process_headers(packet_t* packet, SN_Table_entry_t* table_e
     } else {
         table_entry->knows_details = 1;
     }
-    if(network_header->src_addr != FRAME802154_INVALIDADDR) {
+    if(network_header->src_addr != FRAME802154_INVALIDADDR && table_entry->long_address != NULL) {
         //if the remote node has a short address, we can erase its MAC address from memory
         SN_InfoPrintf("short address is known; erasing long address\n");
-        if(table_entry->long_address != NULL) {
-            FREE(table_entry->long_address);
-        }
+        FREE(table_entry->long_address);
     }
 
 
@@ -592,7 +590,7 @@ void SN_Receive_data_packet() {
             if(packet.layout.present.key_confirmation_header && !packet.layout.present.association_header) {
                 SN_WarnPrintf("possible %s drop; triggering %stransmission\n", "ACK", "acknowledgement ");
                 if(table_entry.short_address != FRAME802154_INVALIDADDR) {
-                    SN_Send_acknowledgements(&src_addr);
+                    SN_Send_acknowledgements(&table_entry);
                 }
             }
         }
@@ -677,7 +675,7 @@ void SN_Receive_data_packet() {
                 SN_Retransmission_retry(0);
                 if (table_entry.short_address != FRAME802154_INVALIDADDR) {
                     SN_WarnPrintf("possible %s drop; triggering %stransmission\n", "ACK", "acknowledgement ");
-                    SN_Send_acknowledgements(&src_addr);
+                    SN_Send_acknowledgements(&table_entry);
                 }
                 return;
             }

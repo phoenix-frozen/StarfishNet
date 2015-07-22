@@ -3,8 +3,9 @@
 
 #include "types.h"
 
-#define STARFISHNET_DEFAULT_TX_RETRY_LIMIT 5
-#define STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT 65535
+#define STARFISHNET_DEFAULT_TX_RETRY_LIMIT 10
+#define STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT 4096
+#define STARFISHNET_DEFAULT_TX_ACK_TIMEOUT 5
 
 #ifndef STARFISHNET_TX_RETRY_LIMIT
 #define STARFISHNET_TX_RETRY_LIMIT STARFISHNET_DEFAULT_TX_RETRY_LIMIT
@@ -12,6 +13,10 @@
 
 #ifndef STARFISHNET_TX_RETRY_TIMEOUT
 #define STARFISHNET_TX_RETRY_TIMEOUT STARFISHNET_DEFAULT_TX_RETRY_TIMEOUT
+#endif /* STARFISHNET_TX_RETRY_TIMEOUT */
+
+#ifndef STARFISHNET_TX_ACK_TIMEOUT
+#define STARFISHNET_TX_ACK_TIMEOUT STARFISHNET_DEFAULT_TX_ACK_TIMEOUT
 #endif /* STARFISHNET_TX_RETRY_TIMEOUT */
 
 typedef struct SN_Config {
@@ -33,6 +38,7 @@ typedef struct SN_Config {
     //retransmission config
     uint8_t  tx_retry_limit; //number of retransmits before reporting failure
     uint16_t tx_retry_timeout; //time to wait between retransmits
+    uint8_t  tx_ack_timeout; //number of retry timeout periods to wait before automatically dispatching acknowledgements
 
     //parent pointer
     uint16_t        parent_address;

@@ -60,6 +60,8 @@ int8_t SN_Table_insert(SN_Table_entry_t *entry);
 int8_t SN_Table_update(SN_Table_entry_t *entry);
 //delete an entry. any one of: long address, short address, key, must be valid.
 int8_t SN_Table_delete(SN_Table_entry_t *entry);
+//find the first entry that requires acknowledgement
+int8_t SN_Table_find_unacknowledged(SN_Table_entry_t *entry);
 //delete all entries related to a session
 void SN_Table_clear();
 

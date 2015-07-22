@@ -5,7 +5,7 @@
  */
 #ifdef SN_DEBUG
 #ifndef SN_DEBUG_LEVEL
-#define SN_DEBUG_LEVEL 3
+#define SN_DEBUG_LEVEL 2
 #endif //SN_DEBUG_LEVEL
 #endif //SN_DEBUG
 
@@ -33,13 +33,13 @@
 #endif //0
 
 #if (SN_DEBUG_LEVEL > 1)
-#define SN_WarnPrintf(fmt, x...) SN_Printf("WARN ", fmt, ##x)
+#define SN_WarnPrintf(fmt, x...) SN_Printf("WARN", fmt, ##x)
 #else //1
 #define SN_WarnPrintf(x...)
 #endif //1
 
 #if (SN_DEBUG_LEVEL > 2)
-#define SN_InfoPrintf(fmt, x...) SN_Printf("INFO ", fmt, ##x)
+#define SN_InfoPrintf(fmt, x...) SN_Printf("INFO", fmt, ##x)
 #else //2
 #define SN_InfoPrintf(x...)
 #endif //2
