@@ -285,6 +285,8 @@ int8_t SN_Table_find_unacknowledged(SN_Table_entry_t *entry) {
         i = find_entry(entry);
         if(i < 0) {
             i = 0;
+        } else {
+            i++;
         }
     } else {
         i = 0;

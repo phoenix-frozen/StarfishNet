@@ -9,15 +9,13 @@
 
 #include "net/netstack.h"
 #include "net/packetbuf.h"
-#include "net/queuebuf.h"
-#include "net/linkaddr.h"
 #include "sys/etimer.h"
 
 #include <string.h>
 #include <assert.h>
 
 #ifndef SN_TRANSMISSION_SLOT_COUNT
-#define SN_TRANSMISSION_SLOT_COUNT QUEUEBUF_NUM
+#define SN_TRANSMISSION_SLOT_COUNT 8
 #endif /* SN_TRANSMISSION_SLOT_COUNT */
 
 typedef struct transmission_slot {
@@ -32,7 +30,16 @@ typedef struct transmission_slot {
     SN_Endpoint_t dst_address;
     uint32_t counter;
     packet_t packet;
+#if SN_RETRANSMISSION_USES_QUEUEBUF
     struct queuebuf* queuebuf;
+#else //SN_RETRANSMISSION_USES_QUEUEBUF
+    struct {
+        uint8_t               packetbuf_data[PACKETBUF_SIZE];
+        uint8_t               packetbuf_len;
+        struct packetbuf_attr packetbuf_attrs[PACKETBUF_NUM_ATTRS];
+        struct packetbuf_addr packetbuf_addrs[PACKETBUF_NUM_ADDRS];
+    };
+#endif //SN_RETRANSMISSION_USES_QUEUEBUF
 
     uint8_t retries;
     int8_t  transmit_status;
@@ -40,7 +47,7 @@ typedef struct transmission_slot {
 
 static transmission_slot_t transmission_queue[SN_TRANSMISSION_SLOT_COUNT];
 
-int8_t allocate_slot() {
+static int8_t allocate_slot() {
     static int8_t next_free_slot = 0;
     int8_t i;
     int8_t slot = -1;
@@ -62,9 +69,36 @@ int8_t allocate_slot() {
     return slot;
 }
 
-void free_slot(uint8_t slot) {
+static void free_slot(uint8_t slot) {
     transmission_queue[slot].allocated = 0;
+#if SN_RETRANSMISSION_USES_QUEUEBUF
     queuebuf_free(transmission_queue[slot].queuebuf);
+#endif //SN_RETRANSMISSION_USES_QUEUEBUF
+}
+
+static void packetbuf_to_slot(transmission_slot_t* slot_data) {
+#if SN_RETRANSMISSION_USES_QUEUEBUF
+    slot_data->queuebuf = queuebuf_new_from_packetbuf();
+    if(slot_data->queuebuf == NULL) {
+        SN_ErrPrintf("no free queuebuf entries\n");
+        slot_data->allocated = 0;
+        return -SN_ERR_RESOURCES;
+    }
+    slot_data->packet.data = queuebuf_dataptr(slot_data->queuebuf); //XXX: assumes queuebuf doesn't use swapping
+#else //SN_RETRANSMISSION_USES_QUEUEBUF
+    slot_data->packetbuf_len = (uint8_t)packetbuf_copyto(slot_data->packetbuf_data);
+    packetbuf_attr_copyto(slot_data->packetbuf_attrs, slot_data->packetbuf_addrs);
+    slot_data->packet.data = slot_data->packetbuf_data + packetbuf_hdrlen();
+#endif //SN_RETRANSMISSION_USES_QUEUEBUF
+}
+
+static void slot_to_packetbuf(transmission_slot_t* slot) {
+#if SN_RETRANSMISSION_USES_QUEUEBUF
+    queuebuf_to_packetbuf(slot->queuebuf);
+#else //SN_RETRANSMISSION_USES_QUEUEBUF
+    packetbuf_copyfrom(slot->packetbuf_data, slot->packetbuf_len);
+    packetbuf_attr_copyfrom(slot->packetbuf_attrs, slot->packetbuf_addrs);
+#endif //SN_RETRANSMISSION_USES_QUEUEBUF
 }
 
 static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
@@ -130,7 +164,7 @@ static void retransmission_mac_callback(void *ptr, int status, int transmissions
 
     if(ptr != NULL) {
         transmission_slot_t* slot_data = (transmission_slot_t*)ptr;
-        slot_data->transmit_status = status; // TODO: BUG!! this currently doesn't actually go anywhere
+        slot_data->transmit_status = (int8_t)status;
         slot_data->retries++;
     }
 }
@@ -182,29 +216,26 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
             slot_data->dst_address.type = SN_ENDPOINT_SHORT_ADDRESS;
             slot_data->dst_address.short_address = table_entry->short_address;
         }
-        memcpy(&slot_data->packet, packet, sizeof(slot_data->packet));
+        memcpy(&slot_data->packet, packet, sizeof(*packet));
     }
 
-    //2. Address calculations, finish filling in the packetbuf, and allocate the queuebuf
+    //2. Address calculations, and finish filling in the packetbuf
     ret = setup_packetbuf_for_transmission(table_entry);
     packetbuf_set_datalen(PACKET_SIZE(*packet));
     if(ret < 0) {
         return ret;
     }
     if(slot_data != NULL) {
-        slot_data->queuebuf = queuebuf_new_from_packetbuf();
-        if(slot_data->queuebuf == NULL) {
-            SN_ErrPrintf("no free queuebuf entries\n");
-            slot_data->allocated = 0;
-            return -SN_ERR_RESOURCES;
-        }
-        slot_data->packet.data = queuebuf_dataptr(slot_data->queuebuf); //XXX: assumes queuebuf doesn't use swapping
-        slot_data->valid = 1;
+        packetbuf_to_slot(slot_data);
     }
 
     //3. TX the packet
     NETSTACK_LLSEC.send(retransmission_mac_callback, slot_data);
     //TODO: BUG!!! I can't get the tx status from here, because there's no obvious way to wait for transmission
+
+    if(slot_data != NULL) {
+        slot_data->valid = 1;
+    }
 
     return SN_OK;
 }
@@ -240,13 +271,16 @@ int8_t SN_Retransmission_acknowledge_data(SN_Table_entry_t *table_entry, uint32_
         return -SN_ERR_NULL;
     }
 
+    SN_DebugPrintf("acknowledging %llx\n", counter);
+
     //for each active slot...
     FOR_EACH_ACTIVE_SLOT(slot, {
         //... if it's in my session and its packet's destination is the one I'm talking about...
         if(TABLE_ENTRY_MATCHES_ADDRESS(*table_entry, slot->dst_address)) {
             //... and it's encrypted with the right counter...
-            if(slot->packet.layout.present.encryption_header && slot->counter <= counter) {
+            if(slot->packet.layout.present.encryption_header && (slot->counter <= counter)) {
                 //... acknowledge it.
+                SN_DebugPrintf("kill %d\n", (uint8_t)(slot - transmission_queue));
                 free_slot((uint8_t)(slot - transmission_queue));
 
                 rv = SN_OK;
@@ -312,10 +346,15 @@ int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t
     return -SN_ERR_UNKNOWN;
 }
 
-static SN_Table_entry_t retx_temp_table_entry;
+static SN_Table_entry_t temp_table_entry;
 void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
+    static transmission_slot_t* singleton_tracker[SN_TRANSMISSION_SLOT_COUNT];
+    static uint8_t singleton_tracker_idx;
+    uint8_t i;
 
     SN_InfoPrintf("enter\n");
+
+    singleton_tracker_idx = 0;
 
     FOR_EACH_ACTIVE_SLOT(slot, {
         SN_InfoPrintf("doing retransmission processing for slot %d\n", (uint8_t)(slot - transmission_queue));
@@ -324,11 +363,12 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
         if(slot->dst_address.type == SN_ENDPOINT_SHORT_ADDRESS) {
             SN_DebugPrintf("slot %d is for short address 0x%04x\n", (uint8_t)(slot - transmission_queue), slot->dst_address.short_address);
         } else if (slot->dst_address.type == SN_ENDPOINT_LONG_ADDRESS) {
-            SN_DebugPrintf("slot %d is for long address 0x%08llx%08llx\n", (uint8_t)(slot - transmission_queue), *(uint32_t*)slot->dst_address.long_address, *(uint32_t*)(slot->dst_address.long_address + 4));
+            SN_DebugPrintf("slot %d is for long address 0x%08"PRIx32"%08"PRIx32"\n", (uint8_t)(slot - transmission_queue), *(uint32_t*)slot->dst_address.long_address, *(uint32_t*)(slot->dst_address.long_address + 4));
         } else {
             SN_DebugPrintf("slot %d has weird address type %d\n", (uint8_t)(slot - transmission_queue), slot->dst_address.type);
         }
-        if(SN_Table_lookup(&slot->dst_address, &retx_temp_table_entry) != SN_OK) {
+        SN_DebugPrintf("slot %d has counter %"PRIx32"\n", (uint8_t)(slot - transmission_queue), slot->counter);
+        if(SN_Table_lookup(&slot->dst_address, &temp_table_entry) != SN_OK) {
             SN_WarnPrintf("trying to retransmit to an unknown partner. dropping\n");
             free_slot((uint8_t)(slot - transmission_queue));
             continue;
@@ -336,12 +376,26 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
 
         //if we're not ignoring the disconnection counter, and we still have retries left, tx the packet
         if(count_towards_disconnection ? slot->retries < starfishnet_config.tx_retry_limit : 1) {
-            queuebuf_to_packetbuf(slot->queuebuf);
-            if(setup_packetbuf_for_transmission(&retx_temp_table_entry) != SN_OK) {
-                retx_temp_table_entry.unavailable = 1;
+            if(slot->dst_address.type != SN_ENDPOINT_SHORT_ADDRESS) {
+                singleton_tracker[singleton_tracker_idx++] = slot;
             } else {
-                NETSTACK_LLSEC.send(retransmission_mac_callback, slot);
-                //TODO: BUG!!! I can't get the tx status from here, because there's no obvious way to wait for transmission
+                for(i = 0; i < singleton_tracker_idx; i++) {
+                    if(singleton_tracker[i]->dst_address.type == SN_ENDPOINT_SHORT_ADDRESS &&
+                        slot->dst_address.short_address == singleton_tracker[i]->dst_address.short_address) {
+                        SN_InfoPrintf("found retransmission slot %d\n", i);
+                        if(slot->counter < singleton_tracker[i]->counter) {
+                            singleton_tracker[i] = slot;
+                        }
+                        break;
+                    }
+                    i++;
+                }
+                if(i == singleton_tracker_idx) {
+                    //didn't hit
+                    SN_InfoPrintf("allocating retransmission slot %d\n", i);
+                    singleton_tracker[i] = slot;
+                    singleton_tracker_idx++;
+                }
             }
         }
 
@@ -351,16 +405,27 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
             if(slot->retries >= starfishnet_config.tx_retry_limit) {
                 SN_ErrPrintf("slot %d has reached its retry limit\n", (uint8_t)(slot - transmission_queue));
 
-                retx_temp_table_entry.unavailable = 1;
+                temp_table_entry.unavailable = 1;
             }
         } else {
             slot->retries = 1;
         }
 
-        SN_Table_update(&retx_temp_table_entry);
+        SN_Table_update(&temp_table_entry);
 
         SN_InfoPrintf("retransmission processing for slot %d done\n", (uint8_t)(slot - transmission_queue));
     });
+
+    for(i = 0; i < singleton_tracker_idx; i++) {
+        slot_to_packetbuf(singleton_tracker[i]);
+        if(setup_packetbuf_for_transmission(&temp_table_entry) != SN_OK) {
+            temp_table_entry.unavailable = 1;
+        } else {
+            SN_DebugPrintf("doing tx of %"PRIx32"\n", singleton_tracker[i]->counter);
+            NETSTACK_LLSEC.send(retransmission_mac_callback, singleton_tracker[i]);
+            //TODO: BUG!!! I can't get the tx status from here, because there's no obvious way to wait for transmission
+        }
+    }
 
     SN_InfoPrintf("exit\n");
 }
@@ -388,7 +453,7 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
     (void)data; //shut up GCC
 
     while(1) {
-        etimer_set(&timer, starfishnet_config.tx_retry_timeout / 1000 * CLOCK_CONF_SECOND );
+        etimer_set(&timer, starfishnet_config.tx_retry_timeout / 1000 * (clock_time_t)CLOCK_CONF_SECOND );
 
         PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
 
@@ -399,10 +464,10 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
         if(timeouts == starfishnet_config.tx_ack_timeout) {
             SN_InfoPrintf("starting acknowledgement transmission...\n");
             timeouts = 0;
-            memset(&retx_temp_table_entry, 0, sizeof(retx_temp_table_entry));
-            while(SN_Table_find_unacknowledged(&retx_temp_table_entry) == SN_OK) {
-                SN_InfoPrintf("sending acknowledgements to 0x%04x\n", retx_temp_table_entry.short_address);
-                SN_Send_acknowledgements(&retx_temp_table_entry);
+            memset(&temp_table_entry, 0, sizeof(temp_table_entry));
+            while(SN_Table_find_unacknowledged(&temp_table_entry) == SN_OK) {
+                SN_InfoPrintf("sending acknowledgements to 0x%04x\n", temp_table_entry.short_address);
+                SN_Send_acknowledgements(&temp_table_entry);
             }
         }
     }

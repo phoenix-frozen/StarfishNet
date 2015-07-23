@@ -389,7 +389,7 @@ static int8_t packet_decrypt_verify(packet_t* packet, const SN_Public_key_t* key
     encryption_header = PACKET_ENTRY(*packet, encryption_header);
     assert(encryption_header != NULL);
     skip_size = packet->layout.encryption_header + (uint8_t)sizeof(encryption_header_t);
-    SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %x)\n", PACKET_SIZE(*packet), packet->layout.encryption_header, encryption_counter);
+    SN_InfoPrintf("attempting to decrypt packet of length %d with an encryption header at %d (counter = %"PRIx32")\n", PACKET_SIZE(*packet), packet->layout.encryption_header, encryption_counter);
     if(PACKET_SIZE(*packet) < skip_size) {
         SN_ErrPrintf("packet is too small\n");
         return -SN_ERR_END_OF_DATA;
@@ -416,6 +416,7 @@ static int8_t packet_decrypt_verify(packet_t* packet, const SN_Public_key_t* key
 static SN_Receive_callback_t* receive_callback = NULL;
 
 void SN_Receive(SN_Receive_callback_t* callback) {
+    NETSTACK_RDC.on();
     receive_callback = callback;
 }
 
@@ -704,7 +705,7 @@ void SN_Receive_data_packet() {
         //...it's not a rights revocation
         ) {
         //this was an association packet; generate an association message
-        SN_InfoPrintf("received association/dissociation request; synthesising appropriate message...\n");
+        SN_InfoPrintf("received association/dissociation request\n");
 
         //fill in the association message contents
         message.type = PACKET_ENTRY(packet, association_header)->dissociate ? SN_Dissociation_request : SN_Association_request;

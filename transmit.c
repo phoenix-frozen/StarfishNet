@@ -108,8 +108,9 @@ static void generate_network_header(packet_t* packet, SN_Table_entry_t* table_en
             NETWORK_HEADER->data_attributes.key_confirm = 1;
             table_entry->state = SN_Associated;
         }
-
-        table_entry->ack = 0;
+        if(message != NULL) {
+            table_entry->ack = 0;
+        }
     } else { //control packet
         NETWORK_HEADER->data = 0;
         NETWORK_HEADER->control_attributes.associate   = (uint8_t)(uint8_t)(message->type == SN_Association_request || message->type == SN_Dissociation_request);
