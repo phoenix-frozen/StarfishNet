@@ -14,6 +14,7 @@
 #define __FUNCTION__ __func__
 #endif //__FUNCTION__
 
+#include <inttypes.h>
 #ifndef PRIx32
 #define PRIx32 "lx"
 #endif //PRIx32
