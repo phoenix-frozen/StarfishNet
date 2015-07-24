@@ -696,6 +696,12 @@ void SN_Receive_data_packet() {
 
     table_entry.unavailable = 0;
 
+    if(!packet.layout.present.key_confirmation_header && packet.layout.present.encrypted_ack_header && !packet.layout.present.payload_data) {
+        //pure-acknowledgement packet has now been integrity-checked
+        //often, a pure-ack is a result of a timeout on the remote end; therefore, if we receive one, we should initiate retransmissions
+        SN_Retransmission_retry(0);
+    }
+
     SN_InfoPrintf("processing packet...\n");
     if(packet.layout.present.association_header &&
        //we have an association header, and...
