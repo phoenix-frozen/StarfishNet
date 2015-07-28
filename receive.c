@@ -190,7 +190,7 @@ static int8_t packet_security_checks(packet_t* packet, SN_Table_entry_t* table_e
        packet->layout.present.alt_stream_header &&
        PACKET_ENTRY(*packet, alt_stream_header)->length > 0) {
         SN_ErrPrintf("received alternate stream header from long-address node. this is an error\n");
-        return -SN_ERR_UNEXPECTED;
+        return -SN_ERR_INVALID;
     }
 
     //relationship-state checks: make sure the packet type we see match the state the relationship is in
@@ -582,14 +582,14 @@ void SN_Receive_data_packet() {
     ret = packet_security_checks(&packet, &table_entry);
     if(ret != SN_OK) {
         SN_ErrPrintf("error %d in packet security checks. aborting\n", -ret);
-        //certain security check failures could come from a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
         if(-ret == SN_ERR_UNEXPECTED) {
-            SN_WarnPrintf("possible %s drop; triggering %stransmission\n", "packet", "re");
-            SN_Retransmission_retry(0);
+            //we've received an associate_request, associate_reply, or associate_finalise
 
-            //special case: if the security check failure is because this is a finalise, and we've already received one, it's probably an acknowledgement drop. send acknowledgements
+            //for associate_request and associate_reply, we'll just let the retransmission subsystem deal with it
+
+            //for associate_finalise, we'll send an acknowledgement packet
             if(packet.layout.present.key_confirmation_header && !packet.layout.present.association_header) {
-                SN_WarnPrintf("possible %s drop; triggering %stransmission\n", "ACK", "acknowledgement ");
+                SN_WarnPrintf("received unexpected associate_finalise. sending acknowledgement\n");
                 if(table_entry.short_address != FRAME802154_INVALIDADDR) {
                     SN_Send_acknowledgements(&table_entry);
                 }
@@ -608,10 +608,10 @@ void SN_Receive_data_packet() {
      */
     if(packet.layout.present.signature_header) {
         SN_InfoPrintf("checking packet signature...\n");
-        //if(remote_public_key == NULL) {
         if(!table_entry.details_known && !packet.layout.present.node_details_header) {
             SN_ErrPrintf("we don't know their public key, and they haven't told us. aborting\n");
-            //TODO: we should probably send a packet with req_details set in this case
+            //XXX: this should be impossible, since if we didn't know their public key, we'd have asked for it
+            //     in the associate_request
             return;
         }
         ret = SN_Crypto_verify(
@@ -622,12 +622,14 @@ void SN_Receive_data_packet() {
         );
         if(ret != SN_OK) {
             SN_ErrPrintf("packet signature verification failed.\n");
+            //integrity verification failed; await retransmission
             return;
         }
         SN_InfoPrintf("packet signature check successful\n");
     }
 
     //if this is an associate_reply, finish the key agreement, so we can use the link key in decrypt_and_verify
+    //this is safe because associate_reply is always signed, and so was integrity-checked above
     if(packet.layout.present.association_header &&
        !PACKET_ENTRY(packet, association_header)->dissociate &&
        packet.layout.present.key_confirmation_header) {
@@ -671,11 +673,10 @@ void SN_Receive_data_packet() {
 
             if (ret != SN_OK) {
                 SN_ErrPrintf("error %d while decrypting\n", -ret);
-                //certain crypto failures could be a retransmission as a result of a dropped acknowledgement; trigger retransmissions to guard against this
-                SN_WarnPrintf("possible %s drop; triggering %stransmission\n", "packet", "re");
-                SN_Retransmission_retry(0);
+                //this could be either because the packet was damaged in transit, or a duplicate of an old packet
+                //in the former case, we wait for retransmission; in the latter case, we should send an acknowledgement
                 if (table_entry.short_address != FRAME802154_INVALIDADDR) {
-                    SN_WarnPrintf("possible %s drop; triggering %stransmission\n", "ACK", "acknowledgement ");
+                    SN_WarnPrintf("decrypt/verify failure. sending acknowledgement\n");
                     SN_Send_acknowledgements(&table_entry);
                 }
                 return;
@@ -687,6 +688,8 @@ void SN_Receive_data_packet() {
         }
     }
 
+    //integrity protection is complete. it is now safe to process the packet
+
     SN_InfoPrintf("processing packet headers...\n");
     ret = packet_process_headers(&packet, &table_entry);
     if(ret != SN_OK) {
@@ -696,9 +699,12 @@ void SN_Receive_data_packet() {
 
     table_entry.unavailable = 0;
 
+    SN_Table_update(&table_entry);
+
     if(!packet.layout.present.key_confirmation_header && packet.layout.present.encrypted_ack_header && !packet.layout.present.payload_data) {
-        //pure-acknowledgement packet has now been integrity-checked
-        //often, a pure-ack is a result of a timeout on the remote end; therefore, if we receive one, we should initiate retransmissions
+        //this is a pure-ack. one of these usually occurs as a result of a receive error at the remote end.
+        //therefore, if we receive one, we should perform retransmissions
+        SN_WarnPrintf("received pure-ack. performing retransmissions\n");
         SN_Retransmission_retry(0);
     }
 
@@ -755,8 +761,6 @@ void SN_Receive_data_packet() {
             }
         }
     }
-
-    SN_Table_update(&table_entry);
 
     if(message.type != SN_No_message) {
         if(receive_callback)

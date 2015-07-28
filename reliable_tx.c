@@ -23,6 +23,7 @@ typedef struct transmission_slot {
         struct {
             uint8_t valid     :1;
             uint8_t allocated :1;
+            uint8_t enabled   :1;
         };
         uint8_t flags;
     };
@@ -61,6 +62,7 @@ static int8_t allocate_slot() {
             slot = next_free_slot;
             transmission_queue[next_free_slot].allocated = 1;
             transmission_queue[next_free_slot].valid = 0;
+            transmission_queue[next_free_slot].enabled = 0;
         }
 
         next_free_slot++;
@@ -166,6 +168,7 @@ static void retransmission_mac_callback(void *ptr, int status, int transmissions
         transmission_slot_t* slot_data = (transmission_slot_t*)ptr;
         slot_data->transmit_status = (int8_t)status;
         slot_data->retries++;
+        slot_data->enabled = 1;
     }
 }
 
@@ -347,7 +350,7 @@ int8_t SN_Retransmission_acknowledge_implicit(packet_t *packet, SN_Table_entry_t
 }
 
 static SN_Table_entry_t temp_table_entry;
-void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
+static void do_retransmission(uint8_t count_towards_disconnection) {
     static transmission_slot_t* singleton_tracker[SN_TRANSMISSION_SLOT_COUNT];
     static uint8_t singleton_tracker_idx;
     uint8_t i;
@@ -374,8 +377,9 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
             continue;
         }
 
+        //if we're ignoring the disconnection counter, and the packet has been retried at least once, tx the packet
         //if we're not ignoring the disconnection counter, and we still have retries left, tx the packet
-        if(count_towards_disconnection ? slot->retries < starfishnet_config.tx_retry_limit : 1) {
+        if(slot->enabled && (count_towards_disconnection ? slot->retries < starfishnet_config.tx_retry_limit : 1)) {
             if(slot->dst_address.type != SN_ENDPOINT_SHORT_ADDRESS) {
                 singleton_tracker[singleton_tracker_idx++] = slot;
             } else {
@@ -429,6 +433,10 @@ void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
 
     SN_InfoPrintf("exit\n");
 }
+static process_event_t extraneous_retransmission;
+void SN_Retransmission_retry(uint8_t count_towards_disconnection) {
+    process_post(&starfishnet_retransmission_process, count_towards_disconnection ? (process_event_t)PROCESS_EVENT_TIMER : extraneous_retransmission, NULL);
+}
 
 void SN_Retransmission_clear() {
     transmission_slot_t* slot;
@@ -446,30 +454,36 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
         .p = &starfishnet_retransmission_process,
         .next = NULL,
     };
-    static uint8_t timeouts = 0;
+    static uint8_t ack_ctr = 0;
 
     PROCESS_BEGIN();
 
+    extraneous_retransmission = process_alloc_event();
+
     (void)data; //shut up GCC
 
+    etimer_set(&timer, starfishnet_config.tx_retry_timeout / 1000 * (clock_time_t)CLOCK_CONF_SECOND);
     while(1) {
-        etimer_set(&timer, starfishnet_config.tx_retry_timeout / 1000 * (clock_time_t)CLOCK_CONF_SECOND );
+        PROCESS_WAIT_EVENT();
 
-        PROCESS_WAIT_EVENT_UNTIL(ev == PROCESS_EVENT_TIMER);
+        if(ev == PROCESS_EVENT_TIMER) {
+            ack_ctr++;
 
-        timeouts++;
+            do_retransmission(1);
 
-        SN_Retransmission_retry(1);
-
-        if(timeouts == starfishnet_config.tx_ack_timeout) {
-            SN_InfoPrintf("starting acknowledgement transmission...\n");
-            timeouts = 0;
-            memset(&temp_table_entry, 0, sizeof(temp_table_entry));
-            while(SN_Table_find_unacknowledged(&temp_table_entry) == SN_OK) {
-                SN_InfoPrintf("sending acknowledgements to 0x%04x\n", temp_table_entry.short_address);
-                SN_Send_acknowledgements(&temp_table_entry);
+            if (ack_ctr == starfishnet_config.tx_ack_timeout) {
+                SN_InfoPrintf("starting acknowledgement transmission...\n");
+                ack_ctr = 0;
+                memset(&temp_table_entry, 0, sizeof(temp_table_entry));
+                while (SN_Table_find_unacknowledged(&temp_table_entry) == SN_OK) {
+                    SN_InfoPrintf("sending acknowledgements to 0x%04x\n", temp_table_entry.short_address);
+                    SN_Send_acknowledgements(&temp_table_entry);
+                }
             }
+        } else if(ev == extraneous_retransmission) {
+            do_retransmission(0);
         }
+        etimer_restart(&timer);
     }
 
     PROCESS_END();
