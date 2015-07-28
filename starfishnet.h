@@ -40,5 +40,6 @@ int8_t SN_Start(const SN_Network_descriptor_t *network);
 //tune the radio to a StarfishNet network and listen for packets with its PAN ID
 int8_t SN_Join(const SN_Network_descriptor_t *network, bool disable_routing);
 
+#define SN_MAX_DATA_MESSAGE_LENGTH 101
 
 #endif //__STARFISHNET_H__
