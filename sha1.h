@@ -1,7 +1,7 @@
 #ifndef STARFISHNET_SHA1_H
 #define STARFISHNET_SHA1_H
 
-// Code by: B-Con (http://b-con.us)
+// Code by: Brad Conte (http://bradconte.com)
 // Released under the GNU GPL
 // MD5 Hash Digest implementation (little endian byte order)
 

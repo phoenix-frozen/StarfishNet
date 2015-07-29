@@ -1,4 +1,4 @@
-// Code by: B-Con (http://b-con.us)
+// Code by: Brad Conte (http://bradconte.com)
 // Released under the GNU GPL
 // SHA1 Hash Digest implementation (little endian byte order)
 // Modified by: Justin King-Lacroix <justin.king-lacroix@cs.ox.ac.uk>
