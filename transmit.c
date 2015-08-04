@@ -45,6 +45,7 @@
  *   must be acknowledged.
  */
 
+#include "starfishnet.h"
 #include "crypto.h"
 #include "node_table.h"
 #include "logging.h"
@@ -57,9 +58,10 @@
 #include "routing_tree.h"
 #include "constants.h"
 #include "dmem.h"
+#include "raw_tx.h"
+#include "types.h"
 
 #include "net/packetbuf.h"
-#include "raw_tx.h"
 
 #include <string.h>
 #include <assert.h>
@@ -101,14 +103,19 @@ static void generate_network_header(packet_t* packet, SN_Table_entry_t* table_en
     NETWORK_HEADER->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
     if(message == NULL || (message->type != SN_Association_request && message->type != SN_Dissociation_request)) { //data packet
         NETWORK_HEADER->data = 1;
-        NETWORK_HEADER->data_attributes.ack      = (uint8_t)((table_entry->ack && NETWORK_HEADER->data) || message == NULL);
         NETWORK_HEADER->data_attributes.evidence = (uint8_t)(message != NULL && message->type > SN_Data_message);
+
+        if(message != NULL && message->data_message.payload_length <= (SN_MAX_DATA_MESSAGE_LENGTH - sizeof(encrypted_ack_header_t))) {
+            NETWORK_HEADER->data_attributes.ack      = (uint8_t)table_entry->ack;
+        } else {
+            NETWORK_HEADER->data_attributes.ack      = 0;
+        }
 
         if(table_entry->state == SN_Send_finalise) {
             NETWORK_HEADER->data_attributes.key_confirm = 1;
             table_entry->state = SN_Associated;
         }
-        if(message != NULL) {
+        if(message != NULL && NETWORK_HEADER->data_attributes.ack) {
             table_entry->ack = 0;
         }
     } else { //control packet
