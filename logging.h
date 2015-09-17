@@ -10,14 +10,17 @@
 #endif //SN_DEBUG
 
 #ifdef SN_DEBUG
+
+#ifndef __SDCC_mcs51
+#include <inttypes.h>
+#else //__SDCC_mcs51
 #ifndef __FUNCTION__
 #define __FUNCTION__ __func__
 #endif //__FUNCTION__
-
-#include <inttypes.h>
 #ifndef PRIx32
 #define PRIx32 "lx"
 #endif //PRIx32
+#endif //__SDCC_mcs51
 
 #include <stdio.h>
 #include "sys/clock.h"

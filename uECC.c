@@ -1444,7 +1444,7 @@ static void XYcZ_add(uECC_word_t * RESTRICT X1,
     vli_modMult_fast(Y1, Y1, X2); /* t2 = y1*(C - B) */
     vli_modSub_fast(X2, X1, t5);  /* t3 = B - x3 */
     vli_modMult_fast(Y2, Y2, X2); /* t4 = (y2 - y1)*(B - x3) */
-    vli_modSub_fast(Y2, Y2, Y1);  /* t4 = y3 */
+    vli_modSub_fast(Y2, Y2, Y1);  /* t4 = (y2 - y1)*(B - x3) - y1*(C - B) = y3 */
 
     vli_set(X2, t5);
 
@@ -1800,7 +1800,10 @@ uint8_t uECC_make_key(uint8_t public_key[uECC_BYTES * 2], const uint8_t private_
     ALLOCATE_ARRAY(p2[0], uECC_WORDS);
     ALLOCATE_ARRAY(p2[1], uECC_WORDS);
     if (vli_cmp(curve_n, private) != 1) {
-        return 0;
+        FREE(p2[0]);
+        FREE(p2[1]);
+        ret = 0;
+        goto exit;
     }
 
     // Regularize the bitcount for the private key so that attackers cannot use a side channel

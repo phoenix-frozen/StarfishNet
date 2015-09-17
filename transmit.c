@@ -585,7 +585,7 @@ int8_t SN_Associate(const SN_Endpoint_t *dst_addr) {
                     return -SN_ERR_INVALID;
                 }
                 ALLOCATE_ARRAY_COND(table_entry.long_address, 8, {
-                    SN_InfoPrintf("failed to allocate space long address storage\n");
+                    SN_InfoPrintf("failed to allocate space for long address storage\n");
                     return -SN_ERR_RESOURCES;
                 });
                 memcpy(table_entry.long_address, dst_addr->long_address, 8);
