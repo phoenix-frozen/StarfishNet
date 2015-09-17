@@ -14,6 +14,7 @@
 #include "sys/etimer.h"
 
 #include <string.h>
+#include <lib/random.h>
 
 #define IEEE802514_BEACON_OVERHEAD 4
 
@@ -300,14 +301,11 @@ void SN_Beacon_input() {
     //set up some pointers, and then do a hash check
     beacon_payload = (beacon_payload_t*)((uint8_t*)packetbuf_dataptr() + IEEE802514_BEACON_OVERHEAD);
     if(packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE) != 2) {
-        SN_InfoPrintf("Router is using its long address (addr_size = %d); a StarfishNet node should be using its short address.\n", packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE));
+        SN_ErrPrintf("Router is using its long address (addr_size = %d); a StarfishNet node should be using its short address.\n", packetbuf_attr(PACKETBUF_ATTR_SENDER_ADDR_SIZE));
         return;
     }
 
     SN_InfoPrintf("    CoordAddress=0x%04x\n", SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8));
-    if(beacon_payload->beacon_data.network_config.router_address != SHORT_ADDRESS(packetbuf_addr(PACKETBUF_ADDR_SENDER)->u8)) {
-        SN_WarnPrintf("    Address mismatch! Using 0x%04x\n", beacon_payload->beacon_data.network_config.router_address);
-    }
 
     //check that this is a network of the kind we care about
     SN_InfoPrintf("    PID=0x%02x, PVER=0x%02x\n", beacon_payload->beacon_data.protocol_id, beacon_payload->beacon_data.protocol_ver);
@@ -347,7 +345,7 @@ void SN_Beacon_input() {
     SN_InfoPrintf("exit\n");
 }
 
-void SN_Beacon_TX() {
+static void beacon_tx_callback(void* extradata) {
     linkaddr_t src_address;
     uint8_t* packetbuf_ptr;
 
@@ -381,6 +379,19 @@ void SN_Beacon_TX() {
     packetbuf_set_datalen(sizeof(self_beacon_payload) + IEEE802514_BEACON_OVERHEAD);
 
     NETSTACK_LLSEC.send(NULL, NULL);
+
+    SN_InfoPrintf("exit\n");
+}
+
+void SN_Beacon_TX() {
+    static struct ctimer timer;
+    unsigned short timeout;
+
+    SN_InfoPrintf("enter\n");
+
+    timeout = random_rand() & (unsigned short)0x3F;
+
+    ctimer_set(&timer, timeout, &beacon_tx_callback, NULL);
 
     SN_InfoPrintf("exit\n");
 }
