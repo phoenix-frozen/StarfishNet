@@ -27,7 +27,7 @@ int8_t SN_Forward_Packetbuf(uint16_t source, uint16_t destination) {
     ret = SN_Tree_route(source, destination, &next_hop_short_address);
     STORE_SHORT_ADDRESS(next_hop.u8, next_hop_short_address);
     if(ret != SN_OK) {
-        SN_ErrPrintf("error trying to route packet: %d", -ret);
+        SN_ErrPrintf("error trying to route packet: %d\n", -ret);
         return ret;
     }
 
