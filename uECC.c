@@ -26,8 +26,6 @@
     #define RESTRICT
 #endif
 
-#define MAX_TRIES 64
-
 #if (uECC_WORD_SIZE == 1)
 
 typedef uint8_t uECC_word_t;
