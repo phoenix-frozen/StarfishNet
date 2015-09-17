@@ -28,6 +28,12 @@
 #error "We assume that hashes and private keys are the same size!"
 #endif //SN_Hash_size != SN_PK_key_size
 
+#define STARFISHNET_DEFAULT_KEY_POOL_SIZE 4
+
+#ifndef STARFISHNET_KEY_POOL_SIZE
+#define STARFISHNET_KEY_POOL_SIZE STARFISHNET_DEFAULT_KEY_POOL_SIZE
+#endif //SN_KEY_POOL_SIZE
+
 //some temporary buffers to store intermediate values
 static union {
     uint8_t        unpacked_public_key[SN_PK_key_size * 2];
@@ -63,9 +69,8 @@ static void do_key_gen(SN_Keypair_t *keypair) {
     uECC_compress(temp.unpacked_public_key, keypair->public_key.data);
 }
 
-#define KEY_POOL_SIZE 4
-static SN_Keypair_t key_pool[KEY_POOL_SIZE];
-static uint8_t key_pool_idx = KEY_POOL_SIZE;
+static SN_Keypair_t key_pool[STARFISHNET_KEY_POOL_SIZE];
+static uint8_t key_pool_idx = STARFISHNET_KEY_POOL_SIZE;
 
 int8_t SN_Crypto_generate_keypair(SN_Keypair_t *keypair) {
     SN_InfoPrintf("enter\n");
@@ -75,14 +80,14 @@ int8_t SN_Crypto_generate_keypair(SN_Keypair_t *keypair) {
         return -SN_ERR_NULL;
     }
 
-    if(key_pool_idx < KEY_POOL_SIZE) {
+    if(key_pool_idx < STARFISHNET_KEY_POOL_SIZE) {
         memcpy(keypair, key_pool + key_pool_idx, sizeof(*keypair));
         key_pool_idx++;
         SN_InfoPrintf("exit (fast)\n");
         return SN_OK;
     }
 
-    for(key_pool_idx = 0; key_pool_idx < KEY_POOL_SIZE; key_pool_idx++) {
+    for(key_pool_idx = 0; key_pool_idx < STARFISHNET_KEY_POOL_SIZE; key_pool_idx++) {
         do_key_gen(key_pool + key_pool_idx);
     }
     key_pool_idx = 0;
