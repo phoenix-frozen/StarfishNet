@@ -462,7 +462,7 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
 
     (void)data; //shut up GCC
 
-    etimer_set(&timer, starfishnet_config.tx_retry_timeout / 1000 * (clock_time_t)CLOCK_CONF_SECOND);
+    etimer_set(&timer, starfishnet_config.tx_retry_timeout / (clock_time_t)1000 * (clock_time_t)CLOCK_CONF_SECOND);
     while(1) {
         PROCESS_WAIT_EVENT();
 
@@ -483,7 +483,8 @@ PROCESS_THREAD(starfishnet_retransmission_process, ev, data)
         } else if(ev == extraneous_retransmission) {
             do_retransmission(0);
         }
-        etimer_restart(&timer);
+        //this is a repeat etimer_set(), rather than an etimer_restart(), to allow tx_retry_timeout to change at runtime
+        etimer_set(&timer, starfishnet_config.tx_retry_timeout / (clock_time_t)1000 * (clock_time_t)CLOCK_CONF_SECOND);
     }
 
     PROCESS_END();
