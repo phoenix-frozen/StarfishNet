@@ -50,6 +50,23 @@ static int8_t generate_random_number(uint8_t *dest, unsigned size) {
     return 1;
 }
 
+static void do_key_gen(SN_Keypair_t *keypair) {
+    do {
+        //generate uECC_BYTES random bytes
+        generate_random_number(keypair->private_key.data, sizeof(keypair->private_key.data));
+
+        SN_InfoPrintf("attempting key generation...\n");
+        //generate keypair
+    } while (uECC_make_key(temp.unpacked_public_key, keypair->private_key.data) != 1);
+
+    //pack public key
+    uECC_compress(temp.unpacked_public_key, keypair->public_key.data);
+}
+
+#define KEY_POOL_SIZE 4
+static SN_Keypair_t key_pool[KEY_POOL_SIZE];
+static uint8_t key_pool_idx = KEY_POOL_SIZE;
+
 int8_t SN_Crypto_generate_keypair(SN_Keypair_t *keypair) {
     SN_InfoPrintf("enter\n");
 
@@ -58,16 +75,19 @@ int8_t SN_Crypto_generate_keypair(SN_Keypair_t *keypair) {
         return -SN_ERR_NULL;
     }
 
-    do {
-        //generate uECC_BYTES random bytes
-        generate_random_number(keypair->private_key.data, sizeof(keypair->private_key.data));
+    if(key_pool_idx < KEY_POOL_SIZE) {
+        memcpy(keypair, key_pool + key_pool_idx, sizeof(*keypair));
+        key_pool_idx++;
+        SN_InfoPrintf("exit (fast)\n");
+        return SN_OK;
+    }
 
-        SN_InfoPrintf("attempting key generation...\n");
-        //generate keypair
-    } while(uECC_make_key(temp.unpacked_public_key, keypair->private_key.data) != 1);
+    for(key_pool_idx = 0; key_pool_idx < KEY_POOL_SIZE; key_pool_idx++) {
+        do_key_gen(key_pool + key_pool_idx);
+    }
+    key_pool_idx = 0;
 
-    //pack public key
-    uECC_compress(temp.unpacked_public_key, keypair->public_key.data);
+    do_key_gen(keypair);
 
     SN_InfoPrintf("exit\n");
     return SN_OK;
