@@ -62,4 +62,5 @@ is also larger than the StarfishNet encryption header.
 
 StarfishNet also does not implement broadcasts.
 
-This codebase is the CC2530 implementation, designed to be compiled with SDCC.
+StarfishNet is written as a network protocol driver for Contiki, and was written
+and tested on my Contiki fork, compiled with SDCC, for the TI CC2530.
