@@ -127,14 +127,17 @@ static int8_t setup_packetbuf_for_transmission(SN_Table_entry_t* table_entry) {
     if(
         table_entry->short_address != FRAME802154_INVALIDADDR && //sending to a short address
         starfishnet_config.short_address != FRAME802154_INVALIDADDR && //we have a short address
-        starfishnet_config.enable_routing && //routing is switched on
         !(table_entry->state < SN_Associated && table_entry->child) //not an associate_reply with an address
         ) {
         //normal circumstances
         uint16_t dst_addr_short;
-        int8_t ret = SN_Tree_route(starfishnet_config.short_address, table_entry->short_address, &dst_addr_short);
-        if(ret < 0) {
-            return ret;
+        if(starfishnet_config.enable_routing) { //if we're a router, route
+            int8_t ret = SN_Tree_route(starfishnet_config.short_address, table_entry->short_address, &dst_addr_short);
+            if (ret < 0) {
+                return ret;
+            }
+        } else { //if we're not a router, send through our parent
+            dst_addr_short = starfishnet_config.parent_address;
         }
         STORE_SHORT_ADDRESS(dst_addr.u8, dst_addr_short);
         packetbuf_set_attr(PACKETBUF_ATTR_RECEIVER_ADDR_SIZE, 2);
@@ -188,7 +191,7 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
     //1. If appropriate, allocate a slot and fill it.
     if(!packet->layout.present.encryption_header && !(packet->layout.present.association_header && !PACKET_ENTRY(*packet, association_header)->dissociate)) {
         //this is a signed non-association packet; probably optimistic certificate transport, or a dissociation
-        SN_InfoPrintf("just sent unencrypted non-association packet (probably optimistic certificate transport; not performing retransmissions\n");
+        SN_InfoPrintf("just sent unencrypted non-association packet; not performing retransmissions\n");
         slot_data = NULL;
     } else {
         int8_t slot;
@@ -211,6 +214,7 @@ int8_t SN_Retransmission_send(packet_t *packet, SN_Table_entry_t *table_entry) {
         slot_data->transmit_status = MAC_TX_DEFERRED;
         if(table_entry->short_address == FRAME802154_INVALIDADDR) {
             if(table_entry->long_address == NULL) {
+                slot_data->allocated = 0;
                 return -SN_ERR_INVALID;
             }
             slot_data->dst_address.type = SN_ENDPOINT_LONG_ADDRESS;
