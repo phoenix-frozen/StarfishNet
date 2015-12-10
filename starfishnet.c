@@ -10,6 +10,7 @@
 #include "net/queuebuf.h"
 
 #include <string.h>
+#include <dev/leds.h>
 
 static void init() {
     SN_InfoPrintf("enter\n");
@@ -17,6 +18,8 @@ static void init() {
     packetbuf_clear();
     process_start(&starfishnet_discovery_process, NULL);
     process_start(&starfishnet_retransmission_process, NULL);
+
+    leds_on(LEDS_RED);
 
     //populate configuration structure
     //designed so that we can store a root key in future...
@@ -33,6 +36,9 @@ static void init() {
 
     NETSTACK_RADIO.set_value(RADIO_PARAM_16BIT_ADDR, (radio_value_t)FRAME802154_INVALIDADDR);
     NETSTACK_RADIO.set_value(RADIO_PARAM_PAN_ID, (radio_value_t)FRAME802154_BROADCASTPANDID);
+
+    leds_off(LEDS_RED);
+    leds_on(LEDS_GREEN);
 
     SN_InfoPrintf("exit\n");
 }
