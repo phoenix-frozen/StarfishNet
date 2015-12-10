@@ -103,20 +103,24 @@ static void generate_network_header(packet_t* packet, SN_Table_entry_t* table_en
     NETWORK_HEADER->alt_stream   = (uint8_t)(table_entry->altstream.stream_idx_length > 0);
     if(message == NULL || (message->type != SN_Association_request && message->type != SN_Dissociation_request)) { //data packet
         NETWORK_HEADER->data = 1;
-        NETWORK_HEADER->data_attributes.evidence = (uint8_t)(message != NULL && message->type > SN_Data_message);
 
-        if(message != NULL && message->data_message.payload_length <= (SN_MAX_DATA_MESSAGE_LENGTH - sizeof(encrypted_ack_header_t))) {
-            NETWORK_HEADER->data_attributes.ack      = (uint8_t)table_entry->ack;
+        if(message == NULL) {
+            NETWORK_HEADER->data_attributes.evidence = 0;
+            NETWORK_HEADER->data_attributes.ack = 1;
         } else {
-            NETWORK_HEADER->data_attributes.ack      = 0;
+            NETWORK_HEADER->data_attributes.evidence = (uint8_t)(message->type > SN_Data_message);
+            if(message->type == SN_Data_message && message->data_message.payload_length <= (SN_MAX_DATA_MESSAGE_LENGTH - sizeof(encrypted_ack_header_t))) {
+                NETWORK_HEADER->data_attributes.ack = (uint8_t) table_entry->ack;
+                table_entry->ack = 0;
+            } else {
+                //evidence messages are too big to include acknowledgement headers
+                NETWORK_HEADER->data_attributes.ack = 0;
+            }
         }
 
         if(table_entry->state == SN_Send_finalise) {
             NETWORK_HEADER->data_attributes.key_confirm = 1;
             table_entry->state = SN_Associated;
-        }
-        if(message != NULL && NETWORK_HEADER->data_attributes.ack) {
-            table_entry->ack = 0;
         }
     } else { //control packet
         NETWORK_HEADER->data = 0;

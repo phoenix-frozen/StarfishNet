@@ -642,7 +642,7 @@ void SN_Receive_data_packet() {
 
         ret = SN_Crypto_key_agreement(
             &starfishnet_config.device_root_key.public_key,
-            &table_entry.public_key,
+            table_entry.details_known ? &table_entry.public_key : &PACKET_ENTRY(packet, node_details_header)->signing_key,
             &PACKET_ENTRY(packet, key_agreement_header)->key_agreement_key,
             &table_entry.local_key_agreement_keypair.private_key,
             &table_entry.link_key
@@ -754,6 +754,9 @@ void SN_Receive_data_packet() {
             if(!packet.layout.present.encryption_header) {
                 //stapled plain data on unencrypted packet. warn and ignore
                 SN_WarnPrintf("received plain data in unencrypted packet. ignoring.\n");
+            } else if(packet.layout.payload_length == 0) {
+                //empty packet
+                message.type = SN_No_message;
             } else {
                 message.type                        = SN_Data_message;
                 message.data_message.payload_length = packet.layout.payload_length;
