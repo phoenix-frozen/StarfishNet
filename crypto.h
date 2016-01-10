@@ -34,7 +34,7 @@ int8_t SN_Crypto_key_agreement( //do an authenticated key agreement into shared_
     SN_Kex_result_t *shared_secret
 );
 
-int8_t SN_Crypto_encrypt( //AEAD-encrypt a data block. tag is 16 bytes
+int8_t SN_Crypto_encrypt( //AEAD-encrypt a data block. tag is SN_Tag_size bytes
     const SN_AES_key_t *key,
     const SN_Public_key_t *key_agreement_key,
     uint32_t counter,
@@ -46,7 +46,7 @@ int8_t SN_Crypto_encrypt( //AEAD-encrypt a data block. tag is 16 bytes
     bool pure_ack
 );
 
-int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is 16 bytes
+int8_t SN_Crypto_decrypt( //AEAD-decrypt a data block. tag is SN_Tag_size bytes
     const SN_AES_key_t *key,
     const SN_Public_key_t *key_agreement_key,
     uint32_t counter,
